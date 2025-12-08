@@ -1,6 +1,6 @@
 # Cloudflare Fullstack Template (RVHS)
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/claudio-silva/cloudflare-fullstack-template-rvhs)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/claudio-silva/cloudflare-fullstack-starter)
 
 This template provides a complete fullstack setup for building modern React applications with TypeScript, Vite, Hono backend, Cloudflare Workers, and shadcn/ui components. It features hot module replacement, ESLint integration, Tailwind CSS styling, and the flexibility of Workers deployments.
 
@@ -37,7 +37,7 @@ Get started in minutes with local development or deploy directly via the Cloudfl
 ### Clone this template
 
 ```bash
-git clone https://github.com/claudio-silva/cloudflare-fullstack-template-rvhs.git your-project-name
+git clone https://github.com/claudio-silva/cloudflare-fullstack-starter.git your-project-name
 cd your-project-name
 ```
 

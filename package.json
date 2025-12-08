@@ -1,5 +1,5 @@
 {
-  "name": "cloudflare-fullstack-template-rvhs",
+  "name": "cloudflare-fullstack-starter",
   "description": "A fullstack template for building React applications with Vite, Hono, Cloudflare Workers, and shadcn/ui",
   "version": "0.0.0",
   "cloudflare": {
