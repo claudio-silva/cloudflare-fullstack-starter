@@ -1,232 +1,211 @@
-# Cloudflare Fullstack Template (RVHS)
+# Cloudflare Fullstack SaaS Starter
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/claudio-silva/cloudflare-fullstack-starter)
+[![CI](https://github.com/claudio-silva/cloudflare-fullstack-starter/actions/workflows/ci.yml/badge.svg)](https://github.com/claudio-silva/cloudflare-fullstack-starter/actions/workflows/ci.yml) [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/claudio-silva/cloudflare-fullstack-starter)
 
-This template provides a complete fullstack setup for building modern React applications with TypeScript, Vite, Hono backend, Cloudflare Workers, and shadcn/ui components. It features hot module replacement, ESLint integration, Tailwind CSS styling, and the flexibility of Workers deployments.
+**Production-ready SaaS foundation** on Cloudflare's edge platform.  
+Clone, init and start building your web app. Authentication, database, UI, CLI and deployment are all ready to go.
 
-<!-- dash-content-start -->
+## Why This Starter?
 
-🚀 Supercharge your web development with this powerful stack:
+Building a new project should feel exciting, not like a ritual of fixing boilerplate. Even with coding agents, early development often dissolves into hours of debugging authentication flows, taming theme flicker, setting up configurations and multi-environment support, and recreating the same foundations over and over. It slows you down, burns credits, and drains enthusiasm before you even touch the core idea.
 
-- [**React**](https://react.dev/) - A modern UI library for building interactive interfaces
-- [**Vite**](https://vite.dev/) - Lightning-fast build tooling and development server
-- [**Hono**](https://hono.dev/) - Ultralight, modern backend framework
-- [**Cloudflare Workers**](https://developers.cloudflare.com/workers/) - Edge computing platform for global deployment
-- [**shadcn/ui**](https://ui.shadcn.com/) - Beautifully designed components built with Radix UI and Tailwind CSS
-- [**Tailwind CSS**](https://tailwindcss.com/) - Utility-first CSS framework for rapid UI development
+This starter lets you skip that entire setup grind. From the first `git clone`, you begin with a fully working, production‑grade baseline:
 
-### ✨ Key Features
+- **Complete Edge Runtime**: Built on Cloudflare's edge platform, ready to deploy to Cloudflare Workers/Pages
+- **TypeScript**: Built-in TypeScript support, linting and type checking with frontend and backend live reload
+- **Complete Auth Flow**: Sign up, email verification, login, logout, profile management, all powered by [Better Auth](https://www.better-auth.com/)
+- **App Shell**: Sidebar navigation + header with theme toggle and user avatar dropdown menu + Profile page and Logout — which you can redesign to your liking
+- **Database Ready**: [Cloudflare D1](https://developers.cloudflare.com/d1/) with migrations — easily replaceable with another database backend
+- **Beautiful UI**: 50+ [shadcn/ui](https://ui.shadcn.com/) components pre-installed, user-selectable dark/light theme
+- **Full Stack**: React 19 + Vite frontend, [Hono](https://hono.dev/) API backend, unified dev server
+- **Multi-Environment Support**: Local, Preview and Production environments with separate databases and secrets
+- **CLI Tools**: A base for your own CLI tooling, bundles a useful set of commands for managing local and remote users
 
-- 🔥 Hot Module Replacement (HMR) for rapid development
-- 📦 TypeScript support out of the box
-- 🛠️ ESLint configuration included
-- ⚡ Zero-config deployment to Cloudflare's global network
-- 🎯 API routes with Hono's elegant routing
-- 🔄 Full-stack development setup
-- 🎨 Pre-configured shadcn/ui components with default theme
-- 🌈 Tailwind CSS v3.x for styling
-- 🌓 Dark/light theme support
-- 📱 Responsive design ready
+### Alternative: Minimal Starting Point
 
-Get started in minutes with local development or deploy directly via the Cloudflare dashboard. Perfect for building modern, performant web applications at the edge with beautiful UI components.
+If you prefer a bare‑bones starting point stripped of authentication, database, CLI, and app shell, check out the `minimal` branch of this repository. It still provides React with TypeScript, integrated Vite and Hono backend, Cloudflare Workers, shadcn/ui components and Tailwind CSS.
 
-<!-- dash-content-end -->
+## Quick Start
 
-## Getting Started
+### 1. Create from template
 
-### Clone this template
-
+Click **"Use this template"** on GitHub, or use the CLI:
 ```bash
-git clone https://github.com/claudio-silva/cloudflare-fullstack-starter.git your-project-name
-cd your-project-name
+gh repo create my-app --template claudio-silva/cloudflare-fullstack-starter --clone
+cd my-app
 ```
 
-### Install dependencies
+### 2. Install dependencies
 
 ```bash
 npm install
+# or: pnpm install
 ```
 
-### Start development server
+### 3. Initialize project
+
+Run the interactive init script. It will ask for your project name and domain URLs, then run the database migrations:
+```bash
+npm run init
+```
+
+### 4. Start development
 
 ```bash
 npm run dev
 ```
 
-Your application will be available at [http://localhost:5173](http://localhost:5173).
+Open http://localhost:5173 — you'll see the login overlay. Sign up to create your first account.
 
 ## What's Included
 
-### Frontend Stack
-- **React 19** - Latest React with concurrent features
-- **TypeScript** - Type-safe JavaScript
-- **Vite** - Fast build tool and dev server
-- **Tailwind CSS v3.x** - Utility-first CSS framework
-- **shadcn/ui** - Pre-built accessible components
+### Tech Stack
+| Layer | Technology |
+|-------|------------|
+| Frontend | React 19, TypeScript, Vite, Tailwind CSS, shadcn/ui |
+| Backend | Hono (Workers), Better Auth, Kysely |
+| Database | Cloudflare D1 (SQLite) |
+| Email | Resend (pluggable) |
+| Deploy | Cloudflare Workers/Pages |
 
-### Backend Stack
-- **Hono** - Lightweight web framework
-- **Cloudflare Workers** - Edge runtime environment
+### Auth Features
+- Email/password authentication with email verification
+- Session management with secure cookies
+- Protected routes with seamless authentication overlay that prevents content flashing and needless page reloads
+- Profile page (update name, email, password)
+- CLI user management (create, list, view, edit, delete, activate)
 
-### Development Tools
-- **ESLint** - Code linting
-- **PostCSS** - CSS processing
-- **Wrangler** - Cloudflare Workers CLI
-
-### UI Components
-- Most official shadcn/ui components are already preinstalled in this template. You can use them directly from `@/components/ui/`.
-- To add new or updated components as they become available, use:
-
-```bash
-npx shadcn-ui@latest add [component-name]
-```
-
-| Component Name | Tag Name | Description |
-|---|---|---|
-| Accordion | `accordion` | A vertically stacked set of interactive headings that each reveal a section of content. |
-| Alert Dialog | `alert-dialog` | Modal dialog asking users to confirm or acknowledge an action. |
-| Alert | `alert` | Stylized notification box used to draw attention to critical information. |
-| Aspect Ratio | `aspect-ratio` | Container that maintains a fixed aspect ratio for its contents. |
-| Avatar | `avatar` | Circular profile image or initials indicator. |
-| Badge | `badge` | Small count or status descriptor for UI elements. |
-| Breadcrumb | `breadcrumb` | Navigation aid displaying the user's current location in a hierarchy. |
-| Button | `button` | Interactive element for user actions, supporting multiple variants. |
-| Calendar | `calendar` | Visual calendar for date selection and navigation. |
-| Card | `card` | Structured container for grouping related content. |
-| Carousel | `carousel` | Rotating display of images or content panels. |
-| Chart | `chart` | Data visualization components such as bar, line, pie, and more. |
-| Checkbox | `checkbox` | Input control representing a binary choice. |
-| Collapsible | `collapsible` | Panel or section that can be expanded or collapsed. |
-| Combobox | `combobox` | Combo input allowing selection from a list or custom input. |
-| Command | `command` | Command palette UI for actions, often with search or shortcut support. |
-| Context Menu | `context-menu` | Customizable popup menu appearing on right-click. |
-| Data Table | (recipe) | Not a standalone component. Advanced tables can be built using the `table` component and `@tanstack/react-table` npm package. Check the recipe in [the official documentation](https://ui.shadcn.com/docs/components/data-table) |
-| Date Picker | (recipe) | Not a standalone component. It can be built with the `calendar` and `popover` components and the `date-fns` npm package. Check the recipe in [the official documentation](https://ui.shadcn.com/docs/components/date-picker) |
-| Dialog | `dialog` | Modal overlay for embeddable interactive content or forms. |
-| Drawer | `drawer` | Slide-in panel from an edge of the screen containing additional content. |
-| Dropdown Menu | `dropdown-menu` | Menu that appears on trigger for selecting items. |
-| Form | `form` | A component for building forms, built for `react-hook-form`. Depends on `react-hook-form`, `@hookform/resolvers`, and `zod` npm packages. |
-| Hover Card | `hover-card` | Popup card appearing on hover, often used for previews. |
-| Input OTP | `input-otp` | Input fields for entering one-time passwords or verification codes. |
-| Input | `input` | Standard text fields for user input. |
-| Label | `label` | Text label describing an associated input component. |
-| Menubar | `menubar` | Horizontal bar of dropdown menus, common in application headers. |
-| Navigation Menu | `navigation-menu` | Feature-rich menu for navigating site or application sections. |
-| Pagination | `pagination` | Controls for navigating divided content pages. |
-| Popover | `popover` | Layered contextual overlay element anchored to a trigger. |
-| Progress | `progress` | Displays completion progress for a task or action. |
-| Radio Group | `radio-group` | A set of radio buttons for exclusive choice selection. |
-| Resizable | `resizable` | Container whose dimensions can be changed by the user. |
-| Scroll-area | `scroll-area` | Customizable scrollable content region. |
-| Select | `select` | Dropdown list for selecting a single item from multiple options. |
-| Separator | `separator` | Horizontal or vertical line for dividing content. |
-| Sheet | `sheet` | Panel sliding over the UI for displaying additional content or actions. |
-| Sidebar | `sidebar` | Persistent navigation or content drawer anchored to a screen edge. |
-| Skeleton | `skeleton` | Placeholder elements mimicking page layout while content loads. |
-| Slider | `slider` | Adjustable bar for selecting a value from a range. |
-| Sonner | `sonner` | Toast-style notification messages that appear temporarily. |
-| Switch | `switch` | Toggle control for binary on/off states. |
-| Table | `table` | Generic table layout for organizing content in rows and columns. |
-| Tabs | `tabs` | Layout pattern for switching between different views or content panels. |
-| Textarea | `textarea` | Multiline text input field. |
-| Toggle Group | `toggle-group` | Set of related toggle buttons with single or multiple selection. |
-| Toggle | `toggle` | Button that switches between active and inactive states. |
-| Tooltip | `tooltip` | Small popup showing additional information on hover or focus. |
-
-### Path Aliases
-
-- Use `@/components/ui/` to import any shadcn/ui component (e.g., `import { Button } from '@/components/ui/button'`)
-- Use `@/lib/` to import utility helpers (e.g., `import { cn } from "@/lib/utils"`)
-
-### shadcn/ui Theme & Customization
-
-- The template comes with the official shadcn/ui theme, supporting light and dark mode out of the box.
-- Theme colors and radii are easily customizable via CSS variables in `src/react-app/index.css`.
-
-### Utilities
-
-- Common utility helpers (like `cn` for class merging) are available in `src/react-app/lib/utils.ts`.
+### UI Features
+- Responsive sidebar + header layout
+- Avatar dropdown with Profile/Logout
+- Dark/light theme with FOUC prevention
+- 50+ shadcn/ui components ready to use
 
 ## Project Structure
 
 ```
 ├── src/
-│   ├── react-app/          # React application
-│   │   ├── components/     # React components
-│   │   │   └── ui/        # shadcn/ui components
-│   │   ├── lib/           # Utility functions
-│   │   ├── assets/        # Static assets
-│   │   └── ...
-│   └── worker/            # Cloudflare Worker (API)
-├── public/                # Public assets
-├── tailwind.config.js     # Tailwind configuration
-├── postcss.config.js      # PostCSS configuration
-└── wrangler.json         # Cloudflare Workers configuration
+│   ├── react-app/           # React frontend
+│   │   ├── components/
+│   │   │   ├── auth/        # Auth components (LoginForm, ProtectedRoute)
+│   │   │   ├── ui/          # shadcn/ui components
+│   │   │   └── AppShell.tsx # Sidebar + header layout
+│   │   ├── pages/           # Route pages (Home, Profile, auth/)
+│   │   └── lib/auth/        # Better Auth client
+│   └── worker/              # Hono API backend
+│       ├── middleware/      # Auth middleware
+│       ├── utils/           # Email templates, Resend
+│       └── index.ts         # API routes
+├── src/cli/                 # CLI commands
+├── bin/                     # CLI entry points
+├── migrations/              # D1 SQL migrations
+├── wrangler.toml            # Cloudflare config
+└── AGENTS.md                # Instructions for AI coding agents
 ```
+
+## CLI Commands
+
+### Auth Management
+
+```bash
+npm run auth list-users
+npm run auth create-user -- -u admin@example.com -p password123
+npm run auth show-user -- -u admin@example.com
+npm run auth edit-user -- -u admin@example.com -n "Admin User"
+npm run auth activate-user -- -u admin@example.com -s on
+npm run auth delete-user -- -u admin@example.com
+```
+
+Or call directly:
+```bash
+./bin/auth list-users --env local
+```
+
+### Database
+
+```bash
+# Local development
+npm run db:migrate:local
+npm run db:seed:local
+
+# Preview/Production (set D1 IDs in wrangler.toml first)
+npm run db:migrate:preview
+npm run db:migrate:production
+```
+
+## Environment Setup
+
+### Local Development
+
+The app runs locally without any configuration. To enable email verification, copy the example and add your [Resend](https://resend.com/) API key:
+```bash
+cp .env.example .env.local
+```
+
+```env
+RESEND_API_KEY=re_xxxxxxxxxxxxx
+```
+
+### Preview/Production
+1. Create D1 databases in Cloudflare dashboard
+2. Update `wrangler.toml` with database IDs
+3. Set secrets via Cloudflare dashboard or CLI:
+   ```bash
+   wrangler secret put RESEND_API_KEY --env production
+   ```
 
 ## Development
 
-### Adding New Components
+```bash
+npm run dev          # Start dev server (http://localhost:5173)
+npm run build        # Build for production
+npm run preview      # Preview production build
+npm run lint         # Run ESLint
+npm run check        # Type check + build + deploy dry-run
+```
 
-To add a new shadcn/ui component:
+## Deploy
 
 ```bash
-npx shadcn-ui@latest add [component-name]
+npm run deploy:production    # Deploy to production
+npm run deploy:preview       # Deploy to preview
 ```
 
-### API Development
+## Customization
 
-Edit `src/worker/index.ts` to add new API endpoints:
+### Branding
+Search and replace these placeholders:
+- `"My App"` in email templates and UI
+- `noreply@example.com` in email sender
+- Domain URLs in `.env.example` and `env/` templates
 
-```typescript
-app.get('/api/hello', (c) => {
-  return c.json({ message: 'Hello from Hono!' })
-})
-```
+### Adding Pages
+1. Create page in `src/react-app/pages/`
+2. Add route in `src/react-app/App.tsx`
+3. Wrap with `<ProtectedRoute>` if auth required
+4. Add to sidebar in `src/react-app/components/AppShell.tsx`
 
-### Styling
+### Email Provider
+Replace `createResendEmailSender` in `src/worker/middleware/auth.ts` with your provider implementing the `EmailSender` interface.
 
-This template uses Tailwind CSS for styling. You can:
-- Use utility classes directly in your components
-- Customize the theme in `tailwind.config.js`
-- Add custom CSS in `src/react-app/index.css`
+## For AI Coding Agents
 
-## Production
+If you're an AI agent setting up this template, see **[docs/AGENTS_SETUP.md](docs/AGENTS_SETUP.md)** for non-interactive setup instructions.
 
-### Build for production
-
-```bash
-npm run build
-```
-
-### Test the built app locally
-
-After building, you can preview the production build locally with:
-
-```bash
-npm run preview
-```
-
-This will start a local server (by default at [http://localhost:4173](http://localhost:4173)) serving the built app as it would appear in production.
-
-### Deploy to Cloudflare Workers
-
-```bash
-npm run deploy
-```
+For ongoing development guidance, see **[AGENTS.md](AGENTS.md)**.
 
 ## Additional Resources
 
-- [Cloudflare Workers Documentation](https://developers.cloudflare.com/workers/)
-- [Vite Documentation](https://vitejs.dev/guide/)
-- [React Documentation](https://reactjs.org/)
-- [Hono Documentation](https://hono.dev/)
-- [shadcn/ui Documentation](https://ui.shadcn.com/)
-- [Tailwind CSS Documentation](https://tailwindcss.com/docs)
+- [Cloudflare Workers](https://developers.cloudflare.com/workers/)
+- [Cloudflare D1](https://developers.cloudflare.com/d1/)
+- [Better Auth](https://www.better-auth.com/)
+- [Hono](https://hono.dev/)
+- [shadcn/ui](https://ui.shadcn.com/)
+- [Vite](https://vitejs.dev/)
 
 ## License
 
 This template is open source and available under the [MIT License](LICENSE).  
-It was based on the [Cloudflare Fullstack Template](https://github.com/cloudflare/templates/tree/main/vite-react-template)
+It was based on the [Cloudflare Fullstack Template](https://github.com/cloudflare/templates/tree/main/vite-react-template) by Cloudflare.
 
 (c) 2025 Claudio Silva

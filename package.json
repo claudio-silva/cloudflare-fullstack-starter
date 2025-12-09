@@ -1,12 +1,11 @@
 {
   "name": "cloudflare-fullstack-starter",
-  "description": "A fullstack template for building React applications with Vite, Hono, Cloudflare Workers, and shadcn/ui",
-  "version": "0.0.0",
+  "description": "SaaS-ready fullstack template: React + Vite + Hono + Cloudflare Workers + D1 + Better Auth + shadcn/ui",
+  "version": "1.0.0",
+  "type": "module",
   "cloudflare": {
-    "label": "Cloudflare Fullstack Template (RVHS)",
-    "products": [
-      "Workers"
-    ],
+    "label": "Cloudflare Fullstack SaaS Starter",
+    "products": ["Workers"],
     "categories": [],
     "icon_urls": [
       "https://imagedelivery.net/wSMYJvS3Xw-n339CbDyDIA/5ca0ca32-e897-4699-d4c1-6b680512f000/public"
@@ -14,7 +13,32 @@
     "preview_image_url": "https://imagedelivery.net/wSMYJvS3Xw-n339CbDyDIA/fc7b4b62-442b-4769-641b-ad4422d74300/public",
     "publish": true
   },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "npm run build && vite preview",
+    "lint": "eslint .",
+    "check": "tsc && vite build && wrangler deploy --dry-run",
+    "deploy": "wrangler deploy",
+    "deploy:preview": "wrangler deploy --env preview",
+    "deploy:production": "wrangler deploy --env production",
+    "cf-typegen": "wrangler types",
+    "db:migrate:local": "wrangler d1 migrations apply starter --local",
+    "db:migrate:preview": "wrangler d1 migrations apply starter --env preview",
+    "db:migrate:production": "wrangler d1 migrations apply starter --env production",
+    "db:seed:local": "wrangler d1 execute starter --local --file=./migrations/0002_seed_data.sql",
+    "db:seed:preview": "wrangler d1 execute starter --env preview --file=./migrations/0002_seed_data.sql",
+    "db:seed:production": "wrangler d1 execute starter --env production --file=./migrations/0002_seed_data.sql",
+    "init": "tsx bin/init.ts",
+    "auth": "tsx bin/auth.ts"
+  },
+  "bin": {
+    "init": "./bin/init",
+    "auth": "./bin/auth"
+  },
   "dependencies": {
+    "better-auth": "^1.3.34",
+    "bcryptjs": "^3.0.3",
     "@hookform/resolvers": "^5.2.1",
     "@radix-ui/react-accordion": "^1.2.11",
     "@radix-ui/react-alert-dialog": "^1.1.14",
@@ -46,10 +70,13 @@
     "@tanstack/react-table": "^8.21.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "commander": "^14.0.2",
     "cmdk": "^1.1.1",
     "date-fns": "^4.1.0",
     "embla-carousel-react": "^8.6.0",
     "hono": "4.10.3",
+    "kysely": "^0.28.8",
+    "kysely-d1": "^0.4.0",
     "input-otp": "^1.4.2",
     "lucide-react": "^0.525.0",
     "next-themes": "^0.4.6",
@@ -57,11 +84,14 @@
     "react-day-picker": "^9.7.0",
     "react-dom": "19.0.0",
     "react-hook-form": "^7.62.0",
+    "react-router-dom": "^6.28.0",
     "react-resizable-panels": "^3.0.3",
     "recharts": "^3.0.2",
+    "resend": "^6.4.0",
     "sonner": "^2.0.6",
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7",
+    "tsx": "^4.20.6",
     "vaul": "^1.1.2",
     "zod": "^3.25.76"
   },
@@ -83,15 +113,5 @@
     "typescript-eslint": "8.35.0",
     "vite": "^6.4.1",
     "wrangler": "^4.23.0"
-  },
-  "scripts": {
-    "build": "tsc -b && vite build",
-    "cf-typegen": "wrangler types",
-    "check": "tsc && vite build && wrangler deploy --dry-run",
-    "deploy": "wrangler deploy",
-    "dev": "vite",
-    "lint": "eslint .",
-    "preview": "npm run build && vite preview"
-  },
-  "type": "module"
+  }
 }

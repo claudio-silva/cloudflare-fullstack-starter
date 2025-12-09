@@ -1,0 +1,38 @@
+name = "starter"
+main = "./src/worker/index.ts"
+compatibility_date = "2025-04-01"
+compatibility_flags = ["nodejs_compat"]
+upload_source_maps = true
+
+[observability]
+enabled = true
+
+[assets]
+directory = "./dist/client"
+not_found_handling = "single-page-application"
+
+[vars]
+ENVIRONMENT = "local"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "starter"
+database_id = "local"
+
+[env.preview]
+[env.preview.vars]
+ENVIRONMENT = "preview"
+
+[[env.preview.d1_databases]]
+binding = "DB"
+database_name = "starter-preview"
+database_id = "YOUR_PREVIEW_D1_DATABASE_ID"
+
+[env.production]
+[env.production.vars]
+ENVIRONMENT = "production"
+
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "starter"
+database_id = "YOUR_PRODUCTION_D1_DATABASE_ID"

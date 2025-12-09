@@ -1,0 +1,10 @@
+#!/bin/bash
+
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+TSX="$DIR/../node_modules/.bin/tsx"
+
+if [ ! -x "$TSX" ]; then
+	TSX="npx tsx"
+fi
+
+exec "$TSX" "$DIR/auth.ts" "$@"
