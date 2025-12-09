@@ -1,38 +1,107 @@
-# Cloudflare Fullstack SaaS Starter
+# Cloudflare Fullstack Starter
 
 [![CI](https://github.com/claudio-silva/cloudflare-fullstack-starter/actions/workflows/ci.yml/badge.svg)](https://github.com/claudio-silva/cloudflare-fullstack-starter/actions/workflows/ci.yml)
 
-**Production-ready SaaS foundation** on Cloudflare's edge platform.
+**Production-ready fullstack foundation** on Cloudflare's edge platform.
 
-Clone, init and start building your web app. Authentication, database, UI, CLI and deployment are all ready to go.
+Clone, init, and start building. Authentication, database, UI, CLI, and deployment are ready to go.
 
 ---
 
-> ⚠️ Do **not** clone this repo directly for your project. Follow the **Quick Start** instructions below to create your own copy, so pushes go to your repo.
+## Why Cloudflare?
 
-## Why this starter?
+Cloudflare's developer platform offers a unique combination that's hard to match:
 
-Building a new project should feel exciting, not like a ritual of fixing boilerplate. Even with coding agents, early development often dissolves into hours of debugging authentication flows, taming theme flicker, setting up configurations and multi-environment support, and recreating the same foundations over and over. It slows you down, burns credits, and drains enthusiasm before you even touch the core idea.
+- **Edge performance** — Your code runs in 300+ data centers worldwide, milliseconds from your users
+- **Unified stack** — Workers, D1 database, R2 storage, KV, Queues, and more, all integrated
+- **Generous free tier** — Start with **zero cost**:
+  - **Workers**: 100,000 requests/day
+  - **D1 Database**: 5 GB storage, 5 million reads/day
+  - **R2 Storage**: 10 GB storage, 1 million reads/month
+  - Pay only when your project gains real traction
+- **Zero cold starts** — Unlike traditional serverless, Workers start instantly
+- **Simple deployment** — One command to deploy globally
+
+This means you can build, launch, and validate your idea without upfront infrastructure costs. If it takes off, Cloudflare scales with you.
+
+## Why This Starter?
+
+Building a new project should feel exciting, not like a ritual of fixing boilerplate. Even with coding agents, early development often dissolves into hours of debugging authentication flows, taming theme flicker, setting up configurations and multi-environment support, and recreating the same foundations over and over.
 
 This starter lets you skip that entire setup grind. From the first `git clone`, you begin with a fully working, production‑grade baseline:
 
-- **Complete Edge Runtime**: Built on Cloudflare's edge platform, ready to deploy to Cloudflare Workers/Pages
-- **TypeScript**: Built-in TypeScript support, linting and type checking with frontend and backend live reload
-- **Complete Auth Flow**: Sign up, email verification, login, logout, profile management, all powered by [Better Auth](https://www.better-auth.com/)
-- **App Shell**: Sidebar navigation + header with theme toggle and user avatar dropdown menu + Profile page and Logout — which you can redesign to your liking
-- **Database Ready**: [Cloudflare D1](https://developers.cloudflare.com/d1/) with migrations — easily replaceable with another database backend
-- **Beautiful UI**: 50+ [shadcn/ui](https://ui.shadcn.com/) components pre-installed, user-selectable dark/light theme
-- **Full Stack**: React 19 + Vite frontend, [Hono](https://hono.dev/) API backend, unified dev server
-- **Multi-Environment Support**: Local, Preview and Production environments with separate databases and secrets
-- **CLI Tools**: A base for your own CLI tooling, bundles a useful set of commands for managing local and remote users
+- **Complete Auth Flow** — Sign up, email verification, login, logout, profile management, powered by [Better Auth](https://www.better-auth.com/)
+- **Database Ready** — [Cloudflare D1](https://developers.cloudflare.com/d1/) with migrations, used for auth but extensible
+- **Beautiful UI** — 50+ [shadcn/ui](https://ui.shadcn.com/) components, dark/light theme with FOUC prevention
+- **Full Stack** — React 19 + Vite frontend, [Hono](https://hono.dev/) API backend, unified dev server with hot reload
+- **Multi-Environment** — Local, Preview, and Production environments with separate databases and secrets
+- **CLI Tools** — User management commands, extensible for your own tooling
+- **TypeScript** — Full type safety across frontend, backend, and database queries
 
 ### Alternative: Minimal Starting Point
 
-If you just want to create a public website (like a landing page), you may prefer a more bare‑bones starting point, stripped of authentication, database, CLI, and app shell.
+If you just want a public website (landing page, marketing site), check out the **`minimal` branch** — stripped of authentication, database, CLI, and app shell, but still includes React, TypeScript, Vite, Hono, Workers, shadcn/ui, and Tailwind.
 
-Check out the `minimal` branch of this repository. It still provides React with TypeScript, integrated Vite and Hono backend, Cloudflare Workers, shadcn/ui components and Tailwind CSS.
+---
+
+## 🤖 AI Agent Installation
+
+**This template is designed for AI-assisted development.** It includes documentation that guides coding agents through setup and ongoing development.
+
+### Install via AI Agent (Cursor, Windsurf, etc.)
+
+If you're using an AI-powered IDE, you can ask your agent to install this template directly. Use this prompt:
+
+> **Prompt:** Install the Cloudflare Fullstack Starter template into this project. Read the setup instructions at https://raw.githubusercontent.com/claudio-silva/cloudflare-fullstack-starter/main/docs/AGENTS_SETUP.md
+
+Or use the slash command shortcut (if your IDE supports it):
+
+```
+/install-cloudflare-starter
+```
+
+<details>
+<summary><strong>Instructions for adding the slash command</strong></summary>
+
+#### Cursor
+
+1. Open **Settings** → **Cursor Settings** → **Rules**
+2. Under **User Rules**, click **Add new rule**
+3. Create a rule with:
+   - **Name:** `install-cloudflare-starter`
+   - **Rule:**
+     ```
+     When the user types /install-cloudflare-starter, install the Cloudflare Fullstack Starter 
+     template into the current project. First, read the setup instructions at:
+     https://raw.githubusercontent.com/claudio-silva/cloudflare-fullstack-starter/main/docs/AGENTS_SETUP.md
+     
+     Follow those instructions to:
+     1. Download and extract the template into the current directory
+     2. Install dependencies
+     3. Run the non-interactive init script with sensible defaults
+     4. Verify the setup works
+     
+     The current directory may be empty or contain only IDE configuration files (like .cursor/).
+     This is expected when starting a new project.
+     ```
+
+#### Windsurf
+
+1. Open **Settings** → **AI Settings** → **Custom Commands**
+2. Add a new command with similar instructions
+
+</details>
+
+### What the Agent Gets
+
+- **[AGENTS.md](AGENTS.md)** — Architecture overview, key patterns, common tasks for ongoing development
+- **[docs/AGENTS_SETUP.md](docs/AGENTS_SETUP.md)** — Non-interactive setup instructions for initial installation
+
+---
 
 ## Quick Start
+
+> ⚠️ Do **not** clone this repo directly for your project. Follow the instructions below to create your own copy, so pushes go to your repo.
 
 ### 1. Create from template
 
@@ -56,9 +125,9 @@ Run the interactive init script. It will ask for your project name and domain UR
 npm run init
 ```
 The script:
-- leaves the env templates unchanged
-- copies them to `.env.local` / `.env.preview` / `.env.production` if missing
-- applies your domain values only to those `.env.*` files (safe to keep out of git)
+- Leaves the env templates unchanged
+- Copies them to `.env.local` / `.env.preview` / `.env.production` if missing
+- Applies your domain values only to those `.env.*` files (safe to keep out of git)
 
 ### 4. Start development
 
@@ -229,9 +298,10 @@ Replace `createResendEmailSender` in `src/worker/middleware/auth.ts` with your p
 
 ## For AI Coding Agents
 
-If you're an AI agent setting up this template, see **[docs/AGENTS_SETUP.md](docs/AGENTS_SETUP.md)** for non-interactive setup instructions.
+This template is optimized for AI-assisted development:
 
-For ongoing development guidance, see **[AGENTS.md](AGENTS.md)**.
+- **[docs/AGENTS_SETUP.md](docs/AGENTS_SETUP.md)** — Non-interactive setup instructions for initial installation
+- **[AGENTS.md](AGENTS.md)** — Architecture, patterns, and common tasks for ongoing development
 
 ## Additional Resources
 

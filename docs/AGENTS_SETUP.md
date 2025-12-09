@@ -2,27 +2,38 @@
 
 One-time setup instructions for AI coding agents to initialize this template.
 
-## Cloning the Template
+## Installing the Template
 
-### Option 1: GitHub CLI (Recommended)
+### Option 1: Into an Existing Directory (Typical IDE Workflow)
+
+When working in an IDE like Cursor or Windsurf, you typically start with an empty project directory (possibly containing only `.cursor/`, `.git/`, or similar IDE files). Use this method:
+
+```bash
+# From the project root directory
+curl -L https://github.com/claudio-silva/cloudflare-fullstack-starter/archive/refs/heads/main.tar.gz | tar xz --strip-components=1
+```
+
+This extracts the template contents directly into the current directory without creating a subdirectory.
+
+If the directory already has a `.git` folder, keep it. Otherwise, initialize git:
+```bash
+git init
+```
+
+### Option 2: GitHub CLI (Creates New Repo)
+
+If you need to create a new GitHub repository:
 ```bash
 gh repo create my-app --template claudio-silva/cloudflare-fullstack-starter --clone
 cd my-app
 ```
 
-### Option 2: Git Clone
+### Option 3: Git Clone (New Directory)
+
 ```bash
 git clone https://github.com/claudio-silva/cloudflare-fullstack-starter.git my-app
 cd my-app
 rm -rf .git
-git init
-```
-
-### Option 3: Download and Extract
-```bash
-curl -L https://github.com/claudio-silva/cloudflare-fullstack-starter/archive/refs/heads/main.tar.gz | tar xz
-mv cloudflare-fullstack-starter-main my-app
-cd my-app
 git init
 ```
 
