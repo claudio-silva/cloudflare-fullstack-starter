@@ -2,9 +2,11 @@
 
 [![CI](https://github.com/claudio-silva/cloudflare-fullstack-starter/actions/workflows/ci.yml/badge.svg)](https://github.com/claudio-silva/cloudflare-fullstack-starter/actions/workflows/ci.yml)
 
-**Production-ready fullstack foundation** on Cloudflare's edge platform.
+A production-ready, agent-friendly full-stack foundation built to run on Cloudflare’s edge platform.
 
-Clone, init, and start building. Authentication, database, UI, CLI, and deployment are ready to go.
+Clone it, set it up, and start building. Authentication, database, UI, CLI, and deployment are all ready to go.
+
+A great starting point for your next MVP or SaaS app.
 
 ---
 
@@ -26,9 +28,11 @@ This means you can build, launch, and validate your idea without upfront infrast
 
 ## Why This Starter?
 
-Building a new project should feel exciting, not like a ritual of fixing boilerplate. Even with coding agents, early development often dissolves into hours of debugging authentication flows, taming theme flicker, setting up configurations and multi-environment support, and recreating the same foundations over and over.
+Cloudflare gives you remarkable power at the edge, but it isn’t a traditional hosting platform. Most mainstream web frameworks don’t run on Workers out of the box, and adapting them to Cloudflare’s request-driven runtime can feel unfamiliar if you’re used to environments that hide the wiring. That early friction slows down the part you actually care about: building something new.
 
-This starter lets you skip that entire setup grind. From the first `git clone`, you begin with a fully working, production‑grade baseline:
+Agentic coding helps, but unfamiliar runtimes are still a weak spot. On platforms like Cloudflare, agents rarely succeed on the first attempt. They burn cycles rebuilding boilerplate, fixing type and lint errors, debugging auth flows, smoothing out theme flicker, tweaking configs, and juggling multi-environment setups — all the fragile infrastructure work that slows real development. And every new project means repeating the same setup steps.
+
+This starter removes that overhead entirely. From the moment you create a project from this template — or even ask your coding agent to install it for you — you begin with a fully working, production-grade foundation:
 
 - **Complete Auth Flow** — Sign up, email verification, login, logout, profile management, powered by [Better Auth](https://www.better-auth.com/)
 - **Database Ready** — [Cloudflare D1](https://developers.cloudflare.com/d1/) with migrations, used for auth but extensible
@@ -37,6 +41,7 @@ This starter lets you skip that entire setup grind. From the first `git clone`, 
 - **Multi-Environment** — Local, Preview, and Production environments with separate databases and secrets
 - **CLI Tools** — User management commands, extensible for your own tooling
 - **TypeScript** — Full type safety across frontend, backend, and database queries
+- **CI/CD Ready** — GitHub Actions workflow validates every push: lint, type-check, and build must pass. Zero tolerance for warnings ensures your codebase stays clean as it evolves
 
 ### Alternative: Minimal Starting Point
 
