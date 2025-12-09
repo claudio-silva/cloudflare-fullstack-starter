@@ -1,13 +1,13 @@
 import { betterAuth } from "better-auth";
 import { Kysely } from "kysely";
 import { D1Dialect } from "kysely-d1";
-import type { Context } from "hono";
 import bcrypt from "bcryptjs";
 import type { Database } from "../types/database";
-import { createResendEmailSender, getResend } from "../utils/resend";
+import type { AppContext, AppUser } from "../types/context";
+import { createResendEmailSender } from "../utils/resend";
 import { getVerificationEmailTemplate } from "../utils/email-templates";
 
-type Environment = "local" | "preview" | "production";
+type Environment = "local" | "preview" | "production" | "test";
 
 function getBaseURL(environment: Environment): string {
 	switch (environment) {
@@ -22,7 +22,7 @@ function getBaseURL(environment: Environment): string {
 	}
 }
 
-export function createAuth(c: Context) {
+export function createAuth(c: AppContext) {
 	const environment: Environment = (c.env.ENVIRONMENT as Environment) || "local";
 	const d1Db = c.env.DB;
 
@@ -78,11 +78,11 @@ export function createAuth(c: Context) {
 	});
 }
 
-export async function authMiddleware(c: Context, next: () => Promise<void>) {
+export async function authMiddleware(c: AppContext, next: () => Promise<void>) {
 	const environment: Environment = (c.env.ENVIRONMENT as Environment) || "local";
 
 	if (environment === "test") {
-		c.set("user", { id: "test-user", email: "test@example.com", name: "Test User" } as any);
+		c.set("user", { id: "test-user", email: "test@example.com", name: "Test User" } as AppUser);
 		return next();
 	}
 
@@ -98,16 +98,16 @@ export async function authMiddleware(c: Context, next: () => Promise<void>) {
 	return next();
 }
 
-export async function handleAuthRequest(c: Context) {
+export async function handleAuthRequest(c: AppContext) {
 	try {
 		const auth = createAuth(c);
 		const response = await auth.handler(c.req.raw);
 		return response;
-	} catch (error: any) {
+	} catch (error: unknown) {
 		return c.json(
 			{
 				error: "Authentication error",
-				message: error?.message || "Unknown error",
+				message: error instanceof Error ? error.message : "Unknown error",
 			},
 			500,
 		);

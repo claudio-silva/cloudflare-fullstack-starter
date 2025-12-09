@@ -36,7 +36,7 @@ export function VerifyEmail() {
 					setStatus("error");
 					setMessage(data.message || "Failed to verify email. The link may have expired.");
 				}
-			} catch (error: any) {
+			} catch {
 				setStatus("error");
 				setMessage("An error occurred during verification. Please try again.");
 			}

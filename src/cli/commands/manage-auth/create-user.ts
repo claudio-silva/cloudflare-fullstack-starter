@@ -2,6 +2,15 @@ import { Command } from "commander";
 import { connectToDatabase } from "../../utils/db";
 import { printError, printSuccess, printWarning } from "../../utils/output";
 
+type EnvironmentOption = "local" | "preview" | "production";
+
+type CreateUserOptions = {
+	user: string;
+	pass: string;
+	env: EnvironmentOption;
+	name?: string;
+};
+
 export function createCreateUserCommand(): Command {
 	const command = new Command("create-user");
 
@@ -11,19 +20,20 @@ export function createCreateUserCommand(): Command {
 		.requiredOption("-p, --pass <password>", "Password (plain text)")
 		.option("--env <environment>", "Target environment (local, preview, production)", "local")
 		.option("--name <name>", "User display name")
-		.action(async (options) => {
+		.action(async (options: CreateUserOptions) => {
 			try {
 				const { user: email, pass: password, env, name } = options;
-				const db = await connectToDatabase(env as "local" | "preview" | "production");
+				const db = await connectToDatabase(env);
 
 				if (password.length < 8) {
 					printWarning("Password is shorter than 8 characters.");
 				}
 
-				await (db as any).createUser({ email, password, name: name || undefined });
+				await db.createUser({ email, password, name: name || undefined });
 				printSuccess(`User '${email}' created successfully`);
-			} catch (error: any) {
-				printError(`Failed to create user: ${error.message}`);
+			} catch (error: unknown) {
+				const message = error instanceof Error ? error.message : "Unknown error";
+				printError(`Failed to create user: ${message}`);
 				process.exit(1);
 			}
 		});

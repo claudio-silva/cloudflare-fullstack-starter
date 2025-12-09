@@ -95,7 +95,11 @@ function UserMenu() {
 				<DropdownMenuItem asChild>
 					<Link to="/profile">Profile</Link>
 				</DropdownMenuItem>
-				<DropdownMenuItem onClick={() => authClient.signOut.mutate()}>
+				<DropdownMenuItem
+					onClick={() => {
+						void authClient.signOut();
+					}}
+				>
 					Logout
 				</DropdownMenuItem>
 			</DropdownMenuContent>

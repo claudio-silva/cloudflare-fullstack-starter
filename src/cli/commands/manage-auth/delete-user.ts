@@ -3,6 +3,15 @@ import { connectToDatabase } from "../../utils/db";
 import { printError, printSuccess, printWarning } from "../../utils/output";
 import * as readline from "readline";
 
+type EnvironmentOption = "local" | "preview" | "production";
+
+type DeleteUserOptions = {
+	user?: string;
+	all?: boolean;
+	env: EnvironmentOption;
+	force?: boolean;
+};
+
 export function createDeleteUserCommand(): Command {
 	const command = new Command("delete-user");
 
@@ -12,7 +21,7 @@ export function createDeleteUserCommand(): Command {
 		.option("-a, --all", "Delete all users (cannot be used with --user)")
 		.option("--env <environment>", "Target environment (local, preview, production)", "local")
 		.option("--force", "Skip confirmation prompt")
-		.action(async (options) => {
+		.action(async (options: DeleteUserOptions) => {
 			try {
 				const { user: email, all, env, force } = options;
 				if (email && all) {
@@ -24,7 +33,7 @@ export function createDeleteUserCommand(): Command {
 					process.exit(1);
 				}
 
-				const db = await connectToDatabase(env as "local" | "preview" | "production");
+				const db = await connectToDatabase(env);
 
 				if (all) {
 					if (env === "production") {
@@ -32,7 +41,7 @@ export function createDeleteUserCommand(): Command {
 						process.exit(1);
 					}
 
-					const users = await (db as any).listUsers();
+					const users = await db.listUsers();
 					if (!users || users.length === 0) {
 						printWarning("No users found to delete");
 						process.exit(0);
@@ -47,10 +56,10 @@ export function createDeleteUserCommand(): Command {
 						}
 					}
 
-					await (db as any).deleteAllUsers();
+					await db.deleteAllUsers();
 					printSuccess(`Successfully deleted all users (${users.length} users)`);
-				} else {
-					const user = await (db as any).getUser(email);
+				} else if (email) {
+					const user = await db.getUser(email);
 					if (!user) {
 						printError(`User with email '${email}' not found`);
 						process.exit(1);
@@ -65,11 +74,12 @@ export function createDeleteUserCommand(): Command {
 						}
 					}
 
-					await (db as any).deleteUser(email);
+					await db.deleteUser(email);
 					printSuccess(`Successfully deleted user '${email}'`);
 				}
-			} catch (error: any) {
-				printError(`Failed to delete user${options.all ? "s" : ""}: ${error.message}`);
+			} catch (error: unknown) {
+				const message = error instanceof Error ? error.message : "Unknown error";
+				printError(`Failed to delete user${options.all ? "s" : ""}: ${message}`);
 				process.exit(1);
 			}
 		});

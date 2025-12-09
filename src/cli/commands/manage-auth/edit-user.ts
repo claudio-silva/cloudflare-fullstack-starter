@@ -2,6 +2,22 @@ import { Command } from "commander";
 import { connectToDatabase } from "../../utils/db";
 import { printError, printSuccess, printWarning } from "../../utils/output";
 
+type EnvironmentOption = "local" | "preview" | "production";
+
+type EditUserOptions = {
+	user: string;
+	name?: string;
+	email?: string;
+	pass?: string;
+	env: EnvironmentOption;
+};
+
+type UpdateData = {
+	name?: string;
+	email?: string;
+	password?: string;
+};
+
 export function createEditUserCommand(): Command {
 	const command = new Command("edit-user");
 
@@ -12,7 +28,7 @@ export function createEditUserCommand(): Command {
 		.option("-e, --email <email>", "New email address")
 		.option("-p, --pass <password>", "New password (plain text)")
 		.option("--env <environment>", "Target environment (local, preview, production)", "local")
-		.action(async (options) => {
+		.action(async (options: EditUserOptions) => {
 			try {
 				const { user: currentEmail, name, email: newEmail, pass: password, env } = options;
 				if (!name && !newEmail && !password) {
@@ -20,18 +36,18 @@ export function createEditUserCommand(): Command {
 					process.exit(1);
 				}
 
-				const db = await connectToDatabase(env as "local" | "preview" | "production");
+				const db = await connectToDatabase(env);
 
 				if (password && password.length < 8) {
 					printWarning("Password is shorter than 8 characters.");
 				}
 
-				const updateData: any = {};
+				const updateData: UpdateData = {};
 				if (name !== undefined) updateData.name = name;
 				if (newEmail) updateData.email = newEmail;
 				if (password) updateData.password = password;
 
-				await (db as any).editUser(currentEmail, updateData);
+				await db.editUser(currentEmail, updateData);
 
 				const changes = [];
 				if (name !== undefined) changes.push("name");
@@ -39,8 +55,9 @@ export function createEditUserCommand(): Command {
 				if (password) changes.push("password");
 
 				printSuccess(`User '${currentEmail}' updated successfully (${changes.join(", ")})`);
-			} catch (error: any) {
-				printError(`Failed to edit user: ${error.message}`);
+			} catch (error: unknown) {
+				const message = error instanceof Error ? error.message : "Unknown error";
+				printError(`Failed to edit user: ${message}`);
 				process.exit(1);
 			}
 		});

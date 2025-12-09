@@ -69,7 +69,7 @@ function readJSON(filePath: string) {
 	return JSON.parse(fs.readFileSync(filePath, "utf8"));
 }
 
-function writeJSON(filePath: string, data: any) {
+function writeJSON(filePath: string, data: unknown) {
 	fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + "\n", "utf8");
 }
 
@@ -83,26 +83,32 @@ function updateWranglerToml(filePath: string, projectName: string) {
 	fs.writeFileSync(filePath, content, "utf8");
 }
 
-function updateEnvTemplates(root: string, answers: Answers) {
+function updateEnvFiles(root: string, answers: Answers) {
 	const replaceMap: Record<string, string> = {
 		"https://app.example.com": answers.appDomain,
 		"https://preview.example.com": answers.previewDomain,
 	};
 
-	const envFiles = [
-		path.join(root, ".env.example"),
-		path.join(root, "env", "local.env.template"),
-		path.join(root, "env", "preview.env.template"),
-		path.join(root, "env", "production.env.template"),
+	const envPairs: Array<{ template: string; target: string }> = [
+		{ template: path.join(root, ".env.example"), target: path.join(root, ".env.local") },
+		{ template: path.join(root, "env", "local.env.template"), target: path.join(root, ".env.local") },
+		{ template: path.join(root, "env", "preview.env.template"), target: path.join(root, ".env.preview") },
+		{ template: path.join(root, "env", "production.env.template"), target: path.join(root, ".env.production") },
 	];
 
-	envFiles.forEach((file) => {
-		if (!fs.existsSync(file)) return;
-		let content = fs.readFileSync(file, "utf8");
+	envPairs.forEach(({ template, target }) => {
+		if (!fs.existsSync(template)) return;
+		const sourceContent = fs.existsSync(target) ? fs.readFileSync(target, "utf8") : fs.readFileSync(template, "utf8");
+
+		let content = sourceContent;
 		Object.entries(replaceMap).forEach(([from, to]) => {
 			content = content.replace(new RegExp(from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"), to);
 		});
-		fs.writeFileSync(file, content, "utf8");
+
+		if (!fs.existsSync(target)) {
+			fs.copyFileSync(template, target);
+		}
+		fs.writeFileSync(target, content, "utf8");
 	});
 }
 
@@ -125,8 +131,8 @@ function runMigrations(root: string) {
 	try {
 		execSync("npm run db:migrate:local", { cwd: root, stdio: "inherit" });
 		console.log("✅ Migrations applied successfully.");
-	} catch (err) {
-		console.error("⚠️  Migration failed. You can run manually: npm run db:migrate:local");
+	} catch (error) {
+		console.error("⚠️  Migration failed. You can run manually: npm run db:migrate:local", error);
 	}
 }
 
@@ -162,9 +168,9 @@ async function main() {
 	updateWranglerToml(wranglerPath, projectName);
 	console.log("  ✓ wrangler.toml");
 
-	// Update env templates with domains
-	updateEnvTemplates(root, answers);
-	console.log("  ✓ env templates");
+	// Create/update env files from templates without mutating templates
+	updateEnvFiles(root, answers);
+	console.log("  ✓ env files");
 
 	// Run migrations unless explicitly disabled
 	const shouldMigrate = cliArgs.runMigrations !== false;

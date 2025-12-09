@@ -1,14 +1,44 @@
 import { format } from "date-fns";
 
-export function printTable(data: any[], columns: string[]): void {
+type TableRow = Record<string, unknown>;
+
+type PrintableAccount = {
+	accountId: string;
+	providerId: string;
+	hasPassword: boolean;
+	createdAt: number | Date;
+	updatedAt: number | Date;
+};
+
+type PrintableUser = {
+	id: string;
+	email: string;
+	name?: string | null;
+	image?: string | null;
+	emailVerified?: boolean | number;
+	createdAt: number | Date;
+	updatedAt: number | Date;
+	account?: PrintableAccount | null;
+	sessions?: number;
+};
+
+type UserRow = {
+	id: string;
+	email: string;
+	name: string;
+	verified: string;
+	created: string;
+};
+
+export function printTable(data: TableRow[], columns: string[]): void {
 	if (!data || data.length === 0) {
 		console.log("No data to display");
 		return;
 	}
 
-	const colWidths: { [key: string]: number } = {};
+	const colWidths: Record<string, number> = {};
 	columns.forEach((col) => {
-		colWidths[col] = Math.max(col.length, ...data.map((row) => String(row[col] || "").length));
+		colWidths[col] = Math.max(col.length, ...data.map((row) => String(row[col] ?? "").length));
 	});
 
 	const headerRow = columns.map((col) => col.padEnd(colWidths[col])).join(" | ");
@@ -21,14 +51,14 @@ export function printTable(data: any[], columns: string[]): void {
 				let value = row[col];
 				if (value instanceof Date) value = format(value, "yyyy-MM-dd HH:mm:ss");
 				else if (typeof value === "boolean") value = value ? "Yes" : "No";
-				return String(value || "").padEnd(colWidths[col]);
+				return String(value ?? "").padEnd(colWidths[col]);
 			})
 			.join(" | ");
 		console.log(dataRow);
 	});
 }
 
-export function printUser(user: any): void {
+export function printUser(user: PrintableUser): void {
 	console.log("\nUser Details");
 	console.log("=".repeat(40));
 	console.log(`ID:          ${user.id}`);
@@ -44,7 +74,7 @@ export function printUser(user: any): void {
 		console.log("-".repeat(30));
 		console.log(`Provider:    ${user.account.providerId}`);
 		console.log(`Account ID:  ${user.account.accountId}`);
-		console.log(`Has Password: ${user.account.password ? "Yes" : "No"}`);
+		console.log(`Has Password: ${user.account.hasPassword ? "Yes" : "No"}`);
 		console.log(`Created:     ${format(new Date(user.account.createdAt), "yyyy-MM-dd HH:mm:ss")}`);
 		console.log(`Updated:     ${format(new Date(user.account.updatedAt), "yyyy-MM-dd HH:mm:ss")}`);
 	}
@@ -78,12 +108,12 @@ export function formatTimestamp(timestamp: number): string {
 	return format(new Date(timestamp), "yyyy-MM-dd HH:mm:ss");
 }
 
-export function formatUsersForTable(users: any[]): any[] {
+export function formatUsersForTable(users: PrintableUser[]): UserRow[] {
 	return users.map((user) => ({
-		id: user.id.slice(0, 8) + "...",
+		id: `${user.id.slice(0, 8)}...`,
 		email: user.email,
 		name: user.name || "N/A",
 		verified: user.emailVerified ? "Yes" : "No",
-		created: formatTimestamp(user.createdAt),
+		created: formatTimestamp(typeof user.createdAt === "number" ? user.createdAt : user.createdAt.getTime()),
 	}));
 }

@@ -1,11 +1,16 @@
 # Cloudflare Fullstack SaaS Starter
 
-[![CI](https://github.com/claudio-silva/cloudflare-fullstack-starter/actions/workflows/ci.yml/badge.svg)](https://github.com/claudio-silva/cloudflare-fullstack-starter/actions/workflows/ci.yml) [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/claudio-silva/cloudflare-fullstack-starter)
+[![CI](https://github.com/claudio-silva/cloudflare-fullstack-starter/actions/workflows/ci.yml/badge.svg)](https://github.com/claudio-silva/cloudflare-fullstack-starter/actions/workflows/ci.yml)
 
-**Production-ready SaaS foundation** on Cloudflare's edge platform.  
+**Production-ready SaaS foundation** on Cloudflare's edge platform.
+
 Clone, init and start building your web app. Authentication, database, UI, CLI and deployment are all ready to go.
 
-## Why This Starter?
+---
+
+> ⚠️ Do **not** clone this repo directly for your project. Follow the **Quick Start** instructions below to create your own copy, so pushes go to your repo.
+
+## Why this starter?
 
 Building a new project should feel exciting, not like a ritual of fixing boilerplate. Even with coding agents, early development often dissolves into hours of debugging authentication flows, taming theme flicker, setting up configurations and multi-environment support, and recreating the same foundations over and over. It slows you down, burns credits, and drains enthusiasm before you even touch the core idea.
 
@@ -23,7 +28,9 @@ This starter lets you skip that entire setup grind. From the first `git clone`, 
 
 ### Alternative: Minimal Starting Point
 
-If you prefer a bare‑bones starting point stripped of authentication, database, CLI, and app shell, check out the `minimal` branch of this repository. It still provides React with TypeScript, integrated Vite and Hono backend, Cloudflare Workers, shadcn/ui components and Tailwind CSS.
+If you just want to create a public website (like a landing page), you may prefer a more bare‑bones starting point, stripped of authentication, database, CLI, and app shell.
+
+Check out the `minimal` branch of this repository. It still provides React with TypeScript, integrated Vite and Hono backend, Cloudflare Workers, shadcn/ui components and Tailwind CSS.
 
 ## Quick Start
 
@@ -48,6 +55,10 @@ Run the interactive init script. It will ask for your project name and domain UR
 ```bash
 npm run init
 ```
+The script:
+- leaves the env templates unchanged
+- copies them to `.env.local` / `.env.preview` / `.env.production` if missing
+- applies your domain values only to those `.env.*` files (safe to keep out of git)
 
 ### 4. Start development
 
@@ -56,6 +67,34 @@ npm run dev
 ```
 
 Open http://localhost:5173 — you'll see the login overlay. Sign up to create your first account.
+
+## Just want a quick peek?
+
+Click to deploy a temporary preview to Cloudflare:
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/claudio-silva/cloudflare-fullstack-starter)
+
+Fast path (no email confirmation needed):
+1) In the wizard, keep defaults. When prompted for a database, create/bind a D1 database and name the binding `starter` (required for auth). No other env vars needed.
+2) Deploy, then open the provided URL.
+3) On the login overlay, click “Sign up”, create an account, and sign in. With the default `ENVIRONMENT=local`, email verification is skipped.
+
+Note that this is a **temporary preview**, so you should **discard it after testing** by deleting the Worker and the D1 DB from the Cloudflare dashboard or CLI.
+
+#### To discard the preview
+
+##### Via Dashboard
+Workers & Pages → select the deployed worker → Settings → Delete (and delete  the D1 DB too).
+
+##### Via CLI
+If wrangler is logged in, you can do it from the command line:
+
+  ```bash
+  npx wrangler delete starter          # remove worker
+  npx wrangler d1 delete starter --yes # remove D1 database (if created)
+  ```
+
+---
 
 ## What's Included
 

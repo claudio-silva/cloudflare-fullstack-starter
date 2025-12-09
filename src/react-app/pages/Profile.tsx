@@ -13,6 +13,7 @@ export function Profile() {
 	const [name, setName] = useState(user?.name ?? "");
 	const [email, setEmail] = useState(user?.email ?? "");
 	const [password, setPassword] = useState("");
+	const [currentPassword, setCurrentPassword] = useState("");
 	const [message, setMessage] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [loadingProfile, setLoadingProfile] = useState(false);
@@ -23,10 +24,12 @@ export function Profile() {
 		setMessage(null);
 		setLoadingProfile(true);
 		try {
-			await authClient.updateUser.mutate({ name, email });
+			const payload: Record<string, unknown> = { name, email };
+			await authClient.updateUser(payload as Parameters<typeof authClient.updateUser>[0]);
 			setMessage("Profile updated");
-		} catch (err: any) {
-			setError(err.message || "Failed to update profile");
+		} catch (err: unknown) {
+			const message = err instanceof Error ? err.message : "Failed to update profile";
+			setError(message);
 		} finally {
 			setLoadingProfile(false);
 		}
@@ -37,11 +40,17 @@ export function Profile() {
 		setMessage(null);
 		setLoadingPassword(true);
 		try {
-			await authClient.changePassword.mutate({ password });
+			if (!currentPassword) {
+				setError("Current password is required");
+				return;
+			}
+			await authClient.changePassword({ newPassword: password, currentPassword, revokeOtherSessions: true });
 			setMessage("Password updated");
 			setPassword("");
-		} catch (err: any) {
-			setError(err.message || "Failed to update password");
+			setCurrentPassword("");
+		} catch (err: unknown) {
+			const message = err instanceof Error ? err.message : "Failed to update password";
+			setError(message);
 		} finally {
 			setLoadingPassword(false);
 		}
@@ -76,6 +85,16 @@ export function Profile() {
 				</CardHeader>
 				<CardContent className="space-y-4">
 					<div className="space-y-2">
+						<Label htmlFor="current-password">Current password</Label>
+						<Input
+							id="current-password"
+							type="password"
+							value={currentPassword}
+							onChange={(e) => setCurrentPassword(e.target.value)}
+							placeholder="Enter current password"
+						/>
+					</div>
+					<div className="space-y-2">
 						<Label htmlFor="password">New password</Label>
 						<Input
 							id="password"
@@ -85,7 +104,7 @@ export function Profile() {
 							placeholder="At least 8 characters"
 						/>
 					</div>
-					<Button onClick={handlePasswordSave} disabled={loadingPassword || password.length < 8}>
+					<Button onClick={handlePasswordSave} disabled={loadingPassword || password.length < 8 || !currentPassword}>
 						{loadingPassword ? "Updating..." : "Update password"}
 					</Button>
 				</CardContent>

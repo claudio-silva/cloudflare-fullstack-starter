@@ -1,5 +1,47 @@
 type Environment = "local" | "preview" | "production";
 
+type CliUserSummary = {
+	id: string;
+	email: string;
+	name: string | null;
+	emailVerified: number | boolean;
+	createdAt: number;
+	updatedAt: number;
+};
+
+type CliAccountDetails = {
+	accountId: string;
+	providerId: string;
+	hasPassword: boolean;
+	createdAt: number;
+	updatedAt: number;
+};
+
+type CliUserDetails = CliUserSummary & {
+	image?: string | null;
+	account: CliAccountDetails | null;
+	activeSessions: number;
+};
+
+type CreateUserPayload = { email: string; password: string; name?: string };
+type EditUserPayload = { name?: string; email?: string; password?: string };
+
+type BasicResponse = { success?: boolean; message?: string };
+type CreateUserResponse = BasicResponse & { userId?: string };
+type EditUserResponse = BasicResponse & { user?: { email: string } };
+type DeleteAllUsersResponse = BasicResponse & { deletedCount?: number };
+
+type CliDatabaseClient = {
+	createUser: (data: CreateUserPayload) => Promise<CreateUserResponse>;
+	updatePassword: (email: string, password: string) => Promise<BasicResponse>;
+	deleteUser: (email: string) => Promise<BasicResponse>;
+	deleteAllUsers: () => Promise<DeleteAllUsersResponse>;
+	activateUser: (email: string, activated: boolean) => Promise<BasicResponse>;
+	editUser: (email: string, updateData: EditUserPayload) => Promise<EditUserResponse>;
+	getUser: (email: string) => Promise<CliUserDetails>;
+	listUsers: (params?: { search?: string; limit?: number }) => Promise<CliUserSummary[]>;
+};
+
 function getApiBaseUrl(environment: Environment): string {
 	switch (environment) {
 		case "local":
@@ -24,7 +66,7 @@ async function authenticateAsAdmin(environment: Environment, email: string, pass
 	});
 
 	if (!response.ok) {
-		const errorData = await response.json().catch(() => ({}));
+		const errorData = (await response.json().catch(() => ({}))) as { message?: string };
 		throw new Error(`Admin authentication failed: ${errorData.message || response.statusText}`);
 	}
 
@@ -58,7 +100,7 @@ async function getAuthHeaders(environment: Environment): Promise<Record<string, 
 	return { Cookie: `better-auth.session=${sessionToken}` };
 }
 
-async function makeApiRequest(method: string, path: string, body: any, environment: Environment) {
+async function makeApiRequest<T>(method: string, path: string, body: unknown, environment: Environment): Promise<T> {
 	const baseUrl = getApiBaseUrl(environment);
 	const url = `${baseUrl}${path}`;
 	const headers = {
@@ -71,34 +113,51 @@ async function makeApiRequest(method: string, path: string, body: any, environme
 		headers,
 		body: body ? JSON.stringify(body) : undefined,
 	});
-	const data = await res.json();
+	const data = (await res.json().catch(() => ({}))) as { error?: string };
 	if (!res.ok) {
 		throw new Error(data.error || `HTTP ${res.status}: ${res.statusText}`);
 	}
-	return data;
+	return data as T;
 }
 
-export async function connectToDatabase(environment: Environment) {
+export async function connectToDatabase(environment: Environment): Promise<CliDatabaseClient> {
 	return {
-		createUser: (data: { email: string; password: string; name?: string }) =>
-			makeApiRequest("POST", "/api/cli/users", data, environment),
-		updatePassword: (email: string, password: string) =>
-			makeApiRequest("PUT", `/api/cli/users/${encodeURIComponent(email)}/password`, { password }, environment),
-		deleteUser: (email: string) => makeApiRequest("DELETE", `/api/cli/users/${encodeURIComponent(email)}`, undefined, environment),
-		deleteAllUsers: () => makeApiRequest("DELETE", "/api/cli/users", undefined, environment),
-		activateUser: (email: string, activated: boolean) =>
-			makeApiRequest("PUT", `/api/cli/users/${encodeURIComponent(email)}/activate`, { activated }, environment),
-		editUser: (email: string, updateData: { name?: string; email?: string; password?: string }) =>
-			makeApiRequest("PUT", `/api/cli/users/${encodeURIComponent(email)}`, updateData, environment),
-		getUser: async (email: string) => {
-			const response = await makeApiRequest("GET", `/api/cli/users/${encodeURIComponent(email)}`, undefined, environment);
-			return response.user;
+		createUser: (data) => makeApiRequest<CreateUserResponse>("POST", "/api/cli/users", data, environment),
+		updatePassword: (email, password) =>
+			makeApiRequest<BasicResponse>("PUT", `/api/cli/users/${encodeURIComponent(email)}/password`, { password }, environment),
+		deleteUser: (email) => makeApiRequest<BasicResponse>("DELETE", `/api/cli/users/${encodeURIComponent(email)}`, undefined, environment),
+		deleteAllUsers: () => makeApiRequest<DeleteAllUsersResponse>("DELETE", "/api/cli/users", undefined, environment),
+		activateUser: (email, activated) =>
+			makeApiRequest<BasicResponse>("PUT", `/api/cli/users/${encodeURIComponent(email)}/activate`, { activated }, environment),
+		editUser: (email, updateData) =>
+			makeApiRequest<EditUserResponse>("PUT", `/api/cli/users/${encodeURIComponent(email)}`, updateData, environment),
+		getUser: async (email) => {
+			const response = await makeApiRequest<{
+				user: CliUserSummary & { image?: string | null };
+				account: CliAccountDetails | null;
+				activeSessions: number;
+			}>(
+				"GET",
+				`/api/cli/users/${encodeURIComponent(email)}`,
+				undefined,
+				environment,
+			);
+			return {
+				...response.user,
+				account: response.account,
+				activeSessions: response.activeSessions,
+			};
 		},
-		listUsers: async (params?: { search?: string; limit?: number }) => {
+		listUsers: async (params) => {
 			const searchParams = new URLSearchParams();
 			if (params?.search) searchParams.append("search", params.search);
 			if (params?.limit) searchParams.append("limit", params.limit.toString());
-			const response = await makeApiRequest("GET", `/api/cli/users?${searchParams}`, undefined, environment);
+			const response = await makeApiRequest<{ users: CliUserSummary[] }>(
+				"GET",
+				`/api/cli/users?${searchParams}`,
+				undefined,
+				environment,
+			);
 			return response.users;
 		},
 	};

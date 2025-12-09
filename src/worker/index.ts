@@ -1,18 +1,15 @@
 import { Hono } from "hono";
+import type { Next } from "hono";
 import { Kysely } from "kysely";
 import { D1Dialect } from "kysely-d1";
+import bcrypt from "bcryptjs";
 import type { Database } from "./types/database";
+import type { AppBindings, AppContext } from "./types/context";
 import { authMiddleware, createAuth, handleAuthRequest } from "./middleware/auth";
 
-const app = new Hono<{
-	Bindings: Env;
-	Variables: {
-		user: any;
-		session: any;
-	};
-}>();
+const app = new Hono<AppBindings>();
 
-const requireDb = (c: any) => {
+const requireDb = (c: AppContext) => {
 	if (!c.env.DB) {
 		throw new Error("Database binding unavailable");
 	}
@@ -29,7 +26,7 @@ app.get("/api/", (c) => {
 app.all("/api/auth/*", (c) => handleAuthRequest(c));
 
 // CLI auth middleware (local open, remote requires session)
-const cliAuthMiddleware = async (c: any, next: () => Promise<void>) => {
+const cliAuthMiddleware = async (c: AppContext, next: Next) => {
 	const environment = c.env.ENVIRONMENT || "local";
 	if (environment === "local") {
 		await next();
@@ -136,7 +133,7 @@ app.post("/api/cli/users", cliAuthMiddleware, async (c) => {
 	const userId = crypto.randomUUID();
 	const accountId = crypto.randomUUID();
 
-	const hashedPassword = await (await import("bcryptjs")).hash(password, 10);
+	const hashedPassword = await bcrypt.hash(password, 10);
 
 	await db
 		.insertInto("users")
@@ -186,7 +183,7 @@ app.put("/api/cli/users/:email/password", cliAuthMiddleware, async (c) => {
 		return c.json({ error: "User not found" }, 404);
 	}
 
-	const hashedPassword = await (await import("bcryptjs")).hash(password, 10);
+	const hashedPassword = await bcrypt.hash(password, 10);
 	await db
 		.updateTable("accounts")
 		.set({ password: hashedPassword, updatedAt: Date.now() })
@@ -227,7 +224,7 @@ app.put("/api/cli/users/:email", cliAuthMiddleware, async (c) => {
 	}
 
 	if (updateData.password) {
-		const hashed = await (await import("bcryptjs")).hash(updateData.password, 10);
+		const hashed = await bcrypt.hash(updateData.password, 10);
 		await db
 			.updateTable("accounts")
 			.set({ password: hashed, updatedAt: Date.now() })
@@ -236,7 +233,7 @@ app.put("/api/cli/users/:email", cliAuthMiddleware, async (c) => {
 			.execute();
 	}
 
-	const updateFields: Partial<Database["users"]> = { updatedAt: Date.now() } as any;
+	const updateFields: Partial<Database["users"]> = { updatedAt: Date.now() };
 	if (updateData.name !== undefined) updateFields.name = updateData.name;
 	if (updateData.email) updateFields.email = updateData.email;
 
