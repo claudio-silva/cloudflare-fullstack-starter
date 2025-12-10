@@ -1,4 +1,4 @@
-name = "starter"
+name = "cloudflare-fullstack-starter"
 main = "./src/worker/index.ts"
 compatibility_date = "2025-04-01"
 compatibility_flags = ["nodejs_compat"]
@@ -16,7 +16,7 @@ ENVIRONMENT = "local"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "starter"
+database_name = "cloudflare-fullstack-starter"
 database_id = "local"
 
 [env.preview]
@@ -25,7 +25,7 @@ ENVIRONMENT = "preview"
 
 [[env.preview.d1_databases]]
 binding = "DB"
-database_name = "starter-preview"
+database_name = "cloudflare-fullstack-starter-preview"
 database_id = "YOUR_PREVIEW_D1_DATABASE_ID"
 
 [env.production]
@@ -34,5 +34,5 @@ ENVIRONMENT = "production"
 
 [[env.production.d1_databases]]
 binding = "DB"
-database_name = "starter"
+database_name = "cloudflare-fullstack-starter"
 database_id = "YOUR_PRODUCTION_D1_DATABASE_ID"

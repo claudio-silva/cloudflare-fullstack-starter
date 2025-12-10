@@ -36,6 +36,11 @@ export function createAuth(c: AppContext) {
 
 	const emailSender = c.env.RESEND_API_KEY ? createResendEmailSender(c.env) : null;
 
+	// Email verification is required if:
+	// - We're in production/preview environment, OR
+	// - We have a RESEND_API_KEY configured (allows testing email in local)
+	const shouldRequireEmailVerification = environment !== "local" || !!emailSender;
+
 	return betterAuth({
 		database: {
 			db,
@@ -51,14 +56,14 @@ export function createAuth(c: AppContext) {
 		verification: { modelName: "verifications" },
 		emailAndPassword: {
 			enabled: true,
-			requireEmailVerification: environment !== "local",
+			requireEmailVerification: shouldRequireEmailVerification,
 			password: {
 				hash: async (password) => bcrypt.hash(password, 10),
 				verify: async ({ hash, password }) => bcrypt.compare(password, hash),
 			},
 		},
 		emailVerification: {
-			sendOnSignUp: environment !== "local",
+			sendOnSignUp: shouldRequireEmailVerification,
 			autoSignInAfterVerification: true,
 			sendVerificationEmail: async ({ user, url }) => {
 				if (!emailSender) {

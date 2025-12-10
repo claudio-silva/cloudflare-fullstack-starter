@@ -36,11 +36,16 @@ import { Kysely } from 'kysely';
 ```
 src/
 ├── react-app/              # React frontend
+│   ├── assets/             # Static assets (logos, images)
+│   │   ├── logo-light.svg  # Logo for light theme
+│   │   └── logo-dark.svg   # Logo for dark theme
 │   ├── components/
 │   │   ├── auth/           # Auth UI (LoginForm, ProtectedRoute, AuthOverlay)
 │   │   ├── ui/             # shadcn/ui components
-│   │   ├── AppShell.tsx    # Sidebar + header layout
-│   │   └── theme-provider.tsx
+│   │   ├── TopBar.tsx      # Full-width header with logo and user menu
+│   │   ├── Logo.tsx        # Theme-aware logo component
+│   │   ├── ModeToggle.tsx  # Dark/light theme toggle
+│   │   └── theme-provider.tsx  # Theme context with URL param support
 │   ├── pages/              # Route pages
 │   │   ├── auth/           # SignUp, VerifyEmail
 │   │   ├── Home.tsx        # Protected home
@@ -130,8 +135,8 @@ pnpm deploy:production      # Deploy to Cloudflare
 
 ### Add a New Page
 1. Create `src/react-app/pages/MyPage.tsx`
-2. Add route in `src/react-app/App.tsx`
-3. Add nav item in `src/react-app/components/AppShell.tsx`
+2. Add route in `src/react-app/App.tsx` wrapped with `<ProtectedRoute>` and `<TopBar>` if needed
+3. Add navigation as appropriate for your app (TopBar doesn't include nav by default)
 
 ### Add an API Endpoint
 1. Add route in `src/worker/index.ts`

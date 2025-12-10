@@ -2,12 +2,14 @@ import { format } from "date-fns";
 
 type TableRow = Record<string, unknown>;
 
+type Timestamp = number | string | Date;
+
 type PrintableAccount = {
 	accountId: string;
 	providerId: string;
 	hasPassword: boolean;
-	createdAt: number | Date;
-	updatedAt: number | Date;
+	createdAt: Timestamp;
+	updatedAt: Timestamp;
 };
 
 type PrintableUser = {
@@ -16,8 +18,8 @@ type PrintableUser = {
 	name?: string | null;
 	image?: string | null;
 	emailVerified?: boolean | number;
-	createdAt: number | Date;
-	updatedAt: number | Date;
+	createdAt: Timestamp;
+	updatedAt: Timestamp;
 	account?: PrintableAccount | null;
 	sessions?: number;
 };
@@ -104,7 +106,14 @@ export function printWarning(message: string): void {
 	console.warn(`⚠️  ${message}`);
 }
 
-export function formatTimestamp(timestamp: number): string {
+export function formatTimestamp(timestamp: number | string | Date): string {
+	// Handle various timestamp formats from API/database
+	if (typeof timestamp === "string") {
+		return format(new Date(timestamp), "yyyy-MM-dd HH:mm:ss");
+	}
+	if (timestamp instanceof Date) {
+		return format(timestamp, "yyyy-MM-dd HH:mm:ss");
+	}
 	return format(new Date(timestamp), "yyyy-MM-dd HH:mm:ss");
 }
 
@@ -114,6 +123,6 @@ export function formatUsersForTable(users: PrintableUser[]): UserRow[] {
 		email: user.email,
 		name: user.name || "N/A",
 		verified: user.emailVerified ? "Yes" : "No",
-		created: formatTimestamp(typeof user.createdAt === "number" ? user.createdAt : user.createdAt.getTime()),
+		created: formatTimestamp(user.createdAt),
 	}));
 }

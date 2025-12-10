@@ -2,9 +2,9 @@
 
 [![CI](https://github.com/claudio-silva/cloudflare-fullstack-starter/actions/workflows/ci.yml/badge.svg)](https://github.com/claudio-silva/cloudflare-fullstack-starter/actions/workflows/ci.yml)
 
-A production-ready, agent-friendly full-stack foundation built to run on Cloudflare’s edge platform.
+A full-stack Cloudflare starter that gets you building real features immediately — production-ready, optimized for AI agents, and built to scale on Cloudflare’s global edge network.
 
-Clone it, set it up, and start building. Authentication, database, UI, CLI, and deployment are all ready to go.
+Install it and start building. Authentication, database, UI, CLI, and deployment are all ready to go.
 
 A great starting point for your next MVP or SaaS app.
 
@@ -30,9 +30,9 @@ This means you can build, launch, and validate your idea without upfront infrast
 
 Cloudflare gives you remarkable power at the edge, but it isn’t a traditional hosting platform. Most mainstream web frameworks don’t run on Workers out of the box, and adapting them to Cloudflare’s request-driven runtime can feel unfamiliar if you’re used to environments that hide the wiring. That early friction slows down the part you actually care about: building something new.
 
-Agentic coding helps, but unfamiliar runtimes are still a weak spot. On platforms like Cloudflare, agents rarely succeed on the first attempt. They burn cycles rebuilding boilerplate, fixing type and lint errors, debugging auth flows, smoothing out theme flicker, tweaking configs, and juggling multi-environment setups — all the fragile infrastructure work that slows real development. And every new project means repeating the same setup steps.
+Agentic coding helps, but unfamiliar runtimes are still a weak spot. When developing for platforms like Cloudflare, agents rarely succeed on the first attempt. They burn cycles rebuilding boilerplate, fixing type and lint errors, debugging auth flows, smoothing out theme flicker, tweaking configs, and juggling multi-environment setups — all the fragile infrastructure work that slows real development. And every new project means repeating the same setup steps.
 
-This starter removes that overhead entirely. From the moment you create a project from this template — or even ask your coding agent to install it for you — you begin with a fully working, production-grade foundation:
+This starter removes that overhead entirely. From the moment you create a project from this template — or even ask your coding agent to install it for you — you begin with a fully working, production-ready foundation:
 
 - **Complete Auth Flow** — Sign up, email verification, login, logout, profile management, powered by [Better Auth](https://www.better-auth.com/)
 - **Database Ready** — [Cloudflare D1](https://developers.cloudflare.com/d1/) with migrations, used for auth but extensible
@@ -189,9 +189,11 @@ If wrangler is logged in, you can do it from the command line:
 - CLI user management (create, list, view, edit, delete, activate)
 
 ### UI Features
-- Responsive sidebar + header layout
-- Avatar dropdown with Profile/Logout
-- Dark/light theme with FOUC prevention
+- Clean top header bar with logo and user menu
+- Avatar dropdown with user info, Profile, and Sign Out
+- Dark/light theme toggle with FOUC prevention
+- Theme-aware logo component (auto-switches light/dark)
+- Theme can be passed via URL parameter for cross-app navigation
 - 50+ shadcn/ui components ready to use
 
 ## Project Structure
@@ -199,10 +201,13 @@ If wrangler is logged in, you can do it from the command line:
 ```
 ├── src/
 │   ├── react-app/           # React frontend
+│   │   ├── assets/          # Static assets (logo-light.svg, logo-dark.svg)
 │   │   ├── components/
-│   │   │   ├── auth/        # Auth components (LoginForm, ProtectedRoute)
+│   │   │   ├── auth/        # Auth components (LoginForm, ProtectedRoute, AuthOverlay)
 │   │   │   ├── ui/          # shadcn/ui components
-│   │   │   └── AppShell.tsx # Sidebar + header layout
+│   │   │   ├── TopBar.tsx   # Header with logo and user menu
+│   │   │   ├── Logo.tsx     # Theme-aware logo
+│   │   │   └── ModeToggle.tsx # Theme toggle
 │   │   ├── pages/           # Route pages (Home, Profile, auth/)
 │   │   └── lib/auth/        # Better Auth client
 │   └── worker/              # Hono API backend
@@ -220,18 +225,41 @@ If wrangler is logged in, you can do it from the command line:
 
 ### Auth Management
 
+Manage users directly from your terminal — useful for creating admin accounts, debugging, or scripting.
+
+> ⚠️ When managing local users, **the dev server must be running** (`npm run dev`) for these commands to work. They communicate with the API at `http://localhost:5173`.
+
 ```bash
+# List all users (shows email, name, verification status, creation date)
 npm run auth list-users
+npm run auth list-users -- --limit 10           # limit results
+npm run auth list-users -- --search "john"      # search by email or name
+
+# Create a new user (useful for seeding admin accounts)
 npm run auth create-user -- -u admin@example.com -p password123
+npm run auth create-user -- -u admin@example.com -p password123 -n "Admin User"
+
+# View detailed user info (includes account provider, sessions, timestamps)
 npm run auth show-user -- -u admin@example.com
-npm run auth edit-user -- -u admin@example.com -n "Admin User"
-npm run auth activate-user -- -u admin@example.com -s on
+
+# Edit user details
+npm run auth edit-user -- -u admin@example.com -n "New Name"
+npm run auth edit-user -- -u admin@example.com -e newemail@example.com
+npm run auth edit-user -- -u admin@example.com -p newpassword123
+
+# Activate or deactivate a user account
+npm run auth activate-user -- -u admin@example.com -s on   # activate
+npm run auth activate-user -- -u admin@example.com -s off  # deactivate
+
+# Delete a user (removes user, accounts, and sessions)
 npm run auth delete-user -- -u admin@example.com
+npm run auth delete-user -- --all                          # delete ALL users (use with caution)
 ```
 
-Or call directly:
+For remote environments, use the `--env` flag and set `CLI_ADMIN_EMAIL`/`CLI_ADMIN_PASSWORD` in your `.env.*` file:
 ```bash
-./bin/auth list-users --env local
+npm run auth list-users -- --env preview
+npm run auth list-users -- --env production
 ```
 
 ### Database
@@ -295,8 +323,8 @@ Search and replace these placeholders:
 ### Adding Pages
 1. Create page in `src/react-app/pages/`
 2. Add route in `src/react-app/App.tsx`
-3. Wrap with `<ProtectedRoute>` if auth required
-4. Add to sidebar in `src/react-app/components/AppShell.tsx`
+3. Wrap with `<ProtectedRoute>` and `<TopBar>` if auth required
+4. Add navigation as appropriate for your app design
 
 ### Email Provider
 Replace `createResendEmailSender` in `src/worker/middleware/auth.ts` with your provider implementing the `EmailSender` interface.

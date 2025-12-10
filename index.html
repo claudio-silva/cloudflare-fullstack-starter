@@ -1,10 +1,31 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vite + React + TS</title>
+    <title>My App</title>
+    <script>
+      // Apply theme BEFORE React renders to prevent flash of unstyled content (FOUC)
+      (function() {
+        const storageKey = 'app-theme';
+        const theme = localStorage.getItem(storageKey) || 'light';
+        
+        let actualTheme = theme;
+        if (theme === 'system') {
+          actualTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        
+        document.documentElement.classList.add(actualTheme);
+        
+        // Apply background color immediately to prevent white/dark flash
+        if (actualTheme === 'dark') {
+          document.documentElement.style.backgroundColor = 'hsl(0 0% 3.9%)';
+        } else {
+          document.documentElement.style.backgroundColor = 'hsl(0 0% 100%)';
+        }
+      })();
+    </script>
   </head>
 
   <body>

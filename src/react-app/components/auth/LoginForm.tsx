@@ -24,7 +24,17 @@ export function LoginForm({ onSuccess, showSignupLink = true }: LoginFormProps) 
 		setIsLoading(true);
 
 		try {
-			const result = await authClient.signIn.email({ email, password });
+			const result = await authClient.signIn.email({
+				email,
+				password,
+				fetchOptions: {
+					onSuccess: () => {
+						// Session is automatically refreshed by Better Auth client
+						// Call onSuccess callback to trigger re-render in parent
+						onSuccess?.();
+					},
+				},
+			});
 			if (result.error) {
 				if (result.error.message?.includes("not verified")) {
 					setError("Please verify your email before signing in.");
@@ -33,8 +43,6 @@ export function LoginForm({ onSuccess, showSignupLink = true }: LoginFormProps) 
 				} else {
 					setError(result.error.message || "Failed to sign in.");
 				}
-			} else {
-				onSuccess?.();
 			}
 		} catch (err: unknown) {
 			const message = err instanceof Error ? err.message : "An unexpected error occurred.";
@@ -47,8 +55,8 @@ export function LoginForm({ onSuccess, showSignupLink = true }: LoginFormProps) 
 	return (
 		<form onSubmit={handleSubmit} className="space-y-4">
 			{error && (
-				<Alert variant="destructive">
-					<AlertDescription>{error}</AlertDescription>
+				<Alert variant="destructive" className="bg-red-50 dark:bg-red-950 border-red-500">
+					<AlertDescription className="text-red-800 dark:text-red-200">{error}</AlertDescription>
 				</Alert>
 			)}
 

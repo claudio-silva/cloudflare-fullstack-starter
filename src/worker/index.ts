@@ -302,4 +302,22 @@ app.get("/api/protected/ping", authMiddleware, (c) => {
 	return c.json({ ok: true, user });
 });
 
+// Profile deletion endpoint (authenticated users can delete their own account)
+app.delete("/api/profile", authMiddleware, async (c) => {
+	const user = c.get("user");
+	if (!user?.id) {
+		return c.json({ error: "User not authenticated" }, 401);
+	}
+
+	const db = new Kysely<Database>({ dialect: new D1Dialect({ database: requireDb(c) }) });
+
+	// Delete all user data
+	await db.deleteFrom("sessions").where("userId", "=", user.id).execute();
+	await db.deleteFrom("verifications").where("identifier", "=", user.email).execute();
+	await db.deleteFrom("accounts").where("userId", "=", user.id).execute();
+	await db.deleteFrom("users").where("id", "=", user.id).execute();
+
+	return c.json({ success: true, message: "Account deleted successfully" });
+});
+
 export default app;
