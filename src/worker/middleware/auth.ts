@@ -6,6 +6,7 @@ import type { Database } from "../types/database";
 import type { AppContext, AppUser } from "../types/context";
 import { createResendEmailSender } from "../utils/resend";
 import { getVerificationEmailTemplate, getPasswordResetEmailTemplate } from "../utils/email-templates";
+import { config } from "../../config";
 
 type Environment = "local" | "preview" | "production" | "test";
 
@@ -124,6 +125,12 @@ export async function authMiddleware(c: AppContext, next: () => Promise<void>) {
 
 export async function handleAuthRequest(c: AppContext) {
 	try {
+		const path = c.req.path;
+		const isSignUpPath = path.includes("/sign-up");
+		if (!config.auth.enableSignups && isSignUpPath) {
+			return c.json({ error: "Signups are disabled" }, 403);
+		}
+
 		const auth = createAuth(c);
 		const response = await auth.handler(c.req.raw);
 		return response;

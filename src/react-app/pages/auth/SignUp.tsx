@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Logo } from "@/components/Logo";
 import { authClient } from "@/lib/auth/client";
 import { CheckCircle2, AlertCircle, Eye, EyeOff } from "lucide-react";
+import { config } from "../../../config";
 
 const signUpSchema = z.object({
 	name: z.string().max(100, "Name must be 100 characters or less").optional().or(z.literal("")),
@@ -74,6 +75,10 @@ export function SignUp() {
 			setIsLoading(false);
 		}
 	};
+
+	if (!config.auth.enableSignups) {
+		return <Navigate to="/" replace />;
+	}
 
 	if (pendingVerification) {
 		return (

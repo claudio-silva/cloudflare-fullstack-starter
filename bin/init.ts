@@ -9,6 +9,7 @@ const __dirname = path.dirname(__filename);
 
 type Answers = {
 	projectName: string;
+	appName: string;
 	appDomain: string;
 	previewDomain: string;
 };
@@ -25,6 +26,8 @@ function parseArgs(): Partial<Answers> & { help?: boolean; runMigrations?: boole
 			result.help = true;
 		} else if (arg === "--name" && args[i + 1]) {
 			result.projectName = args[++i];
+		} else if (arg === "--app-name" && args[i + 1]) {
+			result.appName = args[++i];
 		} else if (arg === "--app-domain" && args[i + 1]) {
 			result.appDomain = args[++i];
 		} else if (arg === "--preview-domain" && args[i + 1]) {
@@ -42,6 +45,7 @@ Usage: bin/init [options]
 
 Options:
   --name <slug>            Project name (used for package.json and D1 database)
+  --app-name <name>        App display name (UI, emails, titles)
   --app-domain <url>       Production app URL (e.g., https://app.myapp.com)
   --preview-domain <url>   Preview app URL (e.g., https://preview.myapp.com)
   --no-migrate             Skip running local migrations
@@ -116,6 +120,23 @@ function updateEnvFiles(root: string, answers: Answers) {
 	});
 }
 
+function readConfigAppName(configPath: string) {
+	const content = fs.readFileSync(configPath, "utf8");
+	const match = content.match(/appName:\s*"([^"]+)"/);
+	return match?.[1] ?? "My App";
+}
+
+function updateConfigAppName(configPath: string, appName: string) {
+	const content = fs.readFileSync(configPath, "utf8");
+	const updated = content.replace(/appName:\s*"[^"]*"/, `appName: "${appName}"`);
+
+	if (updated === content) {
+		throw new Error(`Could not update appName in ${configPath}`);
+	}
+
+	fs.writeFileSync(configPath, updated, "utf8");
+}
+
 function updatePackageJsonScripts(pkgPath: string, projectName: string) {
 	const pkg = readJSON(pkgPath);
 	// Update migration scripts to use new project name
@@ -151,16 +172,19 @@ async function main() {
 	const root = path.resolve(__dirname, "..");
 	const pkgPath = path.join(root, "package.json");
 	const wranglerPath = path.join(root, "wrangler.toml");
+	const configPath = path.join(root, "src", "config.ts");
 
 	const pkg = readJSON(pkgPath);
 	const currentName = pkg.name || "starter";
+	const currentAppName = readConfigAppName(configPath);
 
 	// Get values from args or prompt
 	const projectName = cliArgs.projectName || (await prompt("Project name (slug, used for package and DB)", currentName));
+	const appName = cliArgs.appName || (await prompt("App display name (UI titles, emails)", currentAppName));
 	const appDomain = cliArgs.appDomain || (await prompt("Production app base URL", "https://app.example.com"));
 	const previewDomain = cliArgs.previewDomain || (await prompt("Preview app base URL", "https://preview.example.com"));
 
-	const answers: Answers = { projectName, appDomain, previewDomain };
+	const answers: Answers = { projectName, appName, appDomain, previewDomain };
 
 	console.log("\n📝 Updating project files...");
 
@@ -171,6 +195,10 @@ async function main() {
 	// Update wrangler.toml
 	updateWranglerToml(wranglerPath, projectName);
 	console.log("  ✓ wrangler.toml");
+
+	// Update shared config (UI + emails)
+	updateConfigAppName(configPath, appName);
+	console.log("  ✓ src/config.ts");
 
 	// Create/update env files from templates without mutating templates
 	updateEnvFiles(root, answers);

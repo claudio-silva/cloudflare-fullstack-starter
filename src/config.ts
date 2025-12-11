@@ -15,6 +15,12 @@ export const config = {
 	// Application name - displayed in UI, emails, and page titles
 	appName: "My App",
 
+	// Auth settings
+	auth: {
+		// Toggle self-serve signups (hides link and route when false)
+		enableSignups: true,
+	},
+
 	// Email settings
 	email: {
 		// The "from" address for outgoing emails

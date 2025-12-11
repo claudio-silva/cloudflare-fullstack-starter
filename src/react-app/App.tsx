@@ -17,7 +17,12 @@ function AppContent() {
 	const { data: session } = authClient.useSession();
 
 	// Auth pages don't use the TopBar layout
-	const authPages = ["/signup", "/verify-email", "/forgot-password", "/reset-password"];
+	const authPages = [
+		...(config.auth.enableSignups ? ["/signup"] : []),
+		"/verify-email",
+		"/forgot-password",
+		"/reset-password",
+	];
 	const isAuthPage = authPages.some(page => location.pathname.startsWith(page));
 
 	// Only show TopBar if not on an auth page AND user is authenticated
@@ -27,7 +32,7 @@ function AppContent() {
 	return (
 		<Routes>
 			{/* Public auth routes - no TopBar */}
-			<Route path="/signup" element={<SignUp />} />
+			{config.auth.enableSignups && <Route path="/signup" element={<SignUp />} />}
 			<Route path="/verify-email" element={<VerifyEmail />} />
 			<Route path="/forgot-password" element={<ForgotPassword />} />
 			<Route path="/reset-password" element={<ResetPassword />} />

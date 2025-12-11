@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { LoginForm } from "./LoginForm";
 import { Logo } from "../Logo";
+import { config } from "../../../config";
 
 /**
  * AuthOverlay - Renders login form as an overlay on the current page.
@@ -19,7 +20,7 @@ export function AuthOverlay() {
 					<CardTitle className="text-center">Authentication Required</CardTitle>
 				</CardHeader>
 				<CardContent>
-					<LoginForm showSignupLink />
+					<LoginForm showSignupLink={config.auth.enableSignups} />
 				</CardContent>
 			</Card>
 		</div>
