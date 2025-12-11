@@ -5,7 +5,7 @@ import bcrypt from "bcryptjs";
 import type { Database } from "../types/database";
 import type { AppContext, AppUser } from "../types/context";
 import { createResendEmailSender } from "../utils/resend";
-import { getVerificationEmailTemplate } from "../utils/email-templates";
+import { getVerificationEmailTemplate, getPasswordResetEmailTemplate } from "../utils/email-templates";
 
 type Environment = "local" | "preview" | "production" | "test";
 
@@ -36,6 +36,11 @@ export function createAuth(c: AppContext) {
 
 	const emailSender = c.env.RESEND_API_KEY ? createResendEmailSender(c.env) : null;
 
+	// Log email configuration on first auth call (helpful for debugging)
+	if (environment === "local") {
+		console.log(`[AUTH] Environment: ${environment}, Email sender: ${emailSender ? "configured" : "not configured (RESEND_API_KEY not set)"}`);
+	}
+
 	// Email verification is required if:
 	// - We're in production/preview environment, OR
 	// - We have a RESEND_API_KEY configured (allows testing email in local)
@@ -60,6 +65,20 @@ export function createAuth(c: AppContext) {
 			password: {
 				hash: async (password) => bcrypt.hash(password, 10),
 				verify: async ({ hash, password }) => bcrypt.compare(password, hash),
+			},
+			sendResetPassword: async ({ user, url }) => {
+				if (!emailSender) {
+					console.warn("[EMAIL] RESEND_API_KEY not set; skipping password reset email (local/dev).");
+					return;
+				}
+				// Modify URL to use frontend route instead of API route
+				const modifiedUrl = url.replace("/api/auth/reset-password", "/reset-password");
+				const html = getPasswordResetEmailTemplate(user.name || user.email, modifiedUrl);
+				await emailSender.sendVerificationEmail({
+					to: user.email,
+					subject: "Reset your password",
+					html,
+				});
 			},
 		},
 		emailVerification: {

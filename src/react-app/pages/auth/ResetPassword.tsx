@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -12,9 +12,7 @@ import { Logo } from "@/components/Logo";
 import { authClient } from "@/lib/auth/client";
 import { CheckCircle2, AlertCircle, Eye, EyeOff } from "lucide-react";
 
-const signUpSchema = z.object({
-	name: z.string().max(100, "Name must be 100 characters or less").optional().or(z.literal("")),
-	email: z.string().email("Please enter a valid email address"),
+const resetPasswordSchema = z.object({
 	password: z.string().min(8, "Password must be at least 8 characters"),
 	confirmPassword: z.string().min(8, "Password must be at least 8 characters"),
 }).refine((data) => data.password === data.confirmPassword, {
@@ -22,12 +20,15 @@ const signUpSchema = z.object({
 	path: ["confirmPassword"],
 });
 
-type SignUpFormData = z.infer<typeof signUpSchema>;
+type ResetPasswordFormData = z.infer<typeof resetPasswordSchema>;
 
-export function SignUp() {
+export function ResetPassword() {
+	const [searchParams] = useSearchParams();
 	const navigate = useNavigate();
+	const token = searchParams.get("token");
+	
 	const [error, setError] = useState<string | null>(null);
-	const [pendingVerification, setPendingVerification] = useState(false);
+	const [success, setSuccess] = useState(false);
 	const [isLoading, setIsLoading] = useState(false);
 	const [showPassword, setShowPassword] = useState(false);
 	const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -36,36 +37,36 @@ export function SignUp() {
 		register,
 		handleSubmit,
 		formState: { errors },
-	} = useForm<SignUpFormData>({
-		resolver: zodResolver(signUpSchema),
+	} = useForm<ResetPasswordFormData>({
+		resolver: zodResolver(resetPasswordSchema),
 	});
 
-	const onSubmit = async (data: SignUpFormData) => {
+	const onSubmit = async (data: ResetPasswordFormData) => {
+		if (!token) {
+			setError("Invalid or missing reset token. Please request a new password reset link.");
+			return;
+		}
+
 		setError(null);
-		setPendingVerification(false);
+		setSuccess(false);
 		setIsLoading(true);
 
 		try {
-			const result = await authClient.signUp.email({
-				name: data.name || "",
-				email: data.email,
-				password: data.password,
-				callbackURL: "/",
+			const result = await authClient.resetPassword({
+				newPassword: data.password,
+				token,
 			});
 
 			if (result.error) {
-				setError(result.error.message || "Failed to create account. Please try again.");
-			} else if (result.data) {
-				// Check if user was auto-signed-in (local mode, no verification required)
-				// In this case, the session will be set and we can redirect
-				const session = await authClient.getSession();
-				if (session.data?.user) {
-					// User is signed in - redirect to home
-					navigate("/");
+				if (result.error.message?.includes("expired") || result.error.message?.includes("invalid")) {
+					setError("This reset link has expired or is invalid. Please request a new one.");
 				} else {
-					// User needs to verify email first
-					setPendingVerification(true);
+					setError(result.error.message || "Failed to reset password. Please try again.");
 				}
+			} else {
+				setSuccess(true);
+				// Redirect to login after 3 seconds
+				setTimeout(() => navigate("/"), 3000);
 			}
 		} catch (err) {
 			const e = err as Error;
@@ -75,34 +76,59 @@ export function SignUp() {
 		}
 	};
 
-	if (pendingVerification) {
+	if (!token) {
 		return (
 			<div className="min-h-screen flex items-center justify-center p-4">
 				<div className="absolute inset-0 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900" />
 
-			<Card className="relative w-full max-w-md shadow-2xl">
-				<CardHeader className="space-y-4">
-					<div className="flex justify-center">
-						<Logo className="h-12 w-auto" />
-					</div>
-					<CardTitle className="text-center">Verification email sent</CardTitle>
-					<CardDescription className="text-center">We've sent a verification link to your email address</CardDescription>
-				</CardHeader>
+				<Card className="relative w-full max-w-md shadow-2xl">
+					<CardHeader className="space-y-4">
+						<div className="flex justify-center">
+							<Logo className="h-12 w-auto" />
+						</div>
+						<CardTitle className="text-center">Invalid link</CardTitle>
+					</CardHeader>
+					<CardContent>
+						<Alert variant="destructive" className="bg-red-50 dark:bg-red-950 border-red-500">
+							<AlertCircle className="h-4 w-4" />
+							<AlertDescription className="text-red-800 dark:text-red-200">
+								This password reset link is invalid or has expired. Please request a new one.
+							</AlertDescription>
+						</Alert>
+					</CardContent>
+					<CardFooter className="flex justify-center">
+						<Link to="/forgot-password" className="text-sm text-primary hover:underline">
+							Request new reset link
+						</Link>
+					</CardFooter>
+				</Card>
+			</div>
+		);
+	}
+
+	if (success) {
+		return (
+			<div className="min-h-screen flex items-center justify-center p-4">
+				<div className="absolute inset-0 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900" />
+
+				<Card className="relative w-full max-w-md shadow-2xl">
+					<CardHeader className="space-y-4">
+						<div className="flex justify-center">
+							<Logo className="h-12 w-auto" />
+						</div>
+						<CardTitle className="text-center">Password reset successful</CardTitle>
+					</CardHeader>
 					<CardContent>
 						<Alert className="border-green-500 bg-green-50 dark:bg-green-950">
 							<CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
 							<AlertDescription className="text-green-800 dark:text-green-200">
-								Please check your inbox and click the verification link to activate your account. You'll
-								be automatically signed in after verification.
+								Your password has been reset successfully. You'll be redirected to sign in shortly.
 							</AlertDescription>
 						</Alert>
-						<p className="text-sm text-muted-foreground mt-4">
-							Didn't receive the email? Check your spam folder or try signing up again.
-						</p>
 					</CardContent>
 					<CardFooter className="flex justify-center">
 						<Link to="/" className="text-sm text-primary hover:underline">
-							Back to home
+							Sign in now
 						</Link>
 					</CardFooter>
 				</Card>
@@ -120,8 +146,8 @@ export function SignUp() {
 						<Logo className="h-12 w-auto" />
 					</div>
 					<div className="text-center">
-						<CardTitle>Sign Up</CardTitle>
-						<CardDescription>Create a new account to get started</CardDescription>
+						<CardTitle>Set new password</CardTitle>
+						<CardDescription>Enter your new password below</CardDescription>
 					</div>
 				</CardHeader>
 				<CardContent>
@@ -134,33 +160,7 @@ export function SignUp() {
 						)}
 
 						<div className="space-y-2">
-							<Label htmlFor="name">
-								Name <span className="text-muted-foreground font-normal">(optional)</span>
-							</Label>
-							<Input
-								id="name"
-								type="text"
-								placeholder="John Doe"
-								{...register("name")}
-								disabled={isLoading}
-							/>
-							{errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
-						</div>
-
-						<div className="space-y-2">
-							<Label htmlFor="email">Email</Label>
-							<Input
-								id="email"
-								type="email"
-								placeholder="you@example.com"
-								{...register("email")}
-								disabled={isLoading}
-							/>
-							{errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
-						</div>
-
-						<div className="space-y-2">
-							<Label htmlFor="password">Password</Label>
+							<Label htmlFor="password">New Password</Label>
 							<div className="relative">
 								<Input
 									id="password"
@@ -205,19 +205,18 @@ export function SignUp() {
 						</div>
 
 						<Button type="submit" className="w-full" disabled={isLoading}>
-							{isLoading ? "Creating account..." : "Create Account"}
+							{isLoading ? "Resetting..." : "Reset password"}
 						</Button>
 					</form>
 				</CardContent>
 				<CardFooter className="flex justify-center">
-					<p className="text-sm text-muted-foreground">
-						Already have an account?{" "}
-						<Link to="/" className="text-primary hover:underline">
-							Sign in
-						</Link>
-					</p>
+					<Link to="/" className="text-sm text-primary hover:underline">
+						Back to sign in
+					</Link>
 				</CardFooter>
 			</Card>
 		</div>
 	);
 }
+
+

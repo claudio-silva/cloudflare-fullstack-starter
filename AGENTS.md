@@ -47,7 +47,7 @@ src/
 │   │   ├── ModeToggle.tsx  # Dark/light theme toggle
 │   │   └── theme-provider.tsx  # Theme context with URL param support
 │   ├── pages/              # Route pages
-│   │   ├── auth/           # SignUp, VerifyEmail
+│   │   ├── auth/           # SignUp, VerifyEmail, ForgotPassword, ResetPassword
 │   │   ├── Home.tsx        # Protected home
 │   │   └── Profile.tsx     # User settings
 │   └── lib/
@@ -59,6 +59,7 @@ src/
     └── utils/              # Email templates, Resend
 
 src/cli/                    # CLI commands (manage users via API)
+src/config.ts               # Global app configuration (app name, etc.)
 bin/                        # CLI entry points (init, auth)
 migrations/                 # D1 SQL migrations
 ```
@@ -148,11 +149,44 @@ pnpm deploy:production      # Deploy to Cloudflare
 2. Add types to `src/worker/types/database.ts`
 3. Run `pnpm db:migrate:local`
 
-## Environment
+## Configuration
 
-- `wrangler.toml` — Non-secret config (D1 bindings, env vars)
-- `.env.local` — Secrets (RESEND_API_KEY, CLI credentials)
-- Local dev works without Resend; email verification skipped
+### App Configuration (`src/config.ts`)
+Global settings shared by frontend and backend:
+```typescript
+import { config } from "../config";
+// or from worker: import { config } from "../../config";
+
+console.log(config.appName);  // "My App"
+console.log(config.email.fromAddress);  // "noreply@example.com"
+```
+
+Update `src/config.ts` to customize app name, email settings, etc.
+
+### Environment Variables
+
+**Configuration hierarchy:**
+1. `src/config.ts` — Global app config (app name, branding) - shared by frontend & backend
+2. `wrangler.toml` — Non-secret environment config (D1 bindings, ENVIRONMENT var)
+3. `.env.local` / `.env.preview` / `.env.production` — Secrets per environment (gitignored)
+
+**How env files work:**
+- `.env.local` — Loaded during local development (`pnpm dev`)
+- `.env.preview` / `.env.production` — Synced to Cloudflare before deploy
+
+**Variable access by context:**
+```typescript
+// Client-side (React) - only VITE_ prefixed variables
+const apiUrl = import.meta.env.VITE_API_URL;
+
+// Server-side (Worker) - all variables from wrangler.toml + .env files
+const resendKey = c.env.RESEND_API_KEY;
+const environment = c.env.ENVIRONMENT;  // from wrangler.toml
+```
+
+**Deploying secrets:**
+- `pnpm deploy:preview` / `pnpm deploy:production` automatically syncs secrets from `.env.<env>` files
+- Only changed secrets are synced (tracked via hash file)
 
 ## Don'ts
 

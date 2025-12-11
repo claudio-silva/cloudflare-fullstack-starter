@@ -1,14 +1,46 @@
-# Cloudflare Fullstack Starter
+# Cloudflare Full-Stack Starter
 
 [![CI](https://github.com/claudio-silva/cloudflare-fullstack-starter/actions/workflows/ci.yml/badge.svg)](https://github.com/claudio-silva/cloudflare-fullstack-starter/actions/workflows/ci.yml)
 
-A full-stack Cloudflare starter that gets you building real features immediately — production-ready, optimized for AI agents, and built to scale on Cloudflare’s global edge network.
+> **A full-stack project starter that gets you building real features immediately** — production-ready, optimized for AI agents, and built to scale on Cloudflare’s global edge network.
 
-Install it and start building. Authentication, database, UI, CLI, and deployment are all ready to go.
+Install this and start building. Authentication, database, UI, CLI, and deployment are all ready to go.
 
-A great starting point for your next MVP or SaaS app.
+A great starting point for your next **MVP** or **SaaS** app.
 
 ---
+
+## Why This Starter?
+
+Cloudflare gives you remarkable power at the edge, but **it isn’t a traditional hosting platform**. Most mainstream web frameworks don’t run on Workers out of the box, and adapting them to Cloudflare’s request-driven runtime can be challenging. That early friction slows down the part you actually care about: *building something new*.
+
+Agentic coding helps, but unfamiliar runtimes are still a weak spot. When developing for platforms like Cloudflare, **agents rarely succeed on the first attempt**. They burn cycles building boilerplate, fixing type and lint errors, debugging auth flows, smoothing out theme flicker, tweaking configs, juggling multi-environment setups and many other small details — all the fragile infrastructure work that slows real development. And **every new project** means **repeating the same setup steps**.
+
+This starter removes that overhead **entirely**. Create a project from the template — or have your coding agent set it up — and you begin with a fully working, production-ready foundation. You can focus on building the distinctive parts of your app **right away**.
+
+## Features
+
+| Feature | What it brings you |
+|---------|-------------|
+| **Full-Stack** | React 19 + Vite frontend + [Hono](https://hono.dev/) API backend, unified dev server |
+| **API routes on workers** | Hono's elegant routing for backend endpoints |
+| **Hot Module Replacement** (HMR) | Rapid development with instant updates |
+| **TypeScript + ESLint** | Full type safety across frontend, backend, and database queries |
+| **Database Ready** | [Cloudflare D1](https://developers.cloudflare.com/d1/) with migrations, used for auth but extensible, use other databases if you want |
+| **Multi-Environment** | Local, Preview, and Production environments with separate databases, configurations and secrets |
+| **Secrets Management** | Secrets are automatically synced from `.env.<env>` files to Cloudflare (optional), no need to manually set them in the dashboard (but you still can) |
+| **Complete Auth Flow** | Sign up, email verification, login, logout, profile management, powered by [Better Auth](https://www.better-auth.com/) |
+| **Transactional emails** | Email verification and password reset with Resend (easy to change to other providers) |
+| **CLI Tools** | Bundled user management commands, extensible for your own tooling |
+| **Dead simple deployment** | Deploy to Cloudflare's global network with one command |
+| **Built-in Observability** | Monitor your Worker logs, metrics, traces, performance and health |
+| **CI/CD Ready** | GitHub Actions workflow validates every push: lint, type-check, and build must pass.<br>You can also display the CI status badge in your README.md |
+| **Beautiful UI** | 50+ [shadcn/ui](https://ui.shadcn.com/) components, dark/light theme with FOUC prevention |
+| **AI-Assisted Installation and Development** | [AGENTS_SETUP.md](docs/AGENTS_SETUP.md) and [AGENTS.md](AGENTS.md) are included for easy installation and enhanced development assistance |
+
+### Alternative: Public Website Template
+
+If you just want a public website (**landing page, marketing site**), check out the **`minimal` branch** — stripped of authentication, database, CLI, and app shell, but still includes React, TypeScript, Vite, Hono, Workers, shadcn/ui, and Tailwind.
 
 ## Why Cloudflare?
 
@@ -24,40 +56,25 @@ Cloudflare's developer platform offers a unique combination that's hard to match
 - **Zero cold starts** — Unlike traditional serverless, Workers start instantly
 - **Simple deployment** — One command to deploy globally
 
-This means you can build, launch, and validate your idea without upfront infrastructure costs. If it takes off, Cloudflare scales with you.
+This means you can build, launch, and validate your idea **without upfront infrastructure costs**. If it takes off, Cloudflare **scales** with you, seamlessly.
 
-## Why This Starter?
+---
 
-Cloudflare gives you remarkable power at the edge, but it isn’t a traditional hosting platform. Most mainstream web frameworks don’t run on Workers out of the box, and adapting them to Cloudflare’s request-driven runtime can feel unfamiliar if you’re used to environments that hide the wiring. That early friction slows down the part you actually care about: building something new.
+## 🧠 AI-Assisted Development
 
-Agentic coding helps, but unfamiliar runtimes are still a weak spot. When developing for platforms like Cloudflare, agents rarely succeed on the first attempt. They burn cycles rebuilding boilerplate, fixing type and lint errors, debugging auth flows, smoothing out theme flicker, tweaking configs, and juggling multi-environment setups — all the fragile infrastructure work that slows real development. And every new project means repeating the same setup steps.
+**This template is designed for AI-assisted development.**
 
-This starter removes that overhead entirely. From the moment you create a project from this template — or even ask your coding agent to install it for you — you begin with a fully working, production-ready foundation:
+It includes **[AGENTS.md](AGENTS.md)**, a concise but still comprehensive guide that **helps coding agents** understand the project architecture, key patterns, and common tasks.
 
-- **Complete Auth Flow** — Sign up, email verification, login, logout, profile management, powered by [Better Auth](https://www.better-auth.com/)
-- **Database Ready** — [Cloudflare D1](https://developers.cloudflare.com/d1/) with migrations, used for auth but extensible
-- **Beautiful UI** — 50+ [shadcn/ui](https://ui.shadcn.com/) components, dark/light theme with FOUC prevention
-- **Full Stack** — React 19 + Vite frontend, [Hono](https://hono.dev/) API backend, unified dev server with hot reload
-- **Multi-Environment** — Local, Preview, and Production environments with separate databases and secrets
-- **CLI Tools** — User management commands, extensible for your own tooling
-- **TypeScript** — Full type safety across frontend, backend, and database queries
-- **CI/CD Ready** — GitHub Actions workflow validates every push: lint, type-check, and build must pass. Zero tolerance for warnings ensures your codebase stays clean as it evolves
-
-### Alternative: Minimal Starting Point
-
-If you just want a public website (landing page, marketing site), check out the **`minimal` branch** — stripped of authentication, database, CLI, and app shell, but still includes React, TypeScript, Vite, Hono, Workers, shadcn/ui, and Tailwind.
+This is especially important when dealing with unfamiliar runtimes like Cloudflare Workers. Without such guidance, agents often struggle to understand the platform and its quirks, leading to frustration and slow progress.
 
 ---
 
 ## 🤖 AI Agent Installation
 
-**This template is designed for AI-assisted development.** It includes documentation that guides coding agents through setup and ongoing development.
+If you're using an AI-powered IDE (Cursor, Windsurf, etc.), you can ask your agent to install this template directly. Use this prompt:
 
-### Install via AI Agent (Cursor, Windsurf, etc.)
-
-If you're using an AI-powered IDE, you can ask your agent to install this template directly. Use this prompt:
-
-> **Prompt:** Install the Cloudflare Fullstack Starter template into this project. Read the setup instructions at https://raw.githubusercontent.com/claudio-silva/cloudflare-fullstack-starter/main/docs/AGENTS_SETUP.md
+> **Prompt:** Install the Cloudflare Full-Stack Starter template into this project. Read the setup instructions at https://raw.githubusercontent.com/claudio-silva/cloudflare-fullstack-starter/main/docs/AGENTS_SETUP.md
 
 Or use the slash command shortcut (if your IDE supports it):
 
@@ -76,8 +93,7 @@ Or use the slash command shortcut (if your IDE supports it):
    - **Name:** `install-cloudflare-starter`
    - **Rule:**
      ```
-     When the user types /install-cloudflare-starter, install the Cloudflare Fullstack Starter 
-     template into the current project. First, read the setup instructions at:
+     Install the Cloudflare Full-Stack Starter template into the current project. First, read the setup instructions at:
      https://raw.githubusercontent.com/claudio-silva/cloudflare-fullstack-starter/main/docs/AGENTS_SETUP.md
      
      Follow those instructions to:
@@ -86,8 +102,7 @@ Or use the slash command shortcut (if your IDE supports it):
      3. Run the non-interactive init script with sensible defaults
      4. Verify the setup works
      
-     The current directory may be empty or contain only IDE configuration files (like .cursor/).
-     This is expected when starting a new project.
+     The current directory may be empty or contain only IDE configuration files — this is expected when starting a new project.
      ```
 
 #### Windsurf
@@ -97,14 +112,13 @@ Or use the slash command shortcut (if your IDE supports it):
 
 </details>
 
-### What the Agent Gets
+<br>
 
-- **[AGENTS.md](AGENTS.md)** — Architecture overview, key patterns, common tasks for ongoing development
-- **[docs/AGENTS_SETUP.md](docs/AGENTS_SETUP.md)** — Non-interactive setup instructions for initial installation
+The agent will follow the instructions in **[docs/AGENTS_SETUP.md](docs/AGENTS_SETUP.md)** to set up the project.
 
 ---
 
-## Quick Start
+## Manual Installation
 
 > ⚠️ Do **not** clone this repo directly for your project. Follow the instructions below to create your own copy, so pushes go to your repo.
 
@@ -125,14 +139,13 @@ npm install
 
 ### 3. Initialize project
 
-Run the interactive init script. It will ask for your project name and domain URLs, then run the database migrations:
+Run the interactive init script. It will ask for your project name and domain URLs for preview and production environments:
 ```bash
 npm run init
 ```
 The script:
-- Leaves the env templates unchanged
-- Copies them to `.env.local` / `.env.preview` / `.env.production` if missing
-- Applies your domain values only to those `.env.*` files (safe to keep out of git)
+- Copies template files to `.env.local` / `.env.preview` / `.env.production` (if missing) and fills in your choices
+- Runs local database migrations
 
 ### 4. Start development
 
@@ -140,9 +153,11 @@ The script:
 npm run dev
 ```
 
-Open http://localhost:5173 — you'll see the login overlay. Sign up to create your first account.
+Open http://localhost:5173 — you'll see the login page. Sign up to create your first account.
 
-## Just want a quick peek?
+## Preview Installation
+
+**Just want a quick peek?**
 
 Click to deploy a temporary preview to Cloudflare:
 
@@ -173,27 +188,28 @@ If wrangler is logged in, you can do it from the command line:
 ## What's Included
 
 ### Tech Stack
-| Layer | Technology |
+| Component | Technology |
 |-------|------------|
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS, shadcn/ui |
-| Backend | Hono (Workers), Better Auth, Kysely |
-| Database | Cloudflare D1 (SQLite) |
+| Backend | Hono (Workers), Cloudflare Vite Plugin, Better Auth, Kysely |
+| Database | Cloudflare D1 (clustered SQLite) |
 | Email | Resend (pluggable) |
-| Deploy | Cloudflare Workers/Pages |
+| Deployment | Cloudflare Workers/Pages Runtime |
 
 ### Auth Features
-- Email/password authentication with email verification
+- Email/password authentication with email verification and password reset
 - Session management with secure cookies
 - Protected routes with seamless authentication overlay that prevents content flashing and needless page reloads
-- Profile page (update name, email, password)
-- CLI user management (create, list, view, edit, delete, activate)
+- CLI user management (create, list, view, edit, delete, activate) for both local and remote environments
 
 ### UI Features
+- Minimalistic app shell, so that you are free to create your own design and branding
 - Clean top header bar with logo and user menu
 - Avatar dropdown with user info, Profile, and Sign Out
+- Profile page (update name, email, password; delete account)
 - Dark/light theme toggle with FOUC prevention
 - Theme-aware logo component (auto-switches light/dark)
-- Theme can be passed via URL parameter for cross-app navigation
+- Theme can be passed via URL parameter for cross-app preference carry-over (e.g. from landing page to app)
 - 50+ shadcn/ui components ready to use
 
 ## Project Structure
@@ -278,22 +294,31 @@ npm run db:migrate:production
 
 ### Local Development
 
-The app runs locally without any configuration. To enable email verification, copy the example and add your [Resend](https://resend.com/) API key:
+The app runs locally without any configuration. To enable email verification, add your [Resend](https://resend.com/) API key to `.env.local`:
 ```bash
-cp .env.example .env.local
-```
-
-```env
-RESEND_API_KEY=re_xxxxxxxxxxxxx
+echo "RESEND_API_KEY=re_xxxxxxxxxxxxx" >> .env.local
 ```
 
 ### Preview/Production
 1. Create D1 databases in Cloudflare dashboard
 2. Update `wrangler.toml` with database IDs
-3. Set secrets via Cloudflare dashboard or CLI:
+3. Add secrets to `.env.preview` or `.env.production`:
    ```bash
-   wrangler secret put RESEND_API_KEY --env production
+   echo "RESEND_API_KEY=re_xxxxxxxxxxxxx" >> .env.production
    ```
+4. Deploy — secrets are automatically synced from `.env.<env>` files:
+   ```bash
+   npm run deploy:production
+   ```
+
+### How Environment Variables Work
+
+| Variable Type | Where Defined | Available In | Access Pattern |
+|--------------|---------------|--------------|----------------|
+| `VITE_*` secrets | `.env.<env-name>` | Client (React) | `import.meta.env.VITE_*` |
+| Other Secrets | `.env.<env-name>` | Server (Worker) | `c.env.*` |
+| Config. Settings | `wrangler.toml` | Server (Worker) | `c.env.*` |
+| App Config. | `src/config.ts` | Both | `import { config }` |
 
 ## Development
 
@@ -315,10 +340,17 @@ npm run deploy:preview       # Deploy to preview
 ## Customization
 
 ### Branding
-Search and replace these placeholders:
-- `"My App"` in email templates and UI
-- `noreply@example.com` in email sender
-- Domain URLs in `.env.example` and `env/` templates
+Update `src/config.ts` to customize your app:
+```typescript
+export const config = {
+  appName: "My App",           // Displayed in UI, emails, page title
+  email: {
+    fromAddress: "noreply@example.com",  // Must be verified with Resend
+  },
+} as const;
+```
+
+Also update prod and preview domain URLs in `.env.<env-name>.example` and `.env.<env-name>` files (or run `npm run init` to update them).
 
 ### Adding Pages
 1. Create page in `src/react-app/pages/`
@@ -329,12 +361,34 @@ Search and replace these placeholders:
 ### Email Provider
 Replace `createResendEmailSender` in `src/worker/middleware/auth.ts` with your provider implementing the `EmailSender` interface.
 
-## For AI Coding Agents
+## Observability Features
 
-This template is optimized for AI-assisted development:
+### Quick Start
 
-- **[docs/AGENTS_SETUP.md](docs/AGENTS_SETUP.md)** — Non-interactive setup instructions for initial installation
-- **[AGENTS.md](AGENTS.md)** — Architecture, patterns, and common tasks for ongoing development
+1. Develop, build and Deploy
+2. **Real-time Monitoring**: For live logs, run: `npx wrangler tail` (attaches to your Worker and streams logs/errors to your terminal)
+3. **Aggregated Analytics**: Open your Worker in the Cloudflare dashboard and inspect the Metrics, Logs, and Traces panes
+
+### Real-time Logs
+Running `npx wrangler tail` streams your Worker's logs (including `console.log`, `console.error`, and structured logs) from a preview or deployed Worker. This allows you to monitor requests, errors, and custom log output as they happen.
+
+### Cloudflare Dashboard Metrics
+Once deployed, use the Cloudflare dashboard to view aggregated metrics including:
+- Request volumes
+- Success/error rates  
+- Latency measurements
+- Bandwidth usage
+
+You can also drill into individual request traces and logs for detailed analysis.
+
+### Traces and Request Details
+Cloudflare's observability features enable you to:
+- Inspect individual requests
+- View timing breakdowns
+- See errors and stack traces produced by the Worker
+
+### Log Export and Persistence
+For long-term retention or external analysis, you can forward logs via Cloudflare Logpush or external providers (not configured by default in this template, but fully supported by Cloudflare).
 
 ## Additional Resources
 
@@ -348,6 +402,6 @@ This template is optimized for AI-assisted development:
 ## License
 
 This template is open source and available under the [MIT License](LICENSE).  
-It was based on the [Cloudflare Fullstack Template](https://github.com/cloudflare/templates/tree/main/vite-react-template) by Cloudflare.
+It was based on the [React + Vite + Hono + Cloudflare Workers Template](https://github.com/cloudflare/templates/tree/main/vite-react-template) by Cloudflare.
 
 (c) 2025 Claudio Silva

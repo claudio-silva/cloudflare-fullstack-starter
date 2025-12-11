@@ -5,6 +5,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Alert, AlertDescription } from "../ui/alert";
+import { Eye, EyeOff } from "lucide-react";
 
 interface LoginFormProps {
 	onSuccess?: () => void;
@@ -15,6 +16,7 @@ export function LoginForm({ onSuccess, showSignupLink = true }: LoginFormProps) 
 	const navigate = useNavigate();
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
+	const [showPassword, setShowPassword] = useState(false);
 	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState("");
 
@@ -74,15 +76,35 @@ export function LoginForm({ onSuccess, showSignupLink = true }: LoginFormProps) 
 			</div>
 
 			<div className="space-y-2">
-				<Label htmlFor="password">Password</Label>
-				<Input
-					id="password"
-					type="password"
-					value={password}
-					onChange={(e) => setPassword(e.target.value)}
-					disabled={isLoading}
-					required
-				/>
+				<div className="flex items-center justify-between">
+					<Label htmlFor="password">Password</Label>
+					<button
+						type="button"
+						onClick={() => navigate(`/forgot-password${email ? `?email=${encodeURIComponent(email)}` : ""}`)}
+						className="text-xs text-primary hover:underline bg-transparent border-none p-0 cursor-pointer"
+					>
+						Forgot password?
+					</button>
+				</div>
+				<div className="relative">
+					<Input
+						id="password"
+						type={showPassword ? "text" : "password"}
+						value={password}
+						onChange={(e) => setPassword(e.target.value)}
+						disabled={isLoading}
+						required
+						className="pr-10"
+					/>
+					<button
+						type="button"
+						onClick={() => setShowPassword(!showPassword)}
+						className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+						tabIndex={-1}
+					>
+						{showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+					</button>
+				</div>
 			</div>
 
 			<Button type="submit" className="w-full" disabled={isLoading}>

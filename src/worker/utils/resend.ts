@@ -1,4 +1,5 @@
 import { Resend } from "resend";
+import { config } from "../../config";
 
 export type EmailSender = {
 	sendVerificationEmail: (params: { to: string; subject: string; html: string }) => Promise<void>;
@@ -24,10 +25,11 @@ export function getResend(env: { RESEND_API_KEY?: string }): Resend {
  */
 export function createResendEmailSender(env: { RESEND_API_KEY?: string }): EmailSender {
 	const resend = getResend(env);
+	const fromAddress = `${config.appName} <${config.email.fromAddress}>`;
 	return {
 		async sendVerificationEmail({ to, subject, html }) {
 			const result = await resend.emails.send({
-				from: "My App <noreply@example.com>",
+				from: fromAddress,
 				to,
 				subject,
 				html,

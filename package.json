@@ -18,12 +18,15 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:preview": "tsc -b && CLOUDFLARE_ENV=preview vite build --mode preview",
+    "build:production": "tsc -b && CLOUDFLARE_ENV=production vite build --mode production",
     "preview": "npm run build && vite preview",
     "lint": "eslint .",
     "check": "tsc && vite build && wrangler deploy --dry-run",
+    "sync-secrets": "tsx bin/sync-secrets.ts",
     "deploy": "wrangler deploy",
-    "deploy:preview": "wrangler deploy --env preview",
-    "deploy:production": "wrangler deploy --env production",
+    "deploy:preview": "tsx bin/sync-secrets.ts preview && wrangler deploy --env preview",
+    "deploy:production": "tsx bin/sync-secrets.ts production && wrangler deploy --env production",
     "cf-typegen": "wrangler types",
     "db:migrate:local": "wrangler d1 migrations apply cloudflare-fullstack-starter --local",
     "db:migrate:preview": "wrangler d1 migrations apply cloudflare-fullstack-starter --env preview",
@@ -98,8 +101,8 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "1.7.5",
-    "@eslint/js": "9.29.0",
+    "@cloudflare/vite-plugin": "1.17.0",
+    "@eslint/js": "9.39.1",
     "@types/node": "^24.0.4",
     "@types/react": "19.0.10",
     "@types/react-dom": "19.0.4",
@@ -114,6 +117,6 @@
     "typescript": "5.8.3",
     "typescript-eslint": "8.35.0",
     "vite": "^6.4.1",
-    "wrangler": "^4.23.0"
+    "wrangler": "^4.53.0"
   }
 }

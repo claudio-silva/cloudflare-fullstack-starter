@@ -69,10 +69,12 @@ No `.env.local` file is required for basic local development. The app will:
 - Work with default placeholder domains
 
 ### Optional: Enable Email
-To enable email verification locally:
+To enable email verification locally, add your [Resend](https://resend.com/) API key to `.env.local`:
 ```bash
-echo "RESEND_API_KEY=re_your_key_here" > .env.local
+echo "RESEND_API_KEY=re_your_key_here" >> .env.local
 ```
+
+The Cloudflare Vite plugin loads `.env.local` and injects secrets into the Worker environment.
 
 ## Verify Setup
 
@@ -93,10 +95,9 @@ Visit http://localhost:5173 and log in with the test credentials.
 
 After init, consider updating:
 
+- [ ] `src/config.ts` — App name and email settings (updates UI, emails, page title)
 - [ ] `README.md` — Project description and name
 - [ ] `package.json` — Description, repository, author
-- [ ] Email templates in `src/worker/utils/email-templates.ts` — Brand name
-- [ ] `src/react-app/components/AppShell.tsx` — App title in header
 - [ ] `.env.example` — Update example domains
 
 ## Troubleshooting

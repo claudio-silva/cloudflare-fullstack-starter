@@ -14,6 +14,7 @@ import { Avatar, AvatarFallback } from "./ui/avatar";
 import { ModeToggle } from "./ModeToggle";
 import { Logo } from "./Logo";
 import { authClient } from "@/lib/auth/client";
+import { config } from "../../config";
 
 /** URL to navigate to after logout. Defaults to "/" */
 const LOGOUT_REDIRECT_URL = "/";
@@ -111,7 +112,7 @@ export function TopBar({ children }: TopBarProps) {
 				{/* Logo and App Name */}
 				<Link to="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity shrink-0">
 					<Logo className="h-8 w-auto" />
-					<span className="text-lg font-semibold tracking-tight">My App</span>
+					<span className="text-lg font-semibold tracking-tight">{config.appName}</span>
 				</Link>
 
 				{/* Spacer */}
@@ -132,5 +133,8 @@ export function TopBar({ children }: TopBarProps) {
 		</div>
 	);
 }
+
+
+
 
 
