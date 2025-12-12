@@ -72,8 +72,9 @@ export function createAuth(c: AppContext) {
 					console.warn("[EMAIL] RESEND_API_KEY not set; skipping password reset email (local/dev).");
 					return;
 				}
-				// Modify URL to use frontend route instead of API route
-				const modifiedUrl = url.replace("/api/auth/reset-password", "/reset-password");
+				// Modify URL to use frontend route instead of API route and include email for auto sign-in
+				const modifiedUrl = url.replace("/api/auth/reset-password", "/reset-password")
+					+ `&email=${encodeURIComponent(user.email)}`;
 				const html = getPasswordResetEmailTemplate(user.name || user.email, modifiedUrl);
 				await emailSender.sendVerificationEmail({
 					to: user.email,

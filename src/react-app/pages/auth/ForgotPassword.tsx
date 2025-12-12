@@ -9,8 +9,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/Logo";
+import { RetrySendEmail } from "@/components/auth/RetrySendEmail";
 import { authClient } from "@/lib/auth/client";
 import { CheckCircle2, AlertCircle } from "lucide-react";
+import { config } from "../../../config";
 
 const forgotPasswordSchema = z.object({
 	email: z.string().email("Please enter a valid email address"),
@@ -24,6 +26,7 @@ export function ForgotPassword() {
 	
 	const [error, setError] = useState<string | null>(null);
 	const [success, setSuccess] = useState(false);
+	const [successEmail, setSuccessEmail] = useState("");
 	const [isLoading, setIsLoading] = useState(false);
 
 	const {
@@ -43,7 +46,7 @@ export function ForgotPassword() {
 		setIsLoading(true);
 
 		try {
-			const result = await authClient.forgetPassword({
+			const result = await authClient.requestPasswordReset({
 				email: data.email,
 				redirectTo: "/reset-password",
 			});
@@ -51,6 +54,7 @@ export function ForgotPassword() {
 			if (result.error) {
 				setError(result.error.message || "Failed to send reset email. Please try again.");
 			} else {
+				setSuccessEmail(data.email);
 				setSuccess(true);
 			}
 		} catch (err) {
@@ -59,6 +63,13 @@ export function ForgotPassword() {
 		} finally {
 			setIsLoading(false);
 		}
+	};
+
+	const handleResendResetEmail = async () => {
+		await authClient.requestPasswordReset({
+			email: successEmail,
+			redirectTo: "/reset-password",
+		});
 	};
 
 	if (success) {
@@ -74,20 +85,21 @@ export function ForgotPassword() {
 						<CardTitle className="text-center">Check your email</CardTitle>
 						<CardDescription className="text-center">We've sent a password reset link to your email</CardDescription>
 					</CardHeader>
-					<CardContent>
+					<CardContent className="space-y-4">
 						<Alert className="border-green-500 bg-green-50 dark:bg-green-950">
 							<CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
 							<AlertDescription className="text-green-800 dark:text-green-200">
 								Please check your inbox and click the reset link to set a new password. The link will expire in 1 hour.
 							</AlertDescription>
 						</Alert>
-						<p className="text-sm text-muted-foreground mt-4">
-							Didn't receive the email? Check your spam folder or try again.
-						</p>
+						<RetrySendEmail
+							onResend={handleResendResetEmail}
+							successMessage="Password reset email sent! Check your inbox."
+						/>
 					</CardContent>
 					<CardFooter className="flex justify-center">
 						<Link to="/" className="text-sm text-primary hover:underline">
-							Back to sign in
+							Proceed to {config.appName}
 						</Link>
 					</CardFooter>
 				</Card>
@@ -126,6 +138,7 @@ export function ForgotPassword() {
 								placeholder="you@example.com"
 								{...register("email")}
 								disabled={isLoading}
+								autoFocus
 							/>
 							{errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
 						</div>
@@ -147,5 +160,9 @@ export function ForgotPassword() {
 		</div>
 	);
 }
+
+
+
+
 
 

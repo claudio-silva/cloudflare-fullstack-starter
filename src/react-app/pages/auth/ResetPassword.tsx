@@ -1,6 +1,6 @@
-import { useState } from "react";
-import { Link, useSearchParams, useNavigate } from "react-router-dom";
-import { useForm } from "react-hook-form";
+import { useState, useRef } from "react";
+import { Link, useSearchParams, useNavigate, useParams } from "react-router-dom";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -24,18 +24,23 @@ type ResetPasswordFormData = z.infer<typeof resetPasswordSchema>;
 
 export function ResetPassword() {
 	const [searchParams] = useSearchParams();
+	const { token: pathToken } = useParams<{ token?: string }>();
 	const navigate = useNavigate();
-	const token = searchParams.get("token");
+	// Token can come from URL path (/reset-password/:token) or query param (?token=...)
+	const token = pathToken || searchParams.get("token");
+	const email = searchParams.get("email");
 	
 	const [error, setError] = useState<string | null>(null);
 	const [success, setSuccess] = useState(false);
 	const [isLoading, setIsLoading] = useState(false);
 	const [showPassword, setShowPassword] = useState(false);
 	const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+	const passwordRef = useRef<HTMLInputElement>(null);
+	const confirmPasswordRef = useRef<HTMLInputElement>(null);
 
 	const {
-		register,
 		handleSubmit,
+		control,
 		formState: { errors },
 	} = useForm<ResetPasswordFormData>({
 		resolver: zodResolver(resetPasswordSchema),
@@ -64,8 +69,25 @@ export function ResetPassword() {
 					setError(result.error.message || "Failed to reset password. Please try again.");
 				}
 			} else {
+				// Try to auto sign-in if we have the email
+				if (email) {
+					const signInResult = await authClient.signIn.email({
+						email,
+						password: data.password,
+					});
+					
+					if (!signInResult.error) {
+						// Successfully signed in, redirect to home
+						setSuccess(true);
+						setTimeout(() => {
+							window.location.href = "/";
+						}, 1500);
+						return;
+					}
+				}
+				
+				// Fallback: show success and redirect to login
 				setSuccess(true);
-				// Redirect to login after 3 seconds
 				setTimeout(() => navigate("/"), 3000);
 			}
 		} catch (err) {
@@ -122,15 +144,10 @@ export function ResetPassword() {
 						<Alert className="border-green-500 bg-green-50 dark:bg-green-950">
 							<CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
 							<AlertDescription className="text-green-800 dark:text-green-200">
-								Your password has been reset successfully. You'll be redirected to sign in shortly.
+								Your password has been reset successfully. Redirecting...
 							</AlertDescription>
 						</Alert>
 					</CardContent>
-					<CardFooter className="flex justify-center">
-						<Link to="/" className="text-sm text-primary hover:underline">
-							Sign in now
-						</Link>
-					</CardFooter>
 				</Card>
 			</div>
 		);
@@ -162,16 +179,37 @@ export function ResetPassword() {
 						<div className="space-y-2">
 							<Label htmlFor="password">New Password</Label>
 							<div className="relative">
-								<Input
-									id="password"
-									type={showPassword ? "text" : "password"}
-									{...register("password")}
-									disabled={isLoading}
-									className="pr-10"
+								<Controller
+									name="password"
+									control={control}
+									render={({ field: { ref, ...field } }) => (
+										<Input
+											{...field}
+											ref={(e) => {
+												ref(e);
+												passwordRef.current = e;
+											}}
+											id="password"
+											type={showPassword ? "text" : "password"}
+											disabled={isLoading}
+											className="pr-10"
+											autoFocus
+										/>
+									)}
 								/>
 								<button
 									type="button"
-									onClick={() => setShowPassword(!showPassword)}
+									onClick={() => {
+										setShowPassword(!showPassword);
+										passwordRef.current?.focus();
+										// Set cursor to end of text
+										setTimeout(() => {
+											if (passwordRef.current) {
+												const len = passwordRef.current.value.length;
+												passwordRef.current.setSelectionRange(len, len);
+											}
+										}, 0);
+									}}
 									className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
 									tabIndex={-1}
 								>
@@ -185,16 +223,36 @@ export function ResetPassword() {
 						<div className="space-y-2">
 							<Label htmlFor="confirmPassword">Confirm Password</Label>
 							<div className="relative">
-								<Input
-									id="confirmPassword"
-									type={showConfirmPassword ? "text" : "password"}
-									{...register("confirmPassword")}
-									disabled={isLoading}
-									className="pr-10"
+								<Controller
+									name="confirmPassword"
+									control={control}
+									render={({ field: { ref, ...field } }) => (
+										<Input
+											{...field}
+											ref={(e) => {
+												ref(e);
+												confirmPasswordRef.current = e;
+											}}
+											id="confirmPassword"
+											type={showConfirmPassword ? "text" : "password"}
+											disabled={isLoading}
+											className="pr-10"
+										/>
+									)}
 								/>
 								<button
 									type="button"
-									onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+									onClick={() => {
+										setShowConfirmPassword(!showConfirmPassword);
+										confirmPasswordRef.current?.focus();
+										// Set cursor to end of text
+										setTimeout(() => {
+											if (confirmPasswordRef.current) {
+												const len = confirmPasswordRef.current.value.length;
+												confirmPasswordRef.current.setSelectionRange(len, len);
+											}
+										}, 0);
+									}}
 									className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
 									tabIndex={-1}
 								>
@@ -218,5 +276,9 @@ export function ResetPassword() {
 		</div>
 	);
 }
+
+
+
+
 
 

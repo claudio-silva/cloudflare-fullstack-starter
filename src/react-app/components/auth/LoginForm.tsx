@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { authClient } from "@/lib/auth/client";
 import { Button } from "../ui/button";
@@ -19,6 +19,14 @@ export function LoginForm({ onSuccess, showSignupLink = true }: LoginFormProps) 
 	const [showPassword, setShowPassword] = useState(false);
 	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState("");
+	const passwordRef = useRef<HTMLInputElement>(null);
+
+	useEffect(() => {
+		if (error && passwordRef.current) {
+			passwordRef.current.focus();
+			passwordRef.current.select();
+		}
+	}, [error]);
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
@@ -72,6 +80,7 @@ export function LoginForm({ onSuccess, showSignupLink = true }: LoginFormProps) 
 					onChange={(e) => setEmail(e.target.value)}
 					disabled={isLoading}
 					required
+					autoFocus
 				/>
 			</div>
 
@@ -88,6 +97,7 @@ export function LoginForm({ onSuccess, showSignupLink = true }: LoginFormProps) 
 				</div>
 				<div className="relative">
 					<Input
+						ref={passwordRef}
 						id="password"
 						type={showPassword ? "text" : "password"}
 						value={password}
@@ -98,7 +108,17 @@ export function LoginForm({ onSuccess, showSignupLink = true }: LoginFormProps) 
 					/>
 					<button
 						type="button"
-						onClick={() => setShowPassword(!showPassword)}
+						onClick={() => {
+							setShowPassword(!showPassword);
+							passwordRef.current?.focus();
+							// Set cursor to end of text
+							setTimeout(() => {
+								if (passwordRef.current) {
+									const len = passwordRef.current.value.length;
+									passwordRef.current.setSelectionRange(len, len);
+								}
+							}, 0);
+						}}
 						className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
 						tabIndex={-1}
 					>

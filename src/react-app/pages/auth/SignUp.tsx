@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/Logo";
+import { RetrySendEmail } from "@/components/auth/RetrySendEmail";
 import { authClient } from "@/lib/auth/client";
 import { CheckCircle2, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { config } from "../../../config";
@@ -29,13 +30,17 @@ export function SignUp() {
 	const navigate = useNavigate();
 	const [error, setError] = useState<string | null>(null);
 	const [pendingVerification, setPendingVerification] = useState(false);
+	const [pendingEmail, setPendingEmail] = useState<string>("");
 	const [isLoading, setIsLoading] = useState(false);
 	const [showPassword, setShowPassword] = useState(false);
 	const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+	const passwordRef = useRef<HTMLInputElement>(null);
+	const confirmPasswordRef = useRef<HTMLInputElement>(null);
 
 	const {
 		register,
 		handleSubmit,
+		control,
 		formState: { errors },
 	} = useForm<SignUpFormData>({
 		resolver: zodResolver(signUpSchema),
@@ -65,15 +70,22 @@ export function SignUp() {
 					navigate("/");
 				} else {
 					// User needs to verify email first
+					setPendingEmail(data.email);
 					setPendingVerification(true);
 				}
 			}
-		} catch (err) {
-			const e = err as Error;
-			setError(e.message || "An unexpected error occurred. Please try again.");
+		} catch {
+			setError("An unexpected error occurred. Please try again.");
 		} finally {
 			setIsLoading(false);
 		}
+	};
+
+	const handleResendVerification = async () => {
+		await authClient.sendVerificationEmail({
+			email: pendingEmail,
+			callbackURL: "/",
+		});
 	};
 
 	if (!config.auth.enableSignups) {
@@ -85,15 +97,15 @@ export function SignUp() {
 			<div className="min-h-screen flex items-center justify-center p-4">
 				<div className="absolute inset-0 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900" />
 
-			<Card className="relative w-full max-w-md shadow-2xl">
-				<CardHeader className="space-y-4">
-					<div className="flex justify-center">
-						<Logo className="h-12 w-auto" />
-					</div>
-					<CardTitle className="text-center">Verification email sent</CardTitle>
-					<CardDescription className="text-center">We've sent a verification link to your email address</CardDescription>
-				</CardHeader>
-					<CardContent>
+				<Card className="relative w-full max-w-md shadow-2xl">
+					<CardHeader className="space-y-4">
+						<div className="flex justify-center">
+							<Logo className="h-12 w-auto" />
+						</div>
+						<CardTitle className="text-center">Verification email sent</CardTitle>
+						<CardDescription className="text-center">We've sent a verification link to your email address</CardDescription>
+					</CardHeader>
+					<CardContent className="space-y-4">
 						<Alert className="border-green-500 bg-green-50 dark:bg-green-950">
 							<CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
 							<AlertDescription className="text-green-800 dark:text-green-200">
@@ -101,13 +113,14 @@ export function SignUp() {
 								be automatically signed in after verification.
 							</AlertDescription>
 						</Alert>
-						<p className="text-sm text-muted-foreground mt-4">
-							Didn't receive the email? Check your spam folder or try signing up again.
-						</p>
+						<RetrySendEmail
+							onResend={handleResendVerification}
+							successMessage="Verification email sent! Check your inbox."
+						/>
 					</CardContent>
 					<CardFooter className="flex justify-center">
 						<Link to="/" className="text-sm text-primary hover:underline">
-							Back to home
+							Proceed to {config.appName}
 						</Link>
 					</CardFooter>
 				</Card>
@@ -148,6 +161,7 @@ export function SignUp() {
 								placeholder="John Doe"
 								{...register("name")}
 								disabled={isLoading}
+								autoFocus
 							/>
 							{errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
 						</div>
@@ -167,16 +181,36 @@ export function SignUp() {
 						<div className="space-y-2">
 							<Label htmlFor="password">Password</Label>
 							<div className="relative">
-								<Input
-									id="password"
-									type={showPassword ? "text" : "password"}
-									{...register("password")}
-									disabled={isLoading}
-									className="pr-10"
+								<Controller
+									name="password"
+									control={control}
+									render={({ field: { ref, ...field } }) => (
+										<Input
+											{...field}
+											ref={(e) => {
+												ref(e);
+												passwordRef.current = e;
+											}}
+											id="password"
+											type={showPassword ? "text" : "password"}
+											disabled={isLoading}
+											className="pr-10"
+										/>
+									)}
 								/>
 								<button
 									type="button"
-									onClick={() => setShowPassword(!showPassword)}
+									onClick={() => {
+										setShowPassword(!showPassword);
+										passwordRef.current?.focus();
+										// Set cursor to end of text
+										setTimeout(() => {
+											if (passwordRef.current) {
+												const len = passwordRef.current.value.length;
+												passwordRef.current.setSelectionRange(len, len);
+											}
+										}, 0);
+									}}
 									className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
 									tabIndex={-1}
 								>
@@ -190,16 +224,36 @@ export function SignUp() {
 						<div className="space-y-2">
 							<Label htmlFor="confirmPassword">Confirm Password</Label>
 							<div className="relative">
-								<Input
-									id="confirmPassword"
-									type={showConfirmPassword ? "text" : "password"}
-									{...register("confirmPassword")}
-									disabled={isLoading}
-									className="pr-10"
+								<Controller
+									name="confirmPassword"
+									control={control}
+									render={({ field: { ref, ...field } }) => (
+										<Input
+											{...field}
+											ref={(e) => {
+												ref(e);
+												confirmPasswordRef.current = e;
+											}}
+											id="confirmPassword"
+											type={showConfirmPassword ? "text" : "password"}
+											disabled={isLoading}
+											className="pr-10"
+										/>
+									)}
 								/>
 								<button
 									type="button"
-									onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+									onClick={() => {
+										setShowConfirmPassword(!showConfirmPassword);
+										confirmPasswordRef.current?.focus();
+										// Set cursor to end of text
+										setTimeout(() => {
+											if (confirmPasswordRef.current) {
+												const len = confirmPasswordRef.current.value.length;
+												confirmPasswordRef.current.setSelectionRange(len, len);
+											}
+										}, 0);
+									}}
 									className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
 									tabIndex={-1}
 								>

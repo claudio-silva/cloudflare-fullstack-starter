@@ -1,2 +1,0 @@
--- Placeholder seed file for starter template
--- Add seed data as needed; currently no default rows

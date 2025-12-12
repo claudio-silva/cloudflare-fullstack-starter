@@ -27,6 +27,8 @@
     "deploy": "wrangler deploy",
     "deploy:preview": "tsx bin/sync-secrets.ts preview && wrangler deploy --env preview",
     "deploy:production": "tsx bin/sync-secrets.ts production && wrangler deploy --env production",
+    "tail:preview": "wrangler tail --env preview",
+    "tail:production": "wrangler tail --env production",
     "cf-typegen": "wrangler types",
     "db:migrate:local": "wrangler d1 migrations apply cloudflare-fullstack-starter --local",
     "db:migrate:preview": "wrangler d1 migrations apply cloudflare-fullstack-starter --env preview",

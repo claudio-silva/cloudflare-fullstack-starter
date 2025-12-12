@@ -25,7 +25,8 @@ export const config = {
 	email: {
 		// The "from" address for outgoing emails
 		// Note: This domain must be verified with your email provider (e.g., Resend)
-		fromAddress: "noreply@example.com",
+		// In this case, we're using Resend's default pre-verified domain
+		fromAddress: "onboarding@resend.dev",
 	},
 } as const;
 

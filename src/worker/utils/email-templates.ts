@@ -27,7 +27,7 @@ export function getVerificationEmailTemplate(userName: string, verificationUrl: 
               </div>
               <h2 style="font-size:22px;margin:0 0 12px;color:#1f315c;text-align:center;">Verify your email address</h2>
               <p style="color:#444;font-size:16px;line-height:1.6;margin:0 0 24px;text-align:center;">
-                Hi ${safeName}, thanks for signing up! Please verify your email to continue.
+                Hi ${safeName}, thanks for signing up!<br>Please verify your email to continue.
               </p>
               <div style="text-align:center;margin:28px 0;">
                 <a href="${verificationUrl}" style="display:inline-block;padding:14px 28px;background-color:#1f315c;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;font-size:16px;">

@@ -1,3 +1,6 @@
+-- Initial schema for Better Auth core tables
+-- Includes all migrations consolidated into a single file
+
 -- Better Auth core tables for email/password
 
 CREATE TABLE IF NOT EXISTS users (
@@ -46,10 +49,11 @@ CREATE TABLE IF NOT EXISTS sessions (
   FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
 );
 
+-- Verifications table with Better Auth v1.4 schema (using 'value' instead of 'token')
 CREATE TABLE IF NOT EXISTS verifications (
   id TEXT PRIMARY KEY,
   identifier TEXT NOT NULL,
-  token TEXT NOT NULL,
+  value TEXT NOT NULL,
   expiresAt INTEGER NOT NULL,
   createdAt INTEGER NOT NULL,
   updatedAt INTEGER NOT NULL
@@ -59,3 +63,6 @@ CREATE TABLE IF NOT EXISTS verifications (
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(userId);
 CREATE INDEX IF NOT EXISTS idx_verifications_identifier ON verifications(identifier);
+
+-- Seed data placeholder
+-- Add any initial seed data here as needed

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useParams } from "react-router-dom";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/Logo";
@@ -7,29 +7,32 @@ import { CheckCircle2, XCircle, Loader2 } from "lucide-react";
 
 export function VerifyEmail() {
 	const [searchParams] = useSearchParams();
+	const { token: pathToken } = useParams<{ token?: string }>();
 	const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
 	const [message, setMessage] = useState("");
 
 	useEffect(() => {
 		const verifyEmail = async () => {
 			try {
-				const token = searchParams.get("token");
+				// Token can come from URL path (/verify-email/:token) or query param (?token=...)
+				const token = pathToken || searchParams.get("token");
 				if (!token) {
 					setStatus("error");
 					setMessage("No verification token provided");
 					return;
 				}
 
+				// Let the browser follow the redirect to properly set the session cookie
 				const response = await fetch(`/api/auth/verify-email?token=${encodeURIComponent(token)}&callbackURL=/`, {
 					method: "GET",
 					credentials: "include",
-					redirect: "manual",
 				});
 
-				if (response.status === 302 || response.type === "opaqueredirect" || response.ok) {
+				if (response.ok || response.redirected) {
 					setStatus("success");
 					setMessage("Email verified successfully! Redirecting...");
 					setTimeout(() => {
+						// Use window.location.href to ensure a full page reload with the new session
 						window.location.href = "/";
 					}, 1500);
 				} else {
@@ -44,7 +47,7 @@ export function VerifyEmail() {
 		};
 
 		verifyEmail();
-	}, [searchParams]);
+	}, [searchParams, pathToken]);
 
 	const getTitle = () => {
 		switch (status) {

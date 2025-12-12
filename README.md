@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/claudio-silva/cloudflare-fullstack-starter/actions/workflows/ci.yml/badge.svg)](https://github.com/claudio-silva/cloudflare-fullstack-starter/actions/workflows/ci.yml)
 
-> **A full-stack project starter that gets you building real features immediately** — production-ready, optimized for AI agents, and built to scale on Cloudflare’s global edge network.
+**A full-stack project starter that gets you building real features immediately** — production-ready, optimized for AI agents, and built to scale on Cloudflare’s global edge network.
 
 Install this and start building. Authentication, database, UI, CLI, and deployment are all ready to go.
 
@@ -343,9 +343,9 @@ npm run deploy:preview       # Deploy to preview
 Update `src/config.ts` to customize your app:
 ```typescript
 export const config = {
-  appName: "My App",           // Displayed in UI, emails, page title
+  appName: "My App",  // Displayed in UI, emails, page title
   email: {
-    fromAddress: "noreply@example.com",  // Must be verified with Resend
+    fromAddress: "onboarding@resend.dev",  // Must be verified with Resend
   },
 } as const;
 ```
@@ -365,12 +365,18 @@ Replace `createResendEmailSender` in `src/worker/middleware/auth.ts` with your p
 
 ### Quick Start
 
-1. Develop, build and Deploy
-2. **Real-time Monitoring**: For live logs, run: `npx wrangler tail` (attaches to your Worker and streams logs/errors to your terminal)
+1. **Local Development**: Logs appear directly in Vite's terminal output when running `npm run dev`
+2. **Remote Environments**: Stream real-time logs from deployed Workers:
+   ```bash
+   npm run tail:preview      # Stream logs from preview environment
+   npm run tail:production   # Stream logs from production environment
+   ```
 3. **Aggregated Analytics**: Open your Worker in the Cloudflare dashboard and inspect the Metrics, Logs, and Traces panes
 
 ### Real-time Logs
-Running `npx wrangler tail` streams your Worker's logs (including `console.log`, `console.error`, and structured logs) from a preview or deployed Worker. This allows you to monitor requests, errors, and custom log output as they happen.
+The `tail` commands stream your Worker's logs (including `console.log`, `console.error`, and structured logs) from a deployed Worker. This allows you to monitor requests, errors, and custom log output as they happen.
+
+> **Note**: `wrangler tail` only works with deployed Workers. For local development, logs appear in Vite's terminal output.
 
 ### Cloudflare Dashboard Metrics
 Once deployed, use the Cloudflare dashboard to view aggregated metrics including:

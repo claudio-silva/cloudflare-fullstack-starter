@@ -117,7 +117,7 @@ const users = await db.selectFrom("users").selectAll().execute();
 
 ```bash
 # Development
-pnpm dev                    # Start dev server
+pnpm dev                    # Start dev server (logs appear in terminal)
 
 # Database
 pnpm db:migrate:local       # Run migrations
@@ -129,7 +129,11 @@ pnpm auth delete-user -u email          # Delete user
 
 # Build & Deploy
 pnpm build                  # Build for production
-pnpm deploy:production      # Deploy to Cloudflare
+pnpm deploy:production      # Deploy to Cloudflare (auto-syncs secrets)
+
+# Logs (deployed environments only)
+pnpm tail:preview           # Stream logs from preview
+pnpm tail:production        # Stream logs from production
 ```
 
 ## Common Tasks

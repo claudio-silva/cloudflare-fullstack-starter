@@ -34,8 +34,10 @@ function AppContent() {
 			{/* Public auth routes - no TopBar */}
 			{config.auth.enableSignups && <Route path="/signup" element={<SignUp />} />}
 			<Route path="/verify-email" element={<VerifyEmail />} />
+			<Route path="/verify-email/:token" element={<VerifyEmail />} />
 			<Route path="/forgot-password" element={<ForgotPassword />} />
 			<Route path="/reset-password" element={<ResetPassword />} />
+			<Route path="/reset-password/:token" element={<ResetPassword />} />
 
 			{/* Protected routes with TopBar */}
 			<Route
