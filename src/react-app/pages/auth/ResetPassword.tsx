@@ -163,8 +163,8 @@ export function ResetPassword() {
 						<Logo className="h-12 w-auto" />
 					</div>
 					<div className="text-center">
-						<CardTitle>Set new password</CardTitle>
-						<CardDescription>Enter your new password below</CardDescription>
+						<CardTitle>Password reset</CardTitle>
+						<CardDescription className="mt-2">Enter your new password below</CardDescription>
 					</div>
 				</CardHeader>
 				<CardContent>
@@ -262,9 +262,11 @@ export function ResetPassword() {
 							{errors.confirmPassword && <p className="text-sm text-destructive">{errors.confirmPassword.message}</p>}
 						</div>
 
-						<Button type="submit" className="w-full" disabled={isLoading}>
-							{isLoading ? "Resetting..." : "Reset password"}
-						</Button>
+						<div className="flex justify-center pt-3">
+							<Button type="submit" className="w-1/2" disabled={isLoading}>
+								{isLoading ? "Resetting..." : "Reset password"}
+							</Button>
+						</div>
 					</form>
 				</CardContent>
 				<CardFooter className="flex justify-center">

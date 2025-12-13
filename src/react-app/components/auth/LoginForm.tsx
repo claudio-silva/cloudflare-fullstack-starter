@@ -85,16 +85,7 @@ export function LoginForm({ onSuccess, showSignupLink = true }: LoginFormProps) 
 			</div>
 
 			<div className="space-y-2">
-				<div className="flex items-center justify-between">
-					<Label htmlFor="password">Password</Label>
-					<button
-						type="button"
-						onClick={() => navigate(`/forgot-password${email ? `?email=${encodeURIComponent(email)}` : ""}`)}
-						className="text-xs text-primary hover:underline bg-transparent border-none p-0 cursor-pointer"
-					>
-						Forgot password?
-					</button>
-				</div>
+				<Label htmlFor="password">Password</Label>
 				<div className="relative">
 					<Input
 						ref={passwordRef}
@@ -127,14 +118,17 @@ export function LoginForm({ onSuccess, showSignupLink = true }: LoginFormProps) 
 				</div>
 			</div>
 
-			<Button type="submit" className="w-full" disabled={isLoading}>
-				{isLoading ? "Signing in..." : "Sign In"}
-			</Button>
-
-			{showSignupLink && (
-				<div className="mt-4 text-center text-sm text-muted-foreground">
-					<p>
-						Don't have an account?{" "}
+			<div className="flex justify-between items-center text-sm">
+				<button
+					type="button"
+					onClick={() => navigate(`/forgot-password${email ? `?email=${encodeURIComponent(email)}` : ""}`)}
+					className="text-primary hover:underline bg-transparent border-none p-0 cursor-pointer"
+				>
+					Forgot password?
+				</button>
+				{showSignupLink && (
+					<div className="text-muted-foreground">
+						Don't have an account?{"  "}
 						<button
 							type="button"
 							onClick={() => navigate("/signup")}
@@ -142,9 +136,15 @@ export function LoginForm({ onSuccess, showSignupLink = true }: LoginFormProps) 
 						>
 							Sign up
 						</button>
-					</p>
-				</div>
-			)}
+					</div>
+				)}
+			</div>
+
+			<div className="flex justify-center">
+				<Button type="submit" className="w-1/2 mt-2 mb-2" disabled={isLoading}>
+					{isLoading ? "Signing in..." : "Sign In"}
+				</Button>
+			</div>
 		</form>
 	);
 }

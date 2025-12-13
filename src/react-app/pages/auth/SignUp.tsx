@@ -119,9 +119,11 @@ export function SignUp() {
 						/>
 					</CardContent>
 					<CardFooter className="flex justify-center">
-						<Link to="/" className="text-sm text-primary hover:underline">
-							Proceed to {config.appName}
-						</Link>
+						<Button asChild className="w-1/2">
+							<Link to="/">
+								Proceed to {config.appName}
+							</Link>
+						</Button>
 					</CardFooter>
 				</Card>
 			</div>
@@ -139,7 +141,7 @@ export function SignUp() {
 					</div>
 					<div className="text-center">
 						<CardTitle>Sign Up</CardTitle>
-						<CardDescription>Create a new account to get started</CardDescription>
+						<CardDescription className="mt-2">Create a new account to get started</CardDescription>
 					</div>
 				</CardHeader>
 				<CardContent>
@@ -263,14 +265,16 @@ export function SignUp() {
 							{errors.confirmPassword && <p className="text-sm text-destructive">{errors.confirmPassword.message}</p>}
 						</div>
 
-						<Button type="submit" className="w-full" disabled={isLoading}>
-							{isLoading ? "Creating account..." : "Create Account"}
-						</Button>
+						<div className="flex justify-center pt-3">
+							<Button type="submit" className="w-1/2" disabled={isLoading}>
+								{isLoading ? "Creating account..." : "Create Account"}
+							</Button>
+						</div>
 					</form>
 				</CardContent>
 				<CardFooter className="flex justify-center">
 					<p className="text-sm text-muted-foreground">
-						Already have an account?{" "}
+						Already have an account?{"  "}
 						<Link to="/" className="text-primary hover:underline">
 							Sign in
 						</Link>

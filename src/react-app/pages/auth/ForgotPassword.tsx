@@ -98,9 +98,11 @@ export function ForgotPassword() {
 						/>
 					</CardContent>
 					<CardFooter className="flex justify-center">
-						<Link to="/" className="text-sm text-primary hover:underline">
-							Proceed to {config.appName}
-						</Link>
+						<Button asChild className="w-1/2">
+							<Link to="/">
+								Proceed to {config.appName}
+							</Link>
+						</Button>
 					</CardFooter>
 				</Card>
 			</div>
@@ -118,11 +120,11 @@ export function ForgotPassword() {
 					</div>
 					<div className="text-center">
 						<CardTitle>Forgot password?</CardTitle>
-						<CardDescription>Enter your email and we'll send you a reset link</CardDescription>
+						<CardDescription className="mt-2">Enter your email and we'll send you a reset link</CardDescription>
 					</div>
 				</CardHeader>
 				<CardContent>
-					<form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+					<form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
 						{error && (
 							<Alert variant="destructive" className="bg-red-50 dark:bg-red-950 border-red-500">
 								<AlertCircle className="h-4 w-4" />
@@ -143,14 +145,16 @@ export function ForgotPassword() {
 							{errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
 						</div>
 
-						<Button type="submit" className="w-full" disabled={isLoading}>
-							{isLoading ? "Sending..." : "Send reset link"}
-						</Button>
+						<div className="flex justify-center pt-1">
+							<Button type="submit" className="w-1/2" disabled={isLoading}>
+								{isLoading ? "Sending..." : "Send reset link"}
+							</Button>
+						</div>
 					</form>
 				</CardContent>
 				<CardFooter className="flex justify-center">
 					<p className="text-sm text-muted-foreground">
-						Remember your password?{" "}
+						Remembered your password?{"  "}
 						<Link to="/" className="text-primary hover:underline">
 							Sign in
 						</Link>
