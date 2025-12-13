@@ -9,13 +9,13 @@ import { config } from "../../../config";
  */
 export function AuthOverlay() {
 	return (
-		<div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-			<div className="absolute inset-0 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900" />
+		<div className="fixed inset-0 z-50 flex flex-col items-center overflow-auto py-4 px-4">
+			<div className="fixed inset-0 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 -z-10" />
 
-			<Card className="relative w-full max-w-md mx-4 shadow-2xl">
+			<Card className="relative w-full max-w-md shadow-2xl my-auto">
 				<CardHeader className="space-y-6">
 					<div className="flex justify-center">
-						<Logo className="h-12 w-auto" />
+						<Logo className="h-12 w-auto" showTitle={true} />
 					</div>
 					<CardTitle className="text-center">Authentication Required</CardTitle>
 				</CardHeader>
