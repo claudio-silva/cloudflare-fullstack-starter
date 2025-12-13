@@ -19,6 +19,8 @@ export const config = {
 	auth: {
 		// Toggle self-serve signups (hides link and route when false)
 		enableSignups: true,
+		// Enable Google OAuth sign-in (requires GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET env vars)
+		enableGoogleAuth: true,
 	},
 
 	// Email settings

@@ -47,6 +47,9 @@ export function createAuth(c: AppContext) {
 	// - We have a RESEND_API_KEY configured (allows testing email in local)
 	const shouldRequireEmailVerification = environment !== "local" || !!emailSender;
 
+	// Configure Google OAuth if credentials are provided and enabled in config
+	const googleOAuthEnabled = config.auth.enableGoogleAuth && c.env.GOOGLE_CLIENT_ID && c.env.GOOGLE_CLIENT_SECRET;
+
 	return betterAuth({
 		database: {
 			db,
@@ -60,6 +63,12 @@ export function createAuth(c: AppContext) {
 		},
 		account: { modelName: "accounts" },
 		verification: { modelName: "verifications" },
+		socialProviders: googleOAuthEnabled ? {
+			google: {
+				clientId: c.env.GOOGLE_CLIENT_ID!,
+				clientSecret: c.env.GOOGLE_CLIENT_SECRET!,
+			},
+		} : undefined,
 		emailAndPassword: {
 			enabled: true,
 			requireEmailVerification: shouldRequireEmailVerification,

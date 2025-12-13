@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/Logo";
 import { RetrySendEmail } from "@/components/auth/RetrySendEmail";
+import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
 import { authClient } from "@/lib/auth/client";
 import { CheckCircle2, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { config } from "../../../config";
@@ -270,6 +271,28 @@ export function SignUp() {
 								{isLoading ? "Creating account..." : "Create Account"}
 							</Button>
 						</div>
+
+						{config.auth.enableGoogleAuth && (
+							<>
+								<div className="relative my-4">
+									<div className="absolute inset-0 flex items-center">
+										<span className="w-full border-t" />
+									</div>
+									<div className="relative flex justify-center text-xs uppercase">
+										<span className="bg-background px-2 text-muted-foreground">Or</span>
+									</div>
+								</div>
+
+								<div className="flex justify-center">
+									<GoogleSignInButton
+										className="w-1/2"
+										disabled={isLoading}
+										label="Sign up with Google"
+										onError={(err) => setError(err)}
+									/>
+								</div>
+							</>
+						)}
 					</form>
 				</CardContent>
 				<CardFooter className="flex justify-center">

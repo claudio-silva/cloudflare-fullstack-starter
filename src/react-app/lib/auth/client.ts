@@ -12,3 +12,6 @@ export const authClient = createAuthClient({
 });
 
 export const { signIn, signUp, signOut, useSession, updateUser, changePassword, requestPasswordReset, resetPassword, sendVerificationEmail } = authClient;
+
+// Social login helper
+export const signInWithGoogle = () => authClient.signIn.social({ provider: "google" });

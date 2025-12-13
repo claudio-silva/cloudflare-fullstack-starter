@@ -6,6 +6,8 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Alert, AlertDescription } from "../ui/alert";
 import { Eye, EyeOff } from "lucide-react";
+import { GoogleSignInButton } from "./GoogleSignInButton";
+import { config } from "../../../config";
 
 interface LoginFormProps {
 	onSuccess?: () => void;
@@ -145,6 +147,27 @@ export function LoginForm({ onSuccess, showSignupLink = true }: LoginFormProps) 
 					{isLoading ? "Signing in..." : "Sign In"}
 				</Button>
 			</div>
+
+			{config.auth.enableGoogleAuth && (
+				<>
+					<div className="relative my-4">
+						<div className="absolute inset-0 flex items-center">
+							<span className="w-full border-t" />
+						</div>
+						<div className="relative flex justify-center text-xs uppercase">
+							<span className="bg-background px-2 text-muted-foreground">Or</span>
+						</div>
+					</div>
+
+					<div className="flex justify-center">
+						<GoogleSignInButton
+							className="w-1/2"
+							disabled={isLoading}
+							onError={(err) => setError(err)}
+						/>
+					</div>
+				</>
+			)}
 		</form>
 	);
 }
