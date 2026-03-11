@@ -81,7 +81,7 @@
     "commander": "^14.0.2",
     "date-fns": "^4.1.0",
     "embla-carousel-react": "^8.6.0",
-    "hono": "4.10.3",
+    "hono": "4.12.7",
     "input-otp": "^1.4.2",
     "kysely": "^0.28.8",
     "kysely-d1": "^0.4.0",
