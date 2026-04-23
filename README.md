@@ -355,16 +355,27 @@ echo "RESEND_API_KEY=re_xxxxxxxxxxxxx" >> .env.local
 ```
 
 ### Preview/Production
-1. Create D1 databases in Cloudflare dashboard
-2. Update `wrangler.toml` with database IDs
-3. Add secrets to `.env.preview` or `.env.production`:
+
+**One-time setup:**
+1. Create D1 databases in the Cloudflare dashboard (one for preview, one for production)
+2. Update `wrangler.toml` with the real database IDs (replacing the placeholder values)
+3. Add your secrets to `.env.preview` and `.env.production`:
    ```bash
    echo "RESEND_API_KEY=re_xxxxxxxxxxxxx" >> .env.production
    ```
-4. Deploy — secrets are automatically synced from `.env.<env>` files:
+4. Deploy:
    ```bash
    npm run deploy:production
    ```
+
+**Day-to-day:**
+- **Add or update a secret** — edit the relevant `.env.<env>` file and redeploy. The deploy script compares a hash of the file and only syncs what has changed; you never need to use `wrangler secret put` manually.
+- **Add a Cloudflare binding** (D1, KV, R2, …) — add it to `wrangler.toml`; it is picked up automatically at build time.
+
+Each deploy command (`deploy:preview`, `deploy:production`) runs three steps in sequence:
+1. Syncs secrets from `.env.<env>` to Cloudflare (skipped if nothing changed)
+2. Builds the app with the correct environment config baked in
+3. Deploys to Cloudflare — no manual `--env` flags or dashboard visits needed
 
 ### How Environment Variables Work
 
@@ -388,9 +399,11 @@ npm run check        # Type check + build + deploy dry-run
 ## Deploy
 
 ```bash
-npm run deploy:production    # Deploy to production
-npm run deploy:preview       # Deploy to preview
+npm run deploy:production    # Sync secrets + build + deploy to production
+npm run deploy:preview       # Sync secrets + build + deploy to preview
 ```
+
+Each command handles secrets, the environment-specific build, and deployment in one step. See [docs/VITE_CLOUDFLARE_BRIDGE.md](docs/VITE_CLOUDFLARE_BRIDGE.md) for how environment config is handled under the hood.
 
 ## Customization
 
@@ -453,6 +466,10 @@ For long-term retention or external analysis, you can forward logs via Cloudflar
 
 ## Additional Resources
 
+### Template Internals
+- [Vite ↔ Cloudflare Bridge](docs/VITE_CLOUDFLARE_BRIDGE.md) — how the project bridges Vite's dev conventions with Cloudflare's deployment model (env config baking, secrets sync, cross-platform build scripts)
+
+### External Resources
 - [Cloudflare Workers](https://developers.cloudflare.com/workers/)
 - [Cloudflare D1](https://developers.cloudflare.com/d1/)
 - [Better Auth](https://www.better-auth.com/)

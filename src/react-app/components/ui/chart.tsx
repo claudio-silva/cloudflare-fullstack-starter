@@ -159,7 +159,7 @@ const ChartTooltipContent = React.forwardRef<
       if (labelFormatter) {
         return (
           <div className={cn("font-medium", labelClassName)}>
-            {labelFormatter(value, payload)}
+            {labelFormatter(value, payload as unknown as Parameters<NonNullable<typeof labelFormatter>>[1])}
           </div>
         )
       }
@@ -209,7 +209,7 @@ const ChartTooltipContent = React.forwardRef<
                 )}
               >
                 {formatter && item?.value !== undefined && item.name ? (
-                  formatter(item.value, item.name, item, index, payload)
+                  formatter(item.value, item.name, item as unknown as Parameters<NonNullable<typeof formatter>>[2], index, payload as unknown as Parameters<NonNullable<typeof formatter>>[4])
                 ) : (
                   <>
                     {itemConfig?.icon ? (
