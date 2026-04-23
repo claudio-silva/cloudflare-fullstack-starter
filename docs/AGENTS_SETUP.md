@@ -46,26 +46,46 @@ The init script supports CLI arguments for non-interactive use:
 pnpm install
 # or: npm install
 
-# Initialize with all options
+# Initialize with all options (non-interactive)
 ./bin/init --name my-app \
   --app-domain https://app.my-app.com \
   --preview-domain https://preview.my-app.com
-
-# Skip migrations if needed
-./bin/init --name my-app --no-migrate
 ```
 
 ### What Init Does
 1. Updates `package.json` name
 2. Updates `wrangler.toml` worker and database names
-3. Updates domain URLs in env templates
-4. Runs local D1 migrations (unless `--no-migrate`)
+3. Creates `.env.local`, `.env.preview`, `.env.production` from templates (fills in your choices; does **not** overwrite existing files)
+
+> Migrations are **not** run by `init`. Run them manually after init (see below).
+
+## Run Migrations
+
+After `init`, apply the local database migrations:
+
+```bash
+pnpm db:migrate:local
+```
+
+This creates the local D1 SQLite database and applies all migrations in `migrations/`.
+
+## Set Up `CLI_API_KEY`
+
+The auth CLI (`pnpm auth …`) authenticates to the worker via a shared secret. Generate a key and add it to `.env.local`:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
+# Append the output to .env.local:
+echo "CLI_API_KEY=<paste-generated-key-here>" >> .env.local
+```
+
+> The same key must be present on the Worker. Locally, the Vite plugin loads `.env.local` automatically. For remote environments (preview/production), the deploy scripts sync it from the corresponding `.env.*` file.
 
 ## Environment Setup
 
-No `.env.local` file is required for basic local development. The app will:
-- Use local D1 database (automatically created by Wrangler)
-- Skip email verification (users are auto-verified locally)
+No `.env.local` file is required for basic local development beyond `CLI_API_KEY`. The app will:
+- Use the local D1 database (automatically created by Wrangler)
+- Auto-verify users (no email verification step)
 - Work with default placeholder domains
 
 ### Optional: Enable Email
@@ -79,17 +99,44 @@ The Cloudflare Vite plugin loads `.env.local` and injects secrets into the Worke
 ## Verify Setup
 
 ```bash
-# Start dev server
+# Start dev server (required for local CLI operations)
 pnpm dev
 
-# In another terminal, create a test user
-pnpm auth create-user -u test@example.com -p password123
+# In another terminal, create a regular user
+pnpm auth create-user -- -u user@example.com -p password123
 
-# Check the user was created
+# Create an admin user
+pnpm auth create-user -- -u admin@example.com -p password123 -r admin
+
+# List users to confirm
 pnpm auth list-users
 ```
 
 Visit http://localhost:5173 and log in with the test credentials.
+
+## User Roles
+
+The template ships with two built-in roles:
+
+| Role | Description |
+|------|-------------|
+| `user` | Default. Standard account with no special privileges. |
+| `admin` | Full management access. The last admin cannot be demoted. |
+
+Developers can add more roles by extending the migration and the worker validation in `src/worker/index.ts`.
+
+```bash
+# Assign a role at creation time
+pnpm auth create-user -- -u admin@example.com -p pass -r admin
+
+# Change an existing user's role
+pnpm auth set-role -- -u user@example.com -r admin
+
+# Or via edit-user
+pnpm auth edit-user -- -u user@example.com -r admin
+```
+
+When a user is demoted back to `user`, their active sessions are revoked immediately.
 
 ## Project Customization Checklist
 
@@ -104,11 +151,11 @@ After init, consider updating:
 
 ### Migration Fails
 ```bash
-# Ensure wrangler can create local D1
+# Run migrations manually after init
 pnpm db:migrate:local
 
-# If it fails, check wrangler.toml has valid config
-# The database_id "local" is fine for local dev
+# If it still fails, verify wrangler.toml has a valid [env.local] D1 binding.
+# The database_id "local" is fine for local dev.
 ```
 
 ### Port Already in Use

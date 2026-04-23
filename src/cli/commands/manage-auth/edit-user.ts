@@ -9,6 +9,7 @@ type EditUserOptions = {
 	name?: string;
 	email?: string;
 	pass?: string;
+	role?: "user" | "admin";
 	env?: EnvironmentOption;
 };
 
@@ -16,6 +17,7 @@ type UpdateData = {
 	name?: string;
 	email?: string;
 	password?: string;
+	role?: "user" | "admin";
 };
 
 export function createEditUserCommand(): Command {
@@ -27,15 +29,20 @@ export function createEditUserCommand(): Command {
 		.option("-n, --name <name>", "New display name")
 		.option("-e, --email <email>", "New email address")
 		.option("-p, --pass <password>", "New password (plain text)")
+		.option("-r, --role <role>", "New role: user | admin")
 		.argument("[environment]", "Target environment (local, preview, production)")
 		.option("--env <environment>", "Target environment (local, preview, production)")
 		.action(async (environment: string | undefined, options: EditUserOptions) => {
 			try {
-				const { user: currentEmail, name, email: newEmail, pass: password } = options;
+				const { user: currentEmail, name, email: newEmail, pass: password, role } = options;
+				const allowedRoles = ["user", "admin"] as const;
 				const env = normalizeEnvironment(options.env, environment);
-				if (!name && !newEmail && !password) {
-					printError("Must specify at least one field to update (--name, --email, or --pass)");
+				if (!name && !newEmail && !password && !role) {
+					printError("Must specify at least one field to update (--name, --email, --pass, or --role)");
 					process.exit(1);
+				}
+				if (role && !allowedRoles.includes(role)) {
+					throw new Error(`Invalid role '${role}'. Allowed: ${allowedRoles.join(", ")}`);
 				}
 
 				const db = await connectToDatabase(env);
@@ -48,6 +55,7 @@ export function createEditUserCommand(): Command {
 				if (name !== undefined) updateData.name = name;
 				if (newEmail) updateData.email = newEmail;
 				if (password) updateData.password = password;
+				if (role) updateData.role = role;
 
 				await db.editUser(currentEmail, updateData);
 
@@ -55,6 +63,7 @@ export function createEditUserCommand(): Command {
 				if (name !== undefined) changes.push("name");
 				if (newEmail) changes.push("email");
 				if (password) changes.push("password");
+				if (role) changes.push("role");
 
 				printSuccess(`User '${currentEmail}' updated successfully (${changes.join(", ")})`);
 			} catch (error: unknown) {

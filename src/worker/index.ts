@@ -16,6 +16,13 @@ const requireDb = (c: AppContext) => {
 	return c.env.DB;
 };
 
+async function deleteSessionsForUser(db: Kysely<Database>, userId: string): Promise<void> {
+	await db.deleteFrom("sessions").where("userId", "=", userId).execute();
+}
+
+const ALLOWED_ROLES = ["user", "admin"] as const;
+type UserRole = (typeof ALLOWED_ROLES)[number];
+
 // Health check
 app.get("/api/", (c) => {
 	const environment = c.env.ENVIRONMENT || "local";
@@ -72,6 +79,7 @@ app.get("/api/cli/users", cliAuthMiddleware, async (c) => {
 			id: u.id,
 			email: u.email,
 			name: u.name,
+			role: u.role,
 			emailVerified: u.emailVerified,
 			createdAt: u.createdAt,
 			updatedAt: u.updatedAt,
@@ -106,6 +114,7 @@ app.get("/api/cli/users/:email", cliAuthMiddleware, async (c) => {
 			id: user.id,
 			email: user.email,
 			name: user.name,
+			role: user.role,
 			image: user.image,
 			emailVerified: user.emailVerified,
 			createdAt: user.createdAt,
@@ -125,12 +134,20 @@ app.get("/api/cli/users/:email", cliAuthMiddleware, async (c) => {
 });
 
 app.post("/api/cli/users", cliAuthMiddleware, async (c) => {
-	const { email, password, name } = await c.req.json<{ email: string; password: string; name?: string }>();
+	const { email, password, name, role } = await c.req.json<{
+		email: string;
+		password: string;
+		name?: string;
+		role?: string;
+	}>();
 	if (!email || !password) {
 		return c.json({ error: "Email and password are required" }, 400);
 	}
 	if (password.length < 8) {
 		return c.json({ error: "Password must be at least 8 characters" }, 400);
+	}
+	if (role && !ALLOWED_ROLES.includes(role as UserRole)) {
+		return c.json({ error: `Invalid role. Allowed: ${ALLOWED_ROLES.join(", ")}` }, 400);
 	}
 
 	const db = new Kysely<Database>({ dialect: new D1Dialect({ database: requireDb(c) }) });
@@ -155,6 +172,7 @@ app.post("/api/cli/users", cliAuthMiddleware, async (c) => {
 			emailVerified: 1,
 			createdAt: now,
 			updatedAt: now,
+			role: (role as UserRole) || "user",
 		})
 		.execute();
 
@@ -206,13 +224,21 @@ app.put("/api/cli/users/:email/password", cliAuthMiddleware, async (c) => {
 
 app.put("/api/cli/users/:email", cliAuthMiddleware, async (c) => {
 	const currentEmail = c.req.param("email");
-	const updateData = await c.req.json<{ name?: string; email?: string; password?: string }>();
-	if (!updateData.name && !updateData.email && !updateData.password) {
+	const updateData = await c.req.json<{ name?: string; email?: string; password?: string; role?: string }>();
+	if (!updateData.name && !updateData.email && !updateData.password && !updateData.role) {
 		return c.json({ error: "No fields to update" }, 400);
 	}
 
+	if (updateData.role && !ALLOWED_ROLES.includes(updateData.role as UserRole)) {
+		return c.json({ error: `Invalid role. Allowed: ${ALLOWED_ROLES.join(", ")}` }, 400);
+	}
+
 	const db = new Kysely<Database>({ dialect: new D1Dialect({ database: requireDb(c) }) });
-	const user = await db.selectFrom("users").where("email", "=", currentEmail).select("id").executeTakeFirst();
+	const user = await db
+		.selectFrom("users")
+		.where("email", "=", currentEmail)
+		.select(["id", "role"])
+		.executeTakeFirst();
 	if (!user) {
 		return c.json({ error: "User not found" }, 404);
 	}
@@ -233,6 +259,18 @@ app.put("/api/cli/users/:email", cliAuthMiddleware, async (c) => {
 		return c.json({ error: "Password must be at least 8 characters" }, 400);
 	}
 
+	// Prevent demoting the last admin
+	if (updateData.role && user.role === "admin" && updateData.role !== "admin") {
+		const adminCount = await db
+			.selectFrom("users")
+			.where("role", "=", "admin")
+			.select((eb) => eb.fn.count<number>("id").as("c"))
+			.executeTakeFirst();
+		if (Number(adminCount?.c ?? 0) <= 1) {
+			return c.json({ error: "Cannot demote the last admin" }, 400);
+		}
+	}
+
 	if (updateData.password) {
 		const hashed = await bcrypt.hash(updateData.password, 10);
 		await db
@@ -246,9 +284,15 @@ app.put("/api/cli/users/:email", cliAuthMiddleware, async (c) => {
 	const updateFields: Partial<Database["users"]> = { updatedAt: Date.now() };
 	if (updateData.name !== undefined) updateFields.name = updateData.name;
 	if (updateData.email) updateFields.email = updateData.email;
+	if (updateData.role) updateFields.role = updateData.role as UserRole;
 
 	if (Object.keys(updateFields).length > 1) {
 		await db.updateTable("users").set(updateFields).where("id", "=", user.id).execute();
+	}
+
+	// Revoke sessions when role is downgraded to user
+	if (updateData.role === "user") {
+		await deleteSessionsForUser(db, user.id);
 	}
 
 	return c.json({
@@ -256,6 +300,34 @@ app.put("/api/cli/users/:email", cliAuthMiddleware, async (c) => {
 		message: "User updated successfully",
 		user: { email: updateData.email || currentEmail },
 	});
+});
+
+app.put("/api/cli/users/:email/role", cliAuthMiddleware, async (c) => {
+	const email = c.req.param("email");
+	const { role } = await c.req.json<{ role: string }>();
+	if (!role || !ALLOWED_ROLES.includes(role as UserRole)) {
+		return c.json({ error: `Invalid role. Allowed: ${ALLOWED_ROLES.join(", ")}` }, 400);
+	}
+	const db = new Kysely<Database>({ dialect: new D1Dialect({ database: requireDb(c) }) });
+	const user = await db.selectFrom("users").where("email", "=", email).selectAll().executeTakeFirst();
+	if (!user) {
+		return c.json({ error: "User not found" }, 404);
+	}
+	if (user.role === "admin" && role !== "admin") {
+		const adminCount = await db
+			.selectFrom("users")
+			.where("role", "=", "admin")
+			.select((eb) => eb.fn.count<number>("id").as("c"))
+			.executeTakeFirst();
+		if (Number(adminCount?.c ?? 0) <= 1) {
+			return c.json({ error: "Cannot demote the last admin" }, 400);
+		}
+	}
+	await db.updateTable("users").set({ role, updatedAt: Date.now() }).where("id", "=", user.id).execute();
+	if (role === "user") {
+		await deleteSessionsForUser(db, user.id);
+	}
+	return c.json({ success: true, message: `Role set to ${role}` });
 });
 
 app.put("/api/cli/users/:email/activate", cliAuthMiddleware, async (c) => {

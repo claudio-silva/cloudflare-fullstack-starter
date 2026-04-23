@@ -10,6 +10,8 @@ export interface Database {
     emailVerified: number;
     createdAt: number;
     updatedAt: number;
+    /** Built-in roles: 'user' | 'admin'. Developers may add more. Default: 'user'. */
+    role: string;
   };
   accounts: {
     accountId: string;

@@ -20,6 +20,7 @@ type CliUserSummary = {
 	id: string;
 	email: string;
 	name: string | null;
+	role?: string;
 	emailVerified: number | boolean;
 	createdAt: number;
 	updatedAt: number;
@@ -39,8 +40,8 @@ type CliUserDetails = CliUserSummary & {
 	activeSessions: number;
 };
 
-type CreateUserPayload = { email: string; password: string; name?: string };
-type EditUserPayload = { name?: string; email?: string; password?: string };
+type CreateUserPayload = { email: string; password: string; name?: string; role?: "user" | "admin" };
+type EditUserPayload = { name?: string; email?: string; password?: string; role?: "user" | "admin" };
 
 type BasicResponse = { success?: boolean; message?: string };
 type CreateUserResponse = BasicResponse & { userId?: string };
@@ -56,6 +57,7 @@ type CliDatabaseClient = {
 	editUser: (email: string, updateData: EditUserPayload) => Promise<EditUserResponse>;
 	getUser: (email: string) => Promise<CliUserDetails>;
 	listUsers: (params?: { search?: string; limit?: number }) => Promise<CliUserSummary[]>;
+	setRole: (email: string, role: "user" | "admin") => Promise<BasicResponse>;
 };
 
 function loadEnvFile(environment: Environment) {
@@ -178,5 +180,12 @@ export async function connectToDatabase(environment: Environment): Promise<CliDa
 			);
 			return response.users;
 		},
+		setRole: (email, role) =>
+			makeApiRequest<BasicResponse>(
+				"PUT",
+				`/api/cli/users/${encodeURIComponent(email)}/role`,
+				{ role },
+				environment,
+			),
 	};
 }

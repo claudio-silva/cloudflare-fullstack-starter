@@ -277,9 +277,10 @@ npm run auth list-users
 npm run auth list-users -- --limit 10           # limit results
 npm run auth list-users -- --search "john"      # search by email or name
 
-# Create a new user (useful for seeding admin accounts)
+# Create a new user
 npm run auth create-user -- -u admin@example.com -p password123
 npm run auth create-user -- -u admin@example.com -p password123 -n "Admin User"
+npm run auth create-user -- -u admin@example.com -p password123 -r admin   # create as admin
 
 # View detailed user info (includes account provider, sessions, timestamps)
 npm run auth show-user -- -u admin@example.com
@@ -288,6 +289,11 @@ npm run auth show-user -- -u admin@example.com
 npm run auth edit-user -- -u admin@example.com -n "New Name"
 npm run auth edit-user -- -u admin@example.com -e newemail@example.com
 npm run auth edit-user -- -u admin@example.com -p newpassword123
+npm run auth edit-user -- -u admin@example.com -r admin    # promote to admin
+
+# Set a user's role directly
+npm run auth set-role -- -u admin@example.com -r admin
+npm run auth set-role -- -u user@example.com -r user
 
 # Activate or deactivate a user account
 npm run auth activate-user -- -u admin@example.com -s on   # activate
@@ -297,6 +303,13 @@ npm run auth activate-user -- -u admin@example.com -s off  # deactivate
 npm run auth delete-user -- -u admin@example.com
 npm run auth delete-user -- --all                          # delete ALL users (use with caution)
 ```
+
+User roles:
+
+- `user` (default): standard account with no special privileges.
+- `admin`: full management access. The last admin cannot be demoted.
+
+Additional roles can be added by the developer by extending the migration and the worker validation logic.
 
 For remote environments, set `CLI_API_KEY` in your `.env.*` file (same value must be deployed to the Worker). You can pass the environment as a flag or as a positional argument:
 ```bash

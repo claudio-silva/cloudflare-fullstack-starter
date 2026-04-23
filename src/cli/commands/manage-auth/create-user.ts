@@ -9,6 +9,7 @@ type CreateUserOptions = {
 	pass: string;
 	env?: EnvironmentOption;
 	name?: string;
+	role?: "user" | "admin";
 };
 
 export function createCreateUserCommand(): Command {
@@ -21,18 +22,23 @@ export function createCreateUserCommand(): Command {
 		.argument("[environment]", "Target environment (local, preview, production)")
 		.option("--env <environment>", "Target environment (local, preview, production)")
 		.option("--name <name>", "User display name")
+		.option("-r, --role <role>", "User role: user | admin (default: user)")
 		.action(async (environment: string | undefined, options: CreateUserOptions) => {
 			try {
-				const { user: email, pass: password, name } = options;
+				const { user: email, pass: password, name, role } = options;
+				const allowedRoles = ["user", "admin"] as const;
 				const env = normalizeEnvironment(options.env, environment);
 				const db = await connectToDatabase(env);
 
 				if (password.length < 8) {
 					printWarning("Password is shorter than 8 characters.");
 				}
+				if (role && !allowedRoles.includes(role)) {
+					throw new Error(`Invalid role '${role}'. Allowed: ${allowedRoles.join(", ")}`);
+				}
 
-				await db.createUser({ email, password, name: name || undefined });
-				printSuccess(`User '${email}' created successfully`);
+				await db.createUser({ email, password, name: name || undefined, role });
+				printSuccess(`User '${email}' created successfully${role ? ` as ${role}` : ""}`);
 			} catch (error: unknown) {
 				const message = error instanceof Error ? error.message : "Unknown error";
 				printError(`Failed to create user: ${message}`);

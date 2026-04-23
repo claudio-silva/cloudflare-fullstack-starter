@@ -5,6 +5,7 @@ import { createDeleteUserCommand } from "../src/cli/commands/manage-auth/delete-
 import { createEditUserCommand } from "../src/cli/commands/manage-auth/edit-user";
 import { createCreateUserCommand } from "../src/cli/commands/manage-auth/create-user";
 import { createActivateUserCommand } from "../src/cli/commands/manage-auth/activate-user";
+import { createSetRoleCommand } from "../src/cli/commands/manage-auth/set-role";
 
 const program = new Command();
 
@@ -16,5 +17,6 @@ program.addCommand(createDeleteUserCommand());
 program.addCommand(createEditUserCommand());
 program.addCommand(createCreateUserCommand());
 program.addCommand(createActivateUserCommand());
+program.addCommand(createSetRoleCommand());
 
 program.parse();
