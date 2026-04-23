@@ -145,9 +145,25 @@ npm run init
 ```
 The script:
 - Copies template files to `.env.local` / `.env.preview` / `.env.production` (if missing) and fills in your choices
-- Runs local database migrations
 
-### 4. Start development
+### 4. Set `CLI_API_KEY`
+
+Before using the auth CLI, generate a random key and add it to `.env.local` (and the remote `.env.*` files when you set up preview/production):
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
+# paste the output as: CLI_API_KEY=<value>
+```
+
+The same key must also be deployed to the Worker — the deploy scripts sync it automatically from the `.env.*` file.
+
+### 5. Run migrations and start development
+
+```bash
+npm run db:migrate:local
+```
+
+### 6. Start development
 
 ```bash
 npm run dev
@@ -282,7 +298,7 @@ npm run auth delete-user -- -u admin@example.com
 npm run auth delete-user -- --all                          # delete ALL users (use with caution)
 ```
 
-For remote environments, set `CLI_ADMIN_EMAIL`/`CLI_ADMIN_PASSWORD` in your `.env.*` file. You can pass the environment as a flag or as a positional argument:
+For remote environments, set `CLI_API_KEY` in your `.env.*` file (same value must be deployed to the Worker). You can pass the environment as a flag or as a positional argument:
 ```bash
 npm run auth list-users -- --env preview
 npm run auth list-users -- --env production
@@ -362,6 +378,7 @@ echo "RESEND_API_KEY=re_xxxxxxxxxxxxx" >> .env.local
 3. Add your secrets to `.env.preview` and `.env.production`:
    ```bash
    echo "RESEND_API_KEY=re_xxxxxxxxxxxxx" >> .env.production
+   echo "CLI_API_KEY=<your-generated-key>" >> .env.production
    ```
 4. Deploy:
    ```bash

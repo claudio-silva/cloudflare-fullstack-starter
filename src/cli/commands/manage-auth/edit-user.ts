@@ -22,7 +22,7 @@ export function createEditUserCommand(): Command {
 	const command = new Command("edit-user");
 
 	command
-		.description("Edit user information (name, email, password)")
+		.description("Edit user information (name, email, password, role)")
 		.requiredOption("-u, --user <email>", "Current user email address")
 		.option("-n, --name <name>", "New display name")
 		.option("-e, --email <email>", "New email address")

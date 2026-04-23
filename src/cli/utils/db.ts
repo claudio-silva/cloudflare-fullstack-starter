@@ -58,8 +58,6 @@ type CliDatabaseClient = {
 	listUsers: (params?: { search?: string; limit?: number }) => Promise<CliUserSummary[]>;
 };
 
-type SessionCookie = { name: string; value: string };
-
 function loadEnvFile(environment: Environment) {
 	const fileName = `.env.${environment}`;
 	const filePath = resolve(process.cwd(), fileName);
@@ -96,30 +94,6 @@ function loadEnvFile(environment: Environment) {
 	}
 }
 
-function getSetCookieHeaders(response: Response): string[] {
-	const headerExtensions = response.headers as Headers & { getSetCookie?: () => string[] };
-	if (typeof headerExtensions.getSetCookie === "function") {
-		const cookies = headerExtensions.getSetCookie();
-		if (cookies.length > 0) {
-			return cookies;
-		}
-	}
-
-	const single = response.headers.get("set-cookie");
-	return single ? [single] : [];
-}
-
-function extractSessionCookie(cookieHeaders: string[]): SessionCookie | null {
-	const pattern = /\b((?:__Host-|__Secure-)?better[-_]auth\.(?:session(?:_token)?))=([^;]+)/i;
-	for (const line of cookieHeaders) {
-		const match = line.match(pattern);
-		if (match?.[1] && match?.[2]) {
-			return { name: match[1], value: match[2] };
-		}
-	}
-	return null;
-}
-
 function getApiBaseUrl(environment: Environment): string {
 	switch (environment) {
 		case "local":
@@ -133,71 +107,14 @@ function getApiBaseUrl(environment: Environment): string {
 	}
 }
 
-async function authenticateAsAdmin(environment: Environment, email: string, password: string): Promise<SessionCookie> {
-	const baseUrl = getApiBaseUrl(environment);
-	const signInUrl = `${baseUrl}/api/auth/sign-in/email`;
-	const responseBodyText = await fetch(signInUrl, {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ email, password }),
-	}).then(async (response) => {
-		const text = await response.text();
-		let body: unknown = {};
-		if (text) {
-			try {
-				body = JSON.parse(text);
-			} catch {
-				body = {};
-			}
-		}
-		return { response, body };
-	});
-	const { response, body } = responseBodyText;
-
-	if (!response.ok) {
-		const errorData = (body as { message?: string }) || {};
-		const passwordStatus = password ? "set" : "unset";
-		const message = errorData.message || response.statusText;
+function getAuthHeaders(environment: Environment): Record<string, string> {
+	const apiKey = process.env.CLI_API_KEY;
+	if (!apiKey) {
 		throw new Error(
-			`Admin authentication failed for user '${email}' (password is ${passwordStatus}): ${message}`,
+			`CLI operations in ${environment} require CLI_API_KEY to be set in .env.${environment}.`,
 		);
 	}
-
-	const setCookieHeaders = getSetCookieHeaders(response);
-	const sessionCookie = extractSessionCookie(setCookieHeaders);
-	if (sessionCookie) {
-		return sessionCookie;
-	}
-
-	const parsedBody = body as { token?: string; session?: { token?: string } };
-	if (parsedBody.token && typeof parsedBody.token === "string") {
-		return { name: "better-auth.session", value: parsedBody.token };
-	}
-	if (parsedBody.session?.token && typeof parsedBody.session.token === "string") {
-		return { name: "better-auth.session", value: parsedBody.session.token };
-	}
-
-	if (setCookieHeaders.length > 0) {
-		throw new Error("Session token not found in authentication response");
-	}
-	throw new Error("No session cookie received from authentication");
-}
-
-async function getAuthHeaders(environment: Environment): Promise<Record<string, string>> {
-	if (environment === "local") {
-		return {};
-	}
-
-	const adminEmail = process.env.CLI_ADMIN_EMAIL;
-	const adminPassword = process.env.CLI_ADMIN_PASSWORD;
-	if (!adminEmail || !adminPassword) {
-		throw new Error(
-			`CLI operations in ${environment} environment require admin credentials for user '${adminEmail || "<unset>"}' (password is ${adminPassword ? "set" : "unset"}). Set CLI_ADMIN_EMAIL and CLI_ADMIN_PASSWORD.`,
-		);
-	}
-
-	const session = await authenticateAsAdmin(environment, adminEmail, adminPassword);
-	return { Cookie: `${session.name}=${session.value}` };
+	return { "x-api-key": apiKey };
 }
 
 async function makeApiRequest<T>(method: string, path: string, body: unknown, environment: Environment): Promise<T> {
@@ -205,7 +122,7 @@ async function makeApiRequest<T>(method: string, path: string, body: unknown, en
 	const url = `${baseUrl}${path}`;
 	const headers = {
 		"Content-Type": "application/json",
-		...(await getAuthHeaders(environment)),
+		...getAuthHeaders(environment),
 	};
 
 	const res = await fetch(url, {

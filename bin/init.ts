@@ -1,7 +1,6 @@
 import fs from "fs";
 import path from "path";
 import readline from "readline";
-import { execSync } from "child_process";
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -16,9 +15,9 @@ type Answers = {
 
 const isInteractive = process.stdin.isTTY;
 
-function parseArgs(): Partial<Answers> & { help?: boolean; runMigrations?: boolean } {
+function parseArgs(): Partial<Answers> & { help?: boolean } {
 	const args = process.argv.slice(2);
-	const result: Partial<Answers> & { help?: boolean; runMigrations?: boolean } = {};
+	const result: Partial<Answers> & { help?: boolean } = {};
 
 	for (let i = 0; i < args.length; i++) {
 		const arg = args[i];
@@ -32,8 +31,6 @@ function parseArgs(): Partial<Answers> & { help?: boolean; runMigrations?: boole
 			result.appDomain = args[++i];
 		} else if (arg === "--preview-domain" && args[i + 1]) {
 			result.previewDomain = args[++i];
-		} else if (arg === "--no-migrate") {
-			result.runMigrations = false;
 		}
 	}
 	return result;
@@ -48,7 +45,6 @@ Options:
   --app-name <name>        App display name (UI, emails, titles)
   --app-domain <url>       Production app URL (e.g., https://app.myapp.com)
   --preview-domain <url>   Preview app URL (e.g., https://preview.myapp.com)
-  --no-migrate             Skip running local migrations
   -h, --help               Show this help
 
 Interactive mode:
@@ -151,16 +147,6 @@ function updatePackageJsonScripts(pkgPath: string, projectName: string) {
 	writeJSON(pkgPath, pkg);
 }
 
-function runMigrations(root: string) {
-	console.log("\n🔄 Running local migrations...");
-	try {
-		execSync("npm run db:migrate:local", { cwd: root, stdio: "inherit" });
-		console.log("✅ Migrations applied successfully.");
-	} catch (error) {
-		console.error("⚠️  Migration failed. You can run manually: npm run db:migrate:local", error);
-	}
-}
-
 async function main() {
 	const cliArgs = parseArgs();
 
@@ -204,20 +190,11 @@ async function main() {
 	updateEnvFiles(root, answers);
 	console.log("  ✓ env files");
 
-	// Run migrations unless explicitly disabled
-	const shouldMigrate = cliArgs.runMigrations !== false;
-	if (shouldMigrate) {
-		runMigrations(root);
-	}
-
 	console.log("\n✅ Init complete!");
 	console.log("\nNext steps:");
-	if (!shouldMigrate) {
-		console.log("  1. Run migrations: npm run db:migrate:local");
-		console.log("  2. Start dev server: npm run dev");
-	} else {
-		console.log("  1. Start dev server: npm run dev");
-	}
+	console.log("  1. Run migrations: npm run db:migrate:local");
+	console.log("  2. Set CLI_API_KEY in .env.local (and in each .env.<env> for remote envs)");
+	console.log("  3. Start dev server: npm run dev");
 	console.log("\nOptional:");
 	console.log("  • Set RESEND_API_KEY in .env.local for email verification");
 	console.log("  • Create a user: npm run auth create-user -u admin@example.com -p password");

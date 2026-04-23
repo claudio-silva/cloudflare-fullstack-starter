@@ -5,7 +5,7 @@ import { D1Dialect } from "kysely-d1";
 import bcrypt from "bcryptjs";
 import type { Database } from "./types/database";
 import type { AppBindings, AppContext } from "./types/context";
-import { authMiddleware, createAuth, handleAuthRequest } from "./middleware/auth";
+import { authMiddleware, handleAuthRequest } from "./middleware/auth";
 
 const app = new Hono<AppBindings>();
 
@@ -25,17 +25,27 @@ app.get("/api/", (c) => {
 // Auth routes
 app.all("/api/auth/*", (c) => handleAuthRequest(c));
 
-// CLI auth middleware (local open, remote requires session)
-const cliAuthMiddleware = async (c: AppContext, next: Next) => {
-	const environment = c.env.ENVIRONMENT || "local";
-	if (environment === "local") {
-		await next();
-		return;
+// Constant-time string comparison to mitigate timing attacks on key checks.
+const safeEqual = (a: string, b: string): boolean => {
+	if (a.length !== b.length) return false;
+	let result = 0;
+	for (let i = 0; i < a.length; i += 1) {
+		result |= a.charCodeAt(i) ^ b.charCodeAt(i);
 	}
-	const auth = createAuth(c);
-	const session = await auth.api.getSession({ headers: c.req.raw.headers });
-	if (!session) {
-		return c.json({ error: "Admin authentication required for CLI operations in remote environments" }, 401);
+	return result === 0;
+};
+
+// CLI auth middleware — requires a shared `x-api-key` header matching
+// `CLI_API_KEY` in every environment. Fails closed if the key is not configured.
+const cliAuthMiddleware = async (c: AppContext, next: Next) => {
+	const expected = c.env.CLI_API_KEY;
+	if (!expected) {
+		console.error("[CLI] CLI_API_KEY is not configured on the worker");
+		return c.json({ error: "CLI API is not configured on the server" }, 500);
+	}
+	const presented = c.req.header("x-api-key") || c.req.header("X-Api-Key") || "";
+	if (!presented || !safeEqual(presented, expected)) {
+		return c.json({ error: "Invalid or missing CLI API key" }, 401);
 	}
 	await next();
 };

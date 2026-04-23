@@ -9,5 +9,8 @@ export type AppEnv = {
 	// Google OAuth credentials (optional)
 	GOOGLE_CLIENT_ID?: string;
 	GOOGLE_CLIENT_SECRET?: string;
+	// Shared secret used by management CLI (`npm run auth …`) to authenticate
+	// against `/api/cli/*`. Must be set in every environment.
+	CLI_API_KEY?: string;
 };
 

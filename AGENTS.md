@@ -140,11 +140,17 @@ pnpm db:time-travel:restore -- --env production --timestamp "2026-04-01 12:00:00
 # Database — seeds
 pnpm db:seed -- --env local --file admin-bootstrap.sql
 
-# Auth CLI (dev server must be running for local)
-pnpm auth list-users        # List all users (local)
-pnpm auth list-users production     # Positional env shorthand
-pnpm auth create-user -u email -p pass  # Create user
-pnpm auth delete-user -u email          # Delete user
+# Auth CLI
+# Requires CLI_API_KEY in .env.<env>; key must also be deployed to the worker
+# dev server must be running for local
+# Available user management commands (run `npm auth help <command>` to see options):
+pnpm auth list-users
+pnpm auth create-user
+pnpm auth edit-user
+pnpm auth delete-user
+pnpm auth activate-user
+pnpm auth set-role
+pnpm auth show-user
 
 # Build & Deploy
 pnpm build                  # Build for production
@@ -211,6 +217,11 @@ const environment = c.env.ENVIRONMENT;  // from wrangler.toml
 **Deploying secrets:**
 - `pnpm deploy:preview` / `pnpm deploy:production` automatically syncs secrets from `.env.<env>` files
 - Only changed secrets are synced (tracked via hash file)
+
+**CLI auth (`CLI_API_KEY`):**
+- The auth CLI authenticates to `/api/cli/*` using a shared `CLI_API_KEY` secret sent as `x-api-key`.
+- Generate one per environment: `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`
+- Set it in each `.env.<env>` file; the deploy scripts sync it to the Worker automatically.
 
 ## Don'ts
 
