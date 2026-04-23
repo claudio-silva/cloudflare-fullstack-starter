@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { connectToDatabase } from "../../utils/db";
+import { connectToDatabase, normalizeEnvironment } from "../../utils/db";
 import { printTable, formatUsersForTable, printError, printInfo } from "../../utils/output";
 
 type EnvironmentOption = "local" | "preview" | "production";
@@ -7,7 +7,7 @@ type EnvironmentOption = "local" | "preview" | "production";
 type ListUsersOptions = {
 	limit: string;
 	search?: string;
-	env: EnvironmentOption;
+	env?: EnvironmentOption;
 };
 
 export function createListUsersCommand(): Command {
@@ -15,12 +15,14 @@ export function createListUsersCommand(): Command {
 
 	command
 		.description("List users from the database")
+		.argument("[environment]", "Target environment (local, preview, production)")
 		.option("--limit <number>", "Maximum number of users to show (default: 50)", "50")
 		.option("--search <terms>", "Search users by partial email or name")
-		.option("--env <environment>", "Target environment (local, preview, production)", "local")
-		.action(async (options: ListUsersOptions) => {
+		.option("--env <environment>", "Target environment (local, preview, production)")
+		.action(async (environment: string | undefined, options: ListUsersOptions) => {
 			try {
-				const { limit, search, env } = options;
+				const env = normalizeEnvironment(options.env, environment);
+				const { limit, search } = options;
 				const limitNum = parseInt(limit, 10);
 
 				if (Number.isNaN(limitNum) || limitNum < 1) {

@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { connectToDatabase } from "../../utils/db";
+import { connectToDatabase, normalizeEnvironment } from "../../utils/db";
 import { printError, printSuccess } from "../../utils/output";
 
 type EnvironmentOption = "local" | "preview" | "production";
@@ -7,7 +7,7 @@ type EnvironmentOption = "local" | "preview" | "production";
 type ActivateUserOptions = {
 	user: string;
 	status: "on" | "off";
-	env: EnvironmentOption;
+	env?: EnvironmentOption;
 };
 
 export function createActivateUserCommand(): Command {
@@ -17,10 +17,12 @@ export function createActivateUserCommand(): Command {
 		.description("Activate or deactivate a user account")
 		.requiredOption("-u, --user <email>", "User email address")
 		.requiredOption("-s, --status <on|off>", "Activation status (on or off)")
-		.option("--env <environment>", "Target environment (local, preview, production)", "local")
-		.action(async (options: ActivateUserOptions) => {
+		.argument("[environment]", "Target environment (local, preview, production)")
+		.option("--env <environment>", "Target environment (local, preview, production)")
+		.action(async (environment: string | undefined, options: ActivateUserOptions) => {
 			try {
-				const { user: email, status, env } = options;
+				const { user: email, status } = options;
+				const env = normalizeEnvironment(options.env, environment);
 				if (!["on", "off"].includes(status)) {
 					printError('Status must be either "on" or "off"');
 					process.exit(1);

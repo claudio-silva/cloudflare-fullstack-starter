@@ -58,10 +58,11 @@ src/
     ├── types/database.ts   # Kysely types
     └── utils/              # Email templates, Resend
 
-src/cli/                    # CLI commands (manage users via API)
+src/cli/                    # CLI commands (auth user management + db utilities)
 src/config.ts               # Global app configuration (app name, etc.)
-bin/                        # CLI entry points (init, auth)
+bin/                        # CLI entry points (init, auth, db)
 migrations/                 # D1 SQL migrations
+seeds/                      # Idempotent SQL seed files
 ```
 
 ## Key Patterns
@@ -115,15 +116,33 @@ const users = await db.selectFrom("users").selectAll().execute();
 
 ## Commands
 
+> For remote database/auth commands, `.env.<env>` is loaded automatically — no manual `source` needed.
+
 ```bash
 # Development
 pnpm dev                    # Start dev server (logs appear in terminal)
 
-# Database
-pnpm db:migrate:local       # Run migrations
+# Database — migrations
+pnpm db:migrate:local       # Run migrations locally
+pnpm db:migrate:preview:safe        # Migrate preview with pre-migration backup
+pnpm db:migrate:production:safe     # Migrate production with pre-migration backup
 
-# Auth CLI
-pnpm auth list-users        # List all users
+# Database — backup & restore
+pnpm db:backup:local        # Export local D1 to .wrangler/backups/
+pnpm db:backup:production   # Export production D1 to .wrangler/backups/
+pnpm db:restore:local:latest        # Restore latest backup (auto-backs-up current DB first)
+pnpm db:restore -- --env production --file prod-backup.sql
+
+# Database — time-travel (remote envs only)
+pnpm db:time-travel:info -- --env production
+pnpm db:time-travel:restore -- --env production --timestamp "2026-04-01 12:00:00"
+
+# Database — seeds
+pnpm db:seed -- --env local --file admin-bootstrap.sql
+
+# Auth CLI (dev server must be running for local)
+pnpm auth list-users        # List all users (local)
+pnpm auth list-users production     # Positional env shorthand
 pnpm auth create-user -u email -p pass  # Create user
 pnpm auth delete-user -u email          # Delete user
 
@@ -152,6 +171,7 @@ pnpm tail:production        # Stream logs from production
 1. Create migration in `migrations/`
 2. Add types to `src/worker/types/database.ts`
 3. Run `pnpm db:migrate:local`
+4. For remote envs, prefer `pnpm db:migrate:preview:safe` / `pnpm db:migrate:production:safe` (takes a backup first)
 
 ## Configuration
 

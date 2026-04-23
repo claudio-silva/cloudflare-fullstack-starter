@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { connectToDatabase } from "../../utils/db";
+import { connectToDatabase, normalizeEnvironment } from "../../utils/db";
 import { printError, printSuccess, printWarning } from "../../utils/output";
 
 type EnvironmentOption = "local" | "preview" | "production";
@@ -9,7 +9,7 @@ type EditUserOptions = {
 	name?: string;
 	email?: string;
 	pass?: string;
-	env: EnvironmentOption;
+	env?: EnvironmentOption;
 };
 
 type UpdateData = {
@@ -27,10 +27,12 @@ export function createEditUserCommand(): Command {
 		.option("-n, --name <name>", "New display name")
 		.option("-e, --email <email>", "New email address")
 		.option("-p, --pass <password>", "New password (plain text)")
-		.option("--env <environment>", "Target environment (local, preview, production)", "local")
-		.action(async (options: EditUserOptions) => {
+		.argument("[environment]", "Target environment (local, preview, production)")
+		.option("--env <environment>", "Target environment (local, preview, production)")
+		.action(async (environment: string | undefined, options: EditUserOptions) => {
 			try {
-				const { user: currentEmail, name, email: newEmail, pass: password, env } = options;
+				const { user: currentEmail, name, email: newEmail, pass: password } = options;
+				const env = normalizeEnvironment(options.env, environment);
 				if (!name && !newEmail && !password) {
 					printError("Must specify at least one field to update (--name, --email, or --pass)");
 					process.exit(1);

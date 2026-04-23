@@ -1,4 +1,20 @@
-type Environment = "local" | "preview" | "production";
+import { readFileSync, existsSync } from "node:fs";
+import { resolve } from "node:path";
+
+export type Environment = "local" | "preview" | "production";
+
+const SUPPORTED_ENVIRONMENTS = new Set<Environment>(["local", "preview", "production"]);
+
+export function normalizeEnvironment(
+	optionValue?: string,
+	positionalValue?: string,
+): Environment {
+	const candidate = optionValue || positionalValue || "local";
+	if (SUPPORTED_ENVIRONMENTS.has(candidate as Environment)) {
+		return candidate as Environment;
+	}
+	throw new Error(`Invalid environment '${candidate}'. Expected one of: local, preview, production.`);
+}
 
 type CliUserSummary = {
 	id: string;
@@ -42,6 +58,68 @@ type CliDatabaseClient = {
 	listUsers: (params?: { search?: string; limit?: number }) => Promise<CliUserSummary[]>;
 };
 
+type SessionCookie = { name: string; value: string };
+
+function loadEnvFile(environment: Environment) {
+	const fileName = `.env.${environment}`;
+	const filePath = resolve(process.cwd(), fileName);
+	if (!existsSync(filePath)) {
+		return;
+	}
+
+	const envFile = readFileSync(filePath, "utf-8");
+	for (const rawLine of envFile.split(/\r?\n/)) {
+		const line = rawLine.trim();
+		if (!line || line.startsWith("#")) continue;
+
+		const equalsIndex = line.indexOf("=");
+		if (equalsIndex === -1) continue;
+
+		const key = line.slice(0, equalsIndex).trim();
+		let value = line.slice(equalsIndex + 1).trim();
+		if (!key) continue;
+
+		if (value.startsWith('"') && value.endsWith('"') && value.length >= 2) {
+			value = value.slice(1, -1).replace(/\\"/g, '"');
+		} else if (value.startsWith("'") && value.endsWith("'") && value.length >= 2) {
+			value = value.slice(1, -1).replace(/\\'/g, "'");
+		} else {
+			const commentStart = value.indexOf(" #");
+			if (commentStart !== -1) {
+				value = value.slice(0, commentStart).trim();
+			}
+		}
+
+		if (process.env[key] === undefined) {
+			process.env[key] = value;
+		}
+	}
+}
+
+function getSetCookieHeaders(response: Response): string[] {
+	const headerExtensions = response.headers as Headers & { getSetCookie?: () => string[] };
+	if (typeof headerExtensions.getSetCookie === "function") {
+		const cookies = headerExtensions.getSetCookie();
+		if (cookies.length > 0) {
+			return cookies;
+		}
+	}
+
+	const single = response.headers.get("set-cookie");
+	return single ? [single] : [];
+}
+
+function extractSessionCookie(cookieHeaders: string[]): SessionCookie | null {
+	const pattern = /\b((?:__Host-|__Secure-)?better[-_]auth\.(?:session(?:_token)?))=([^;]+)/i;
+	for (const line of cookieHeaders) {
+		const match = line.match(pattern);
+		if (match?.[1] && match?.[2]) {
+			return { name: match[1], value: match[2] };
+		}
+	}
+	return null;
+}
+
 function getApiBaseUrl(environment: Environment): string {
 	switch (environment) {
 		case "local":
@@ -55,32 +133,54 @@ function getApiBaseUrl(environment: Environment): string {
 	}
 }
 
-async function authenticateAsAdmin(environment: Environment, email: string, password: string): Promise<string> {
+async function authenticateAsAdmin(environment: Environment, email: string, password: string): Promise<SessionCookie> {
 	const baseUrl = getApiBaseUrl(environment);
 	const signInUrl = `${baseUrl}/api/auth/sign-in/email`;
-
-	const response = await fetch(signInUrl, {
+	const responseBodyText = await fetch(signInUrl, {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify({ email, password }),
+	}).then(async (response) => {
+		const text = await response.text();
+		let body: unknown = {};
+		if (text) {
+			try {
+				body = JSON.parse(text);
+			} catch {
+				body = {};
+			}
+		}
+		return { response, body };
 	});
+	const { response, body } = responseBodyText;
 
 	if (!response.ok) {
-		const errorData = (await response.json().catch(() => ({}))) as { message?: string };
-		throw new Error(`Admin authentication failed: ${errorData.message || response.statusText}`);
+		const errorData = (body as { message?: string }) || {};
+		const passwordStatus = password ? "set" : "unset";
+		const message = errorData.message || response.statusText;
+		throw new Error(
+			`Admin authentication failed for user '${email}' (password is ${passwordStatus}): ${message}`,
+		);
 	}
 
-	const setCookieHeader = response.headers.get("set-cookie");
-	if (!setCookieHeader) {
-		throw new Error("No session cookie received from authentication");
+	const setCookieHeaders = getSetCookieHeaders(response);
+	const sessionCookie = extractSessionCookie(setCookieHeaders);
+	if (sessionCookie) {
+		return sessionCookie;
 	}
 
-	const sessionMatch = setCookieHeader.match(/better-auth\.session=([^;]+)/);
-	if (!sessionMatch) {
+	const parsedBody = body as { token?: string; session?: { token?: string } };
+	if (parsedBody.token && typeof parsedBody.token === "string") {
+		return { name: "better-auth.session", value: parsedBody.token };
+	}
+	if (parsedBody.session?.token && typeof parsedBody.session.token === "string") {
+		return { name: "better-auth.session", value: parsedBody.session.token };
+	}
+
+	if (setCookieHeaders.length > 0) {
 		throw new Error("Session token not found in authentication response");
 	}
-
-	return sessionMatch[1];
+	throw new Error("No session cookie received from authentication");
 }
 
 async function getAuthHeaders(environment: Environment): Promise<Record<string, string>> {
@@ -92,12 +192,12 @@ async function getAuthHeaders(environment: Environment): Promise<Record<string, 
 	const adminPassword = process.env.CLI_ADMIN_PASSWORD;
 	if (!adminEmail || !adminPassword) {
 		throw new Error(
-			`CLI operations in ${environment} environment require admin credentials. Set CLI_ADMIN_EMAIL and CLI_ADMIN_PASSWORD.`,
+			`CLI operations in ${environment} environment require admin credentials for user '${adminEmail || "<unset>"}' (password is ${adminPassword ? "set" : "unset"}). Set CLI_ADMIN_EMAIL and CLI_ADMIN_PASSWORD.`,
 		);
 	}
 
-	const sessionToken = await authenticateAsAdmin(environment, adminEmail, adminPassword);
-	return { Cookie: `better-auth.session=${sessionToken}` };
+	const session = await authenticateAsAdmin(environment, adminEmail, adminPassword);
+	return { Cookie: `${session.name}=${session.value}` };
 }
 
 async function makeApiRequest<T>(method: string, path: string, body: unknown, environment: Environment): Promise<T> {
@@ -121,6 +221,7 @@ async function makeApiRequest<T>(method: string, path: string, body: unknown, en
 }
 
 export async function connectToDatabase(environment: Environment): Promise<CliDatabaseClient> {
+	loadEnvFile(environment);
 	return {
 		createUser: (data) => makeApiRequest<CreateUserResponse>("POST", "/api/cli/users", data, environment),
 		updatePassword: (email, password) =>

@@ -1,12 +1,12 @@
 import { Command } from "commander";
-import { connectToDatabase } from "../../utils/db";
+import { connectToDatabase, normalizeEnvironment } from "../../utils/db";
 import { printUser, printError } from "../../utils/output";
 
 type EnvironmentOption = "local" | "preview" | "production";
 
 type ShowUserOptions = {
 	user: string;
-	env: EnvironmentOption;
+	env?: EnvironmentOption;
 };
 
 export function createShowUserCommand(): Command {
@@ -15,10 +15,12 @@ export function createShowUserCommand(): Command {
 	command
 		.description("Show detailed information about a user")
 		.requiredOption("-u, --user <email>", "User email address")
-		.option("--env <environment>", "Target environment (local, preview, production)", "local")
-		.action(async (options: ShowUserOptions) => {
+		.argument("[environment]", "Target environment (local, preview, production)")
+		.option("--env <environment>", "Target environment (local, preview, production)")
+		.action(async (environment: string | undefined, options: ShowUserOptions) => {
 			try {
-				const { user: email, env } = options;
+				const { user: email } = options;
+				const env = normalizeEnvironment(options.env, environment);
 				const db = await connectToDatabase(env);
 				const user = await db.getUser(email);
 

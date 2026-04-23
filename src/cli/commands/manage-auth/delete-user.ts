@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { connectToDatabase } from "../../utils/db";
+import { connectToDatabase, normalizeEnvironment } from "../../utils/db";
 import { printError, printSuccess, printWarning } from "../../utils/output";
 import * as readline from "readline";
 
@@ -8,7 +8,7 @@ type EnvironmentOption = "local" | "preview" | "production";
 type DeleteUserOptions = {
 	user?: string;
 	all?: boolean;
-	env: EnvironmentOption;
+	env?: EnvironmentOption;
 	force?: boolean;
 };
 
@@ -19,11 +19,13 @@ export function createDeleteUserCommand(): Command {
 		.description("Delete a user or all users and all associated data")
 		.option("-u, --user <email>", "User email address (cannot be used with --all)")
 		.option("-a, --all", "Delete all users (cannot be used with --user)")
-		.option("--env <environment>", "Target environment (local, preview, production)", "local")
+		.argument("[environment]", "Target environment (local, preview, production)")
+		.option("--env <environment>", "Target environment (local, preview, production)")
 		.option("--force", "Skip confirmation prompt")
-		.action(async (options: DeleteUserOptions) => {
+		.action(async (environment: string | undefined, options: DeleteUserOptions) => {
 			try {
-				const { user: email, all, env, force } = options;
+				const { user: email, all, force } = options;
+				const env = normalizeEnvironment(options.env, environment);
 				if (email && all) {
 					printError("Cannot specify both --user and --all options");
 					process.exit(1);

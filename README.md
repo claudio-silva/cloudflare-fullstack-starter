@@ -26,12 +26,12 @@ This starter removes that overhead **entirely**. Create a project from the templ
 | **API routes on workers** | Hono's elegant routing for backend endpoints |
 | **Hot Module Replacement** (HMR) | Rapid development with instant updates |
 | **TypeScript + ESLint** | Full type safety across frontend, backend, and database queries |
-| **Database Ready** | [Cloudflare D1](https://developers.cloudflare.com/d1/) with migrations, used for auth but extensible, use other databases if you want |
+| **Database Ready** | [Cloudflare D1](https://developers.cloudflare.com/d1/) with migrations, backup/restore, time-travel, and seeding — all from the CLI, for every environment |
 | **Multi-Environment** | Local, Preview, and Production environments with separate databases, configurations and secrets |
 | **Secrets Management** | Secrets are automatically synced from `.env.<env>` files to Cloudflare (optional), no need to manually set them in the dashboard (but you still can) |
 | **Complete Auth Flow** | Sign up, email verification, login, logout, profile management, powered by [Better Auth](https://www.better-auth.com/) |
 | **Transactional emails** | Email verification and password reset with Resend (easy to change to other providers) |
-| **CLI Tools** | Bundled user management commands, extensible for your own tooling |
+| **CLI Tools** | User management and full database tooling (migrate, backup, restore, time-travel, seed) across all environments, from your terminal |
 | **Dead simple deployment** | Deploy to Cloudflare's global network with one command |
 | **Built-in Observability** | Monitor your Worker logs, metrics, traces, performance and health |
 | **CI/CD Ready** | GitHub Actions workflow validates every push: lint, type-check, and build must pass.<br>You can also display the CI status badge in your README.md |
@@ -200,7 +200,16 @@ If wrangler is logged in, you can do it from the command line:
 - Email/password authentication with email verification and password reset
 - Session management with secure cookies
 - Protected routes with seamless authentication overlay that prevents content flashing and needless page reloads
-- CLI user management (create, list, view, edit, delete, activate) for both local and remote environments
+- CLI user management (create, list, view, edit, delete, activate) for local and remote environments, with positional env shorthand (`npm run auth list-users production`)
+
+### Database Features
+- D1 migrations applied per-environment via `npm run db:migrate:*`
+- **Safe migrate** — automatically takes a pre-migration backup before applying schema changes (`--safe`)
+- **Backup** — export any environment's D1 database to a timestamped `.sql` file in `.wrangler/backups/` with one command
+- **Restore** — restore from any backup file; for local databases, the current SQLite file is auto-backed-up before overwrite
+- **Backup management** — list and clean up old backups per-environment, with `--dry-run` and `--all` options
+- **Time Travel** — inspect and restore to any historical state of a remote D1 database using Cloudflare's built-in time-travel (point-in-time restore by timestamp or bookmark)
+- **Seeds** — run idempotent SQL files from `seeds/` against any environment, separately from migrations
 
 ### UI Features
 - Minimalistic app shell, so that you are free to create your own design and branding
@@ -230,9 +239,10 @@ If wrangler is logged in, you can do it from the command line:
 │       ├── middleware/      # Auth middleware
 │       ├── utils/           # Email templates, Resend
 │       └── index.ts         # API routes
-├── src/cli/                 # CLI commands
-├── bin/                     # CLI entry points
+├── src/cli/                 # CLI commands (auth user management, db utilities)
+├── bin/                     # CLI entry points (init, auth, db)
 ├── migrations/              # D1 SQL migrations
+├── seeds/                   # Idempotent SQL seed files (see seeds/README.md)
 ├── wrangler.toml            # Cloudflare config
 └── AGENTS.md                # Instructions for AI coding agents
 ```
@@ -272,23 +282,68 @@ npm run auth delete-user -- -u admin@example.com
 npm run auth delete-user -- --all                          # delete ALL users (use with caution)
 ```
 
-For remote environments, use the `--env` flag and set `CLI_ADMIN_EMAIL`/`CLI_ADMIN_PASSWORD` in your `.env.*` file:
+For remote environments, set `CLI_ADMIN_EMAIL`/`CLI_ADMIN_PASSWORD` in your `.env.*` file. You can pass the environment as a flag or as a positional argument:
 ```bash
 npm run auth list-users -- --env preview
 npm run auth list-users -- --env production
+
+# Positional shorthand (equivalent)
+npm run auth list-users production
+npm run auth show-user -- -u admin@example.com production
 ```
+
+The `.env.<env>` file is loaded automatically when a remote environment is targeted, so no manual `source` is needed.
 
 ### Database
 
 ```bash
-# Local development
+# Migrations
 npm run db:migrate:local
-npm run db:seed:local
-
-# Preview/Production (set D1 IDs in wrangler.toml first)
 npm run db:migrate:preview
 npm run db:migrate:production
+
+# Safe migrate: takes a backup before applying (recommended for remote envs)
+npm run db:migrate:preview:safe
+npm run db:migrate:production:safe
+
+# Backups — export D1 to a .sql file in .wrangler/backups/
+npm run db:backup:local
+npm run db:backup:preview
+npm run db:backup:production
+npm run db:backup:all         # all three environments at once
+
+# List backup files
+npm run db:backups:local
+npm run db:backups:production
+npm run db:backups -- --env preview --archive-dir ./.my-backups
+
+# Clean up backup files
+npm run db:backups:clean:local
+npm run db:backups:clean -- --env local --all        # delete without prompting
+npm run db:backups:clean -- --env local --dry-run    # preview what would be deleted
+
+# Restore from backup
+npm run db:restore:local:latest                                         # auto-picks latest, auto-backs-up existing local DB first
+npm run db:restore -- --env local --file my-backup.sql
+npm run db:restore -- --env preview --file preview-backup.sql
+npm run db:restore -- --env production --file production-backup.sql
+
+# Time Travel (remote envs only — requires D1 Time Travel to be enabled)
+npm run db:time-travel -- --env preview time-travel info
+npm run db:time-travel:info -- --env preview --timestamp "2026-04-01 12:00:00"
+npm run db:time-travel:restore -- --env production --timestamp "2026-04-01 12:00:00"
+npm run db:time-travel:restore -- --env production --bookmark <bookmark-id>
+
+# Seeds — run idempotent SQL files from the seeds/ directory
+npm run db:seed:local                                                    # auto-picks if only one .sql in seeds/
+npm run db:seed -- --env local --file admin-bootstrap.sql
+npm run db:seed -- --env preview --file admin-bootstrap.sql
+npm run db:seed -- --env production --file admin-bootstrap.sql
 ```
+
+> **Tip:** You can pass extra options after `--` in any `npm run db:*` shorthand, e.g. `npm run db:backup:local -- --archive-dir ./tmp`.
+
+See [`seeds/README.md`](seeds/README.md) for the seed convention and idempotency requirements.
 
 ## Environment Setup
 

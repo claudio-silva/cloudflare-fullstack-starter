@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { connectToDatabase } from "../../utils/db";
+import { connectToDatabase, normalizeEnvironment } from "../../utils/db";
 import { printError, printSuccess, printWarning } from "../../utils/output";
 
 type EnvironmentOption = "local" | "preview" | "production";
@@ -7,7 +7,7 @@ type EnvironmentOption = "local" | "preview" | "production";
 type CreateUserOptions = {
 	user: string;
 	pass: string;
-	env: EnvironmentOption;
+	env?: EnvironmentOption;
 	name?: string;
 };
 
@@ -18,11 +18,13 @@ export function createCreateUserCommand(): Command {
 		.description("Create a new user with email/password authentication")
 		.requiredOption("-u, --user <email>", "User email address")
 		.requiredOption("-p, --pass <password>", "Password (plain text)")
-		.option("--env <environment>", "Target environment (local, preview, production)", "local")
+		.argument("[environment]", "Target environment (local, preview, production)")
+		.option("--env <environment>", "Target environment (local, preview, production)")
 		.option("--name <name>", "User display name")
-		.action(async (options: CreateUserOptions) => {
+		.action(async (environment: string | undefined, options: CreateUserOptions) => {
 			try {
-				const { user: email, pass: password, env, name } = options;
+				const { user: email, pass: password, name } = options;
+				const env = normalizeEnvironment(options.env, environment);
 				const db = await connectToDatabase(env);
 
 				if (password.length < 8) {

@@ -221,6 +221,7 @@ async function main() {
 	console.log("\nOptional:");
 	console.log("  • Set RESEND_API_KEY in .env.local for email verification");
 	console.log("  • Create a user: npm run auth create-user -u admin@example.com -p password");
+	console.log("  • Seed data: add .sql files to seeds/ and run: npm run db:seed -- --env local --file <name>.sql");
 }
 
 main().catch((err) => {
