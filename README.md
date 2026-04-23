@@ -2,9 +2,9 @@
 
 [![CI](https://github.com/claudio-silva/cloudflare-fullstack-starter/actions/workflows/ci.yml/badge.svg)](https://github.com/claudio-silva/cloudflare-fullstack-starter/actions/workflows/ci.yml)
 
-**A full-stack project starter that gets you building real features immediately** — production-ready, optimized for AI agents, and built to scale on Cloudflare’s global edge network.
+**A full-stack project starter that gets you building real features immediately** — production-ready, set up for AI agentic coding, and built to scale on Cloudflare’s global edge network.
 
-Install this and start building. Authentication, database, UI, CLI, and deployment are all ready to go.
+Install and start building. Authentication, database, UI, CLI, and deployment are all ready to go.
 
 A great starting point for your next **MVP** or **SaaS** app.
 
