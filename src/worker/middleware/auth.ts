@@ -109,6 +109,9 @@ export function createAuth(c: AppContext) {
 				});
 			},
 		},
+		telemetry: {
+			enabled: false,
+		},
 		baseURL: getBaseURL(environment),
 	});
 }
