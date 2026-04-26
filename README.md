@@ -30,7 +30,7 @@ This starter removes that overhead **entirely**. Create a project from the templ
 | **Multi-Environment** | Local, Preview, and Production environments with separate databases, configurations and secrets |
 | **Secrets Management** | Secrets are automatically synced from `.env.<env>` files to Cloudflare (optional), no need to manually set them in the dashboard (but you still can) |
 | **Complete Auth Flow** | Sign up, email verification, login, logout, profile management, powered by [Better Auth](https://www.better-auth.com/) |
-| **Transactional emails** | Email verification and password reset with Resend (easy to change to other providers) |
+| **Transactional emails** | Email verification and password reset with Cloudflare Email Service by default, plus Resend via provider adapter |
 | **CLI Tools** | User management and full database tooling (migrate, backup, restore, time-travel, seed) across all environments, from your terminal |
 | **Dead simple deployment** | Deploy to Cloudflare's global network with one command |
 | **Built-in Observability** | Monitor your Worker logs, metrics, traces, performance and health |
@@ -209,7 +209,7 @@ If wrangler is logged in, you can do it from the command line:
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS, shadcn/ui |
 | Backend | Hono (Workers), Cloudflare Vite Plugin, Better Auth, Kysely |
 | Database | Cloudflare D1 (clustered SQLite) |
-| Email | Resend (pluggable) |
+| Email | Cloudflare Email Service or Resend via provider adapters |
 | Deployment | Cloudflare Workers/Pages Runtime |
 
 ### Auth Features
@@ -253,7 +253,7 @@ If wrangler is logged in, you can do it from the command line:
 │   │   └── lib/auth/        # Better Auth client
 │   └── worker/              # Hono API backend
 │       ├── middleware/      # Auth middleware
-│       ├── utils/           # Email templates, Resend
+│       ├── utils/           # Email templates and provider adapters
 │       └── index.ts         # API routes
 ├── src/cli/                 # CLI commands (auth user management, db utilities)
 ├── bin/                     # CLI entry points (init, auth, db)
@@ -378,22 +378,25 @@ See [`seeds/README.md`](seeds/README.md) for the seed convention and idempotency
 
 ### Local Development
 
-The app runs locally without any configuration. To enable email verification, add your [Resend](https://resend.com/) API key to `.env.local`:
+The app runs locally without requiring email. To test real auth emails locally with the default Cloudflare provider, enable local auth emails:
 ```bash
-echo "RESEND_API_KEY=re_xxxxxxxxxxxxx" >> .env.local
+echo "AUTH_EMAILS_LOCAL_ENABLED=true" >> .env.local
 ```
+
+Cloudflare Email Service uses the `SEND_EMAIL` binding in `wrangler.toml`, so no API key is required. For Resend, set `EMAIL_PROVIDER=resend` and put the API key in `EMAIL_API_KEY`.
 
 ### Preview/Production
 
 **One-time setup:**
 1. Create D1 databases in the Cloudflare dashboard (one for preview, one for production)
-2. Update `wrangler.toml` with the real database IDs (replacing the placeholder values)
-3. Add your secrets to `.env.preview` and `.env.production`:
+2. Activate Cloudflare Email Service for your sender domain
+3. Run `npm run init` or update `src/config.ts` and `wrangler.toml` so `config.email.fromAddress` matches the `allowed_sender_addresses` entries
+4. Update `wrangler.toml` with the real database IDs (replacing the placeholder values)
+5. Add your secrets to `.env.preview` and `.env.production`:
    ```bash
-   echo "RESEND_API_KEY=re_xxxxxxxxxxxxx" >> .env.production
    echo "CLI_API_KEY=<your-generated-key>" >> .env.production
    ```
-4. Deploy:
+6. Deploy:
    ```bash
    npm run deploy:production
    ```
@@ -443,7 +446,8 @@ Update `src/config.ts` to customize your app:
 export const config = {
   appName: "My App",  // Displayed in UI, emails, page title
   email: {
-    fromAddress: "onboarding@resend.dev",  // Must be verified with Resend
+    defaultProvider: "cloudflare",
+    fromAddress: "noreply@example.com",  // Must be allowed by the active provider
   },
 } as const;
 ```
@@ -457,7 +461,15 @@ Also update prod and preview domain URLs in `.env.<env-name>.example` and `.env.
 4. Add navigation as appropriate for your app design
 
 ### Email Provider
-Replace `createResendEmailSender` in `src/worker/middleware/auth.ts` with your provider implementing the `EmailSender` interface.
+Cloudflare Email Service is the default provider and uses the `SEND_EMAIL` binding declared in `wrangler.toml`. `npm run init` derives a sender such as `noreply@myapp.com` from `--app-domain https://app.myapp.com` and updates both `src/config.ts` and the binding allow-lists.
+
+To use Resend instead, set:
+```bash
+EMAIL_PROVIDER=resend
+EMAIL_API_KEY=re_xxxxxxxxxxxxx
+```
+
+Additional providers can be added by implementing the `EmailSender` interface in `src/worker/utils/email.ts`.
 
 ## Observability Features
 

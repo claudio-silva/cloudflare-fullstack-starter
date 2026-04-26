@@ -11,6 +11,7 @@ type Answers = {
 	appName: string;
 	appDomain: string;
 	previewDomain: string;
+	emailFrom: string;
 };
 
 const isInteractive = process.stdin.isTTY;
@@ -31,6 +32,8 @@ function parseArgs(): Partial<Answers> & { help?: boolean } {
 			result.appDomain = args[++i];
 		} else if (arg === "--preview-domain" && args[i + 1]) {
 			result.previewDomain = args[++i];
+		} else if (arg === "--email-from" && args[i + 1]) {
+			result.emailFrom = args[++i];
 		}
 	}
 	return result;
@@ -45,6 +48,7 @@ Options:
   --app-name <name>        App display name (UI, emails, titles)
   --app-domain <url>       Production app URL (e.g., https://app.myapp.com)
   --preview-domain <url>   Preview app URL (e.g., https://preview.myapp.com)
+  --email-from <address>   Sender email address (defaults to noreply@<app-domain root>)
   -h, --help               Show this help
 
 Interactive mode:
@@ -77,13 +81,37 @@ function writeJSON(filePath: string, data: unknown) {
 	fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + "\n", "utf8");
 }
 
-function updateWranglerToml(filePath: string, projectName: string) {
+function getHostname(value: string): string {
+	try {
+		return new URL(value).hostname;
+	} catch {
+		return value.replace(/^https?:\/\//, "").split("/")[0];
+	}
+}
+
+function deriveEmailDomain(appDomain: string): string {
+	const hostname = getHostname(appDomain).toLowerCase();
+	const parts = hostname.split(".").filter(Boolean);
+	if (parts.length > 2 && ["app", "preview", "staging", "dev"].includes(parts[0])) {
+		return parts.slice(1).join(".");
+	}
+	return hostname;
+}
+
+function deriveSenderEmail(appDomain: string): string {
+	const domain = deriveEmailDomain(appDomain);
+	return domain ? `noreply@${domain}` : "noreply@example.com";
+}
+
+function updateWranglerToml(filePath: string, projectName: string, emailFrom: string) {
 	let content = fs.readFileSync(filePath, "utf8");
 	// Update worker name
 	content = content.replace(/^name\s*=\s*".*"/m, `name = "${projectName}"`);
 	// Update all database_name entries
 	content = content.replace(/database_name\s*=\s*"starter-preview"/g, `database_name = "${projectName}-preview"`);
 	content = content.replace(/database_name\s*=\s*"starter"/g, `database_name = "${projectName}"`);
+	// Update all Cloudflare Email Service sender allow-lists
+	content = content.replace(/allowed_sender_addresses\s*=\s*\[[^\]]*\]/g, `allowed_sender_addresses = ["${emailFrom}"]`);
 	fs.writeFileSync(filePath, content, "utf8");
 }
 
@@ -122,12 +150,14 @@ function readConfigAppName(configPath: string) {
 	return match?.[1] ?? "My App";
 }
 
-function updateConfigAppName(configPath: string, appName: string) {
+function updateConfig(configPath: string, appName: string, emailFrom: string) {
 	const content = fs.readFileSync(configPath, "utf8");
-	const updated = content.replace(/appName:\s*"[^"]*"/, `appName: "${appName}"`);
+	const updated = content
+		.replace(/appName:\s*"[^"]*"/, `appName: "${appName}"`)
+		.replace(/fromAddress:\s*"[^"]*"/, `fromAddress: "${emailFrom}"`);
 
 	if (updated === content) {
-		throw new Error(`Could not update appName in ${configPath}`);
+		throw new Error(`Could not update config in ${configPath}`);
 	}
 
 	fs.writeFileSync(configPath, updated, "utf8");
@@ -169,8 +199,10 @@ async function main() {
 	const appName = cliArgs.appName || (await prompt("App display name (UI titles, emails)", currentAppName));
 	const appDomain = cliArgs.appDomain || (await prompt("Production app base URL", "https://app.example.com"));
 	const previewDomain = cliArgs.previewDomain || (await prompt("Preview app base URL", "https://preview.example.com"));
+	const defaultEmailFrom = deriveSenderEmail(appDomain);
+	const emailFrom = cliArgs.emailFrom || (await prompt("Email sender address", defaultEmailFrom));
 
-	const answers: Answers = { projectName, appName, appDomain, previewDomain };
+	const answers: Answers = { projectName, appName, appDomain, previewDomain, emailFrom };
 
 	console.log("\n📝 Updating project files...");
 
@@ -179,11 +211,11 @@ async function main() {
 	console.log("  ✓ package.json");
 
 	// Update wrangler.toml
-	updateWranglerToml(wranglerPath, projectName);
+	updateWranglerToml(wranglerPath, projectName, emailFrom);
 	console.log("  ✓ wrangler.toml");
 
 	// Update shared config (UI + emails)
-	updateConfigAppName(configPath, appName);
+	updateConfig(configPath, appName, emailFrom);
 	console.log("  ✓ src/config.ts");
 
 	// Create/update env files from templates without mutating templates
@@ -196,7 +228,8 @@ async function main() {
 	console.log("  2. Set CLI_API_KEY in .env.local (and in each .env.<env> for remote envs)");
 	console.log("  3. Start dev server: npm run dev");
 	console.log("\nOptional:");
-	console.log("  • Set RESEND_API_KEY in .env.local for email verification");
+	console.log("  • Set AUTH_EMAILS_LOCAL_ENABLED=true in .env.local to test auth emails locally");
+	console.log("  • For Resend, set EMAIL_PROVIDER=resend and EMAIL_API_KEY in the relevant .env file");
 	console.log("  • Create a user: npm run auth create-user -u admin@example.com -p password");
 	console.log("  • Seed data: add .sql files to seeds/ and run: npm run db:seed -- --env local --file <name>.sql");
 }

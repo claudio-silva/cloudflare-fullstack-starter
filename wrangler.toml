@@ -13,6 +13,13 @@ not_found_handling = "single-page-application"
 
 [vars]
 ENVIRONMENT = "local"
+EMAIL_PROVIDER = "cloudflare"
+AUTH_EMAILS_LOCAL_ENABLED = "false"
+
+[[send_email]]
+name = "SEND_EMAIL"
+allowed_sender_addresses = ["noreply@example.com"]
+remote = true
 
 [[d1_databases]]
 binding = "DB"
@@ -22,17 +29,27 @@ database_id = "local"
 [env.preview]
 [env.preview.vars]
 ENVIRONMENT = "preview"
+EMAIL_PROVIDER = "cloudflare"
 
 [[env.preview.d1_databases]]
 binding = "DB"
 database_name = "cloudflare-fullstack-starter-preview"
 database_id = "YOUR_PREVIEW_D1_DATABASE_ID"
 
+[[env.preview.send_email]]
+name = "SEND_EMAIL"
+allowed_sender_addresses = ["noreply@example.com"]
+
 [env.production]
 [env.production.vars]
 ENVIRONMENT = "production"
+EMAIL_PROVIDER = "cloudflare"
 
 [[env.production.d1_databases]]
 binding = "DB"
 database_name = "cloudflare-fullstack-starter"
 database_id = "YOUR_PRODUCTION_D1_DATABASE_ID"
+
+[[env.production.send_email]]
+name = "SEND_EMAIL"
+allowed_sender_addresses = ["noreply@example.com"]

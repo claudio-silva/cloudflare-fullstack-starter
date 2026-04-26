@@ -30,11 +30,11 @@ function getDatabaseName(env: DbEnvironment): string {
 
 	let pattern: RegExp;
 	if (env === "local") {
-		pattern = /\[\[d1_databases\]\][^\[]*database_name\s*=\s*"([^"]+)"/s;
+		pattern = /\[\[d1_databases\]\][^[]*database_name\s*=\s*"([^"]+)"/s;
 	} else if (env === "preview") {
-		pattern = /\[\[env\.preview\.d1_databases\]\][^\[]*database_name\s*=\s*"([^"]+)"/s;
+		pattern = /\[\[env\.preview\.d1_databases\]\][^[]*database_name\s*=\s*"([^"]+)"/s;
 	} else {
-		pattern = /\[\[env\.production\.d1_databases\]\][^\[]*database_name\s*=\s*"([^"]+)"/s;
+		pattern = /\[\[env\.production\.d1_databases\]\][^[]*database_name\s*=\s*"([^"]+)"/s;
 	}
 
 	const match = content.match(pattern);

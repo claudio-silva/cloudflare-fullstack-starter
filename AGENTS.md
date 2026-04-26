@@ -10,7 +10,7 @@ The project is based on a SaaS starter template built on Cloudflare's edge platf
 - **Backend**: Hono on Cloudflare Workers
 - **Database**: Cloudflare D1 (SQLite at the edge)
 - **Auth**: Better Auth (email/password with verification)
-- **Email**: Resend (pluggable provider)
+- **Email**: Cloudflare Email Service or Resend (pluggable provider)
 
 ## Critical Architecture
 
@@ -56,7 +56,7 @@ src/
     ├── index.ts            # API routes + CLI endpoints
     ├── middleware/auth.ts  # Better Auth config
     ├── types/database.ts   # Kysely types
-    └── utils/              # Email templates, Resend
+    └── utils/              # Email templates and provider adapters
 
 src/cli/                    # CLI commands (auth user management + db utilities)
 src/config.ts               # Global app configuration (app name, etc.)
@@ -210,7 +210,7 @@ Update `src/config.ts` to customize app name, email settings, etc.
 const apiUrl = import.meta.env.VITE_API_URL;
 
 // Server-side (Worker) - all variables from wrangler.toml + .env files
-const resendKey = c.env.RESEND_API_KEY;
+const emailProvider = c.env.EMAIL_PROVIDER;
 const environment = c.env.ENVIRONMENT;  // from wrangler.toml
 ```
 

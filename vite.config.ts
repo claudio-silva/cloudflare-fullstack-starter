@@ -17,20 +17,28 @@ function parseWranglerToml(filePath: string) {
 	const baseName = content.match(/^name\s*=\s*"([^"]+)"/m)?.[1] ?? "app";
 
 	const previewDb = {
-		name: content.match(/\[\[env\.preview\.d1_databases\]\][^\[]*database_name\s*=\s*"([^"]+)"/s)?.[1] ?? `${baseName}-preview`,
-		id: content.match(/\[\[env\.preview\.d1_databases\]\][^\[]*database_id\s*=\s*"([^"]+)"/s)?.[1] ?? "",
+		name: content.match(/\[\[env\.preview\.d1_databases\]\][^[]*database_name\s*=\s*"([^"]+)"/s)?.[1] ?? `${baseName}-preview`,
+		id: content.match(/\[\[env\.preview\.d1_databases\]\][^[]*database_id\s*=\s*"([^"]+)"/s)?.[1] ?? "",
 	};
 
 	const productionDb = {
-		name: content.match(/\[\[env\.production\.d1_databases\]\][^\[]*database_name\s*=\s*"([^"]+)"/s)?.[1] ?? baseName,
-		id: content.match(/\[\[env\.production\.d1_databases\]\][^\[]*database_id\s*=\s*"([^"]+)"/s)?.[1] ?? "",
+		name: content.match(/\[\[env\.production\.d1_databases\]\][^[]*database_name\s*=\s*"([^"]+)"/s)?.[1] ?? baseName,
+		id: content.match(/\[\[env\.production\.d1_databases\]\][^[]*database_id\s*=\s*"([^"]+)"/s)?.[1] ?? "",
 	};
 
-	return { baseName, previewDb, productionDb };
+	const previewEmailSender = content.match(/\[\[env\.preview\.send_email\]\][^[]*allowed_sender_addresses\s*=\s*\[\s*"([^"]+)"/s)?.[1]
+		?? content.match(/\[\[send_email\]\][^[]*allowed_sender_addresses\s*=\s*\[\s*"([^"]+)"/s)?.[1]
+		?? "noreply@example.com";
+
+	const productionEmailSender = content.match(/\[\[env\.production\.send_email\]\][^[]*allowed_sender_addresses\s*=\s*\[\s*"([^"]+)"/s)?.[1]
+		?? content.match(/\[\[send_email\]\][^[]*allowed_sender_addresses\s*=\s*\[\s*"([^"]+)"/s)?.[1]
+		?? "noreply@example.com";
+
+	return { baseName, previewDb, productionDb, previewEmailSender, productionEmailSender };
 }
 
 export default defineConfig(({ mode }) => {
-	const { baseName, previewDb, productionDb } = parseWranglerToml(
+	const { baseName, previewDb, productionDb, previewEmailSender, productionEmailSender } = parseWranglerToml(
 		path.resolve(__dirname, "wrangler.toml"),
 	);
 
@@ -40,7 +48,7 @@ export default defineConfig(({ mode }) => {
 		mode === "preview"
 			? (cfg: WorkerConfig): void => {
 					cfg.name = `${baseName}-preview`;
-					cfg.vars = { ENVIRONMENT: "preview" };
+					cfg.vars = { ENVIRONMENT: "preview", EMAIL_PROVIDER: "cloudflare" };
 					cfg.d1_databases = [
 						{
 							binding: "DB",
@@ -48,16 +56,28 @@ export default defineConfig(({ mode }) => {
 							database_id: previewDb.id,
 						},
 					];
+					cfg.send_email = [
+						{
+							name: "SEND_EMAIL",
+							allowed_sender_addresses: [previewEmailSender],
+						},
+					];
 				}
 			: mode === "production"
 				? (cfg: WorkerConfig): void => {
 						cfg.name = baseName;
-						cfg.vars = { ENVIRONMENT: "production" };
+						cfg.vars = { ENVIRONMENT: "production", EMAIL_PROVIDER: "cloudflare" };
 						cfg.d1_databases = [
 							{
 								binding: "DB",
 								database_name: productionDb.name,
 								database_id: productionDb.id,
+							},
+						];
+						cfg.send_email = [
+							{
+								name: "SEND_EMAIL",
+								allowed_sender_addresses: [productionEmailSender],
 							},
 						];
 					}

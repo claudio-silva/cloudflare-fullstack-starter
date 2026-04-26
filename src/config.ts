@@ -6,7 +6,7 @@
  *
  * For environment-specific settings (like API URLs), use:
  * - wrangler.toml [vars] for backend environment variables
- * - .env files for secrets (RESEND_API_KEY, etc.)
+ * - .env files for secrets (EMAIL_API_KEY, etc.)
  *
  * For deployment-specific settings, see wrangler.toml environments.
  */
@@ -25,14 +25,13 @@ export const config = {
 
 	// Email settings
 	email: {
+		// Default email provider when EMAIL_PROVIDER is not set.
+		defaultProvider: "cloudflare",
 		// The "from" address for outgoing emails
-		// Note: This domain must be verified with your email provider (e.g., Resend)
-		// In this case, we're using Resend's default pre-verified domain
-		fromAddress: "onboarding@resend.dev",
+		// Note: This address must be allowed by the active email provider.
+		fromAddress: "noreply@example.com",
 	},
 } as const;
 
 // Type export for TypeScript consumers
 export type AppConfig = typeof config;
-
-

@@ -75,7 +75,7 @@ Cloudflare Workers access secrets via `c.env.*`, but secrets can't live in `wran
 - Reads `.env.preview` or `.env.production`.
 - Computes a SHA-256 hash of the file and compares it with a stored hash (in `.wrangler/secrets/`).
 - If changed, calls `wrangler secret put` for each secret — only syncing what has changed, not re-uploading everything every time.
-- Skips `VITE_*` variables (client-side only, not secrets) and `ENVIRONMENT` (already set in `wrangler.toml`).
+- Skips `VITE_*` variables (client-side only, not secrets) and config vars such as `ENVIRONMENT`, `EMAIL_PROVIDER`, and `AUTH_EMAILS_LOCAL_ENABLED` (already set in `wrangler.toml`).
 
 You never have to manually run `wrangler secret put` or visit the Cloudflare dashboard to manage secrets. Just edit `.env.production` and run `npm run deploy:production`.
 
@@ -140,6 +140,6 @@ All scripts use only cross-platform syntax:
 - **Develop** with `npm run dev` — nothing to configure.
 - **Deploy** with `npm run deploy:preview` or `npm run deploy:production` — one command handles everything.
 - **Add a secret** — add it to the relevant `.env.<env>` file and redeploy. The sync script handles the rest.
-- **Add a D1 binding** — add it to `wrangler.toml`; it's picked up at build time by `vite.config.ts`.
+- **Add a D1 or email binding** — add it to `wrangler.toml`; it's picked up at build time by `vite.config.ts`.
 
 You never need to use `wrangler secret put` manually, manage Cloudflare dashboard secrets by hand, or worry about which environment a deploy is targeting.

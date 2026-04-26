@@ -20,6 +20,11 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
 
 const HASH_DIR = ".wrangler/secrets";
+const NON_SECRET_KEYS = new Set([
+	"ENVIRONMENT",
+	"EMAIL_PROVIDER",
+	"AUTH_EMAILS_LOCAL_ENABLED",
+]);
 
 function getEnvFilePath(env: string): string {
 	return `.env.${env}`;
@@ -65,9 +70,9 @@ function parseEnvFile(filePath: string): Record<string, string> {
 			if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
 				value = value.slice(1, -1);
 			}
-			// Only sync non-empty values that look like secrets (not config)
-			// Skip VITE_ prefixed vars (client-side only) and ENVIRONMENT (in wrangler.toml)
-			if (value && !key.startsWith("VITE_") && key !== "ENVIRONMENT") {
+			// Only sync non-empty values that look like secrets (not config).
+			// Skip VITE_ prefixed vars (client-side only) and config vars kept in wrangler.toml.
+			if (value && !key.startsWith("VITE_") && !NON_SECRET_KEYS.has(key)) {
 				secrets[key] = value;
 			}
 		}
@@ -83,7 +88,7 @@ function syncSecret(key: string, value: string, env: string): boolean {
 			stdio: ["pipe", "pipe", "pipe"],
 		});
 		return true;
-	} catch (error) {
+	} catch {
 		console.error(`  ✗ Failed to sync ${key}`);
 		return false;
 	}

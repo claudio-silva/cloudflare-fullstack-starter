@@ -89,12 +89,12 @@ No `.env.local` file is required for basic local development beyond `CLI_API_KEY
 - Work with default placeholder domains
 
 ### Optional: Enable Email
-To enable email verification locally, add your [Resend](https://resend.com/) API key to `.env.local`:
+To enable real email verification locally with the default Cloudflare Email Service provider, set:
 ```bash
-echo "RESEND_API_KEY=re_your_key_here" >> .env.local
+echo "AUTH_EMAILS_LOCAL_ENABLED=true" >> .env.local
 ```
 
-The Cloudflare Vite plugin loads `.env.local` and injects secrets into the Worker environment.
+Cloudflare Email Service uses the `SEND_EMAIL` binding in `wrangler.toml`, so no API key is required. For Resend, set `EMAIL_PROVIDER=resend` and `EMAIL_API_KEY` in the relevant `.env` file.
 
 ## Verify Setup
 
