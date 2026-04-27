@@ -1,4 +1,4 @@
-import { useTheme } from "./theme-provider";
+import { useTheme } from "./theme-context";
 import LogoLight from "@/assets/logo-light.svg";
 import LogoDark from "@/assets/logo-dark.svg";
 import { config } from "../../config";
