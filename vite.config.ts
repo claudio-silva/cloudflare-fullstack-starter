@@ -65,7 +65,7 @@ export default defineConfig(({ mode }) => {
 				}
 			: mode === "production"
 				? (cfg: WorkerConfig): void => {
-						cfg.name = baseName;
+						cfg.name = `${baseName}-production`;
 						cfg.vars = { ENVIRONMENT: "production", EMAIL_PROVIDER: "cloudflare" };
 						cfg.d1_databases = [
 							{

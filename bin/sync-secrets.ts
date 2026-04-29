@@ -14,7 +14,7 @@
  *   tsx bin/sync-secrets.ts preview
  */
 
-import { execSync } from "child_process";
+import { spawnSync } from "child_process";
 import { createHash } from "crypto";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
@@ -25,6 +25,9 @@ const NON_SECRET_KEYS = new Set([
 	"EMAIL_PROVIDER",
 	"AUTH_EMAILS_LOCAL_ENABLED",
 ]);
+// Cloudflare aggressively rate-limits `wrangler secret put`. A short pause
+// between successive puts noticeably reduces 429s on bursts of >5 secrets.
+const SECRET_PUT_DELAY_MS = 350;
 
 function getEnvFilePath(env: string): string {
 	return `.env.${env}`;
@@ -81,20 +84,29 @@ function parseEnvFile(filePath: string): Record<string, string> {
 	return secrets;
 }
 
-function syncSecret(key: string, value: string, env: string): boolean {
-	try {
-		// Use echo to pipe the value to wrangler secret put
-		execSync(`echo "${value}" | wrangler secret put ${key} --env ${env}`, {
-			stdio: ["pipe", "pipe", "pipe"],
-		});
-		return true;
-	} catch {
-		console.error(`  ✗ Failed to sync ${key}`);
-		return false;
-	}
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function main() {
+function syncSecret(key: string, value: string, env: string): boolean {
+	// Pipe the value via stdin (not a shell `echo`) so secrets containing `$`,
+	// backticks, quotes or newlines are passed verbatim and not interpreted by
+	// the shell. Capture stderr so the real wrangler error is surfaced on
+	// failure instead of being silently dropped.
+	const result = spawnSync("wrangler", ["secret", "put", key, "--env", env], {
+		input: value,
+		encoding: "utf-8",
+		stdio: ["pipe", "pipe", "pipe"],
+	});
+	if (result.status === 0) {
+		return true;
+	}
+	const detail = (result.stderr || result.stdout || result.error?.message || "").trim();
+	console.error(`\n  ✗ Failed to sync ${key}${detail ? `:\n${detail.replace(/^/gm, "    ")}` : ""}`);
+	return false;
+}
+
+async function main() {
 	const args = process.argv.slice(2);
 
 	if (args.length === 0) {
@@ -106,17 +118,14 @@ function main() {
 	const env = args[0];
 	const envFile = getEnvFilePath(env);
 
-	// Check if env file exists
 	if (!existsSync(envFile)) {
 		console.log(`No ${envFile} file found, skipping secrets sync.`);
 		process.exit(0);
 	}
 
-	// Compute current hash
 	const currentHash = computeFileHash(envFile);
 	const storedHash = getStoredHash(env);
 
-	// Check if file has changed
 	if (currentHash === storedHash) {
 		console.log(`✓ Secrets for ${env} are up to date (no changes detected)`);
 		process.exit(0);
@@ -124,7 +133,6 @@ function main() {
 
 	console.log(`Syncing secrets from ${envFile} to Cloudflare...`);
 
-	// Parse secrets from env file
 	const secrets = parseEnvFile(envFile);
 	const secretKeys = Object.keys(secrets);
 
@@ -136,19 +144,22 @@ function main() {
 
 	console.log(`  Found ${secretKeys.length} secret(s): ${secretKeys.join(", ")}`);
 
-	// Sync each secret
+	const entries = Object.entries(secrets);
 	let allSuccess = true;
-	for (const [key, value] of Object.entries(secrets)) {
+	for (let i = 0; i < entries.length; i++) {
+		const [key, value] = entries[i];
 		process.stdout.write(`  Syncing ${key}... `);
 		if (syncSecret(key, value, env)) {
 			console.log("✓");
 		} else {
 			allSuccess = false;
 		}
+		if (i < entries.length - 1) {
+			await sleep(SECRET_PUT_DELAY_MS);
+		}
 	}
 
 	if (allSuccess) {
-		// Store the new hash
 		storeHash(env, currentHash);
 		console.log(`✓ All secrets synced successfully`);
 	} else {
@@ -157,4 +168,7 @@ function main() {
 	}
 }
 
-main();
+main().catch((err) => {
+	console.error("Unexpected error:", err);
+	process.exit(1);
+});
