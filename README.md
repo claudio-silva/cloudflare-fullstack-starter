@@ -160,7 +160,7 @@ The same key must also be deployed to the Worker — the deploy scripts sync it 
 ### 5. Run migrations and start development
 
 ```bash
-npm run db:migrate:local
+npm run db:migrate
 ```
 
 ### 6. Start development
@@ -180,23 +180,29 @@ Click to deploy a temporary preview to Cloudflare:
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/claudio-silva/cloudflare-fullstack-starter)
 
 Fast path (no email confirmation needed):
-1) In the wizard, keep defaults. When prompted for a database, create/bind a D1 database and name the binding `starter` (required for auth). No other env vars needed.
-2) Deploy, then open the provided URL.
-3) On the login overlay, click “Sign up”, create an account, and sign in. With the default `ENVIRONMENT=local`, email verification is skipped.
+
+1. In the wizard, keep the other defaults. When you add or bind **D1**, use these values so they match this repo’s `wrangler.toml` (copy/paste friendly):
+   - **Worker name:** `cloudflare-fullstack-starter` (if the wizard asks for the script / Worker name).
+   - **D1 binding name:** `DB` — this must be exactly `DB`; the Worker reads `c.env.DB`.
+   - **D1 database name:** `cloudflare-fullstack-starter` — use this as the database’s **name** in the dashboard (logical name), not the binding field.
+2. Deploy, then open the URL the wizard shows.
+3. On the login overlay, click “Sign up”, create an account, and sign in. With the default `ENVIRONMENT=local`, email verification is skipped.
+
+You do not need to set extra environment variables for this quick try-out.
 
 Note that this is a **temporary preview**, so you should **discard it after testing** by deleting the Worker and the D1 DB from the Cloudflare dashboard or CLI.
 
 #### To discard the preview
 
 ##### Via Dashboard
-Workers & Pages → select the deployed worker → Settings → Delete (and delete  the D1 DB too).
+Workers & Pages → select the deployed worker → Settings → Delete (and delete the D1 database named `cloudflare-fullstack-starter` if you created it).
 
 ##### Via CLI
 If wrangler is logged in, you can do it from the command line:
 
   ```bash
-  npx wrangler delete starter          # remove worker
-  npx wrangler d1 delete starter --yes # remove D1 database (if created)
+  npx wrangler delete cloudflare-fullstack-starter
+  npx wrangler d1 delete cloudflare-fullstack-starter --yes
   ```
 
 ---
@@ -327,32 +333,38 @@ The `.env.<env>` file is loaded automatically when a remote environment is targe
 
 ```bash
 # Migrations
-npm run db:migrate:local
+npm run db:migrate
 npm run db:migrate:preview
 npm run db:migrate:production
+
+# List pending migration files (uses logical database_name from wrangler.toml)
+npm run db:migrations:list
+npm run db:migrations:list:preview
+npm run db:migrations:list:production
+npm run db:migrations:list:all
 
 # Safe migrate: takes a backup before applying (recommended for remote envs)
 npm run db:migrate:preview:safe
 npm run db:migrate:production:safe
 
 # Backups — export D1 to a .sql file in .wrangler/backups/
-npm run db:backup:local
+npm run db:backup
 npm run db:backup:preview
 npm run db:backup:production
 npm run db:backup:all         # all three environments at once
 
 # List backup files
-npm run db:backups:local
+npm run db:backups
 npm run db:backups:production
 npm run db:backups -- --env preview --archive-dir ./.my-backups
 
 # Clean up backup files
-npm run db:backups:clean:local
+npm run db:backups:clean
 npm run db:backups:clean -- --env local --all        # delete without prompting
 npm run db:backups:clean -- --env local --dry-run    # preview what would be deleted
 
 # Restore from backup
-npm run db:restore:local:latest                                         # auto-picks latest, auto-backs-up existing local DB first
+npm run db:restore:latest                                         # auto-picks latest, auto-backs-up existing local DB first
 npm run db:restore -- --env local --file my-backup.sql
 npm run db:restore -- --env preview --file preview-backup.sql
 npm run db:restore -- --env production --file production-backup.sql
@@ -364,13 +376,13 @@ npm run db:time-travel:restore -- --env production --timestamp "2026-04-01 12:00
 npm run db:time-travel:restore -- --env production --bookmark <bookmark-id>
 
 # Seeds — run idempotent SQL files from the seeds/ directory
-npm run db:seed:local                                                    # auto-picks if only one .sql in seeds/
+npm run db:seed                                                    # auto-picks if only one .sql in seeds/
 npm run db:seed -- --env local --file admin-bootstrap.sql
 npm run db:seed -- --env preview --file admin-bootstrap.sql
 npm run db:seed -- --env production --file admin-bootstrap.sql
 ```
 
-> **Tip:** You can pass extra options after `--` in any `npm run db:*` shorthand, e.g. `npm run db:backup:local -- --archive-dir ./tmp`.
+> **Tip:** You can pass extra options after `--` in any `npm run db:*` shorthand, e.g. `npm run db:backup -- --archive-dir ./tmp`.
 
 See [`seeds/README.md`](seeds/README.md) for the seed convention and idempotency requirements.
 

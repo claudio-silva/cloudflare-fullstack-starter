@@ -103,14 +103,35 @@ function deriveSenderEmail(appDomain: string): string {
 	return domain ? `noreply@${domain}` : "noreply@example.com";
 }
 
+function readWorkerSlugFromWrangler(content: string): string {
+	return content.match(/^name\s*=\s*"([^"]+)"/m)?.[1] ?? "";
+}
+
+function setD1DatabaseNameAfterHeader(content: string, sectionHeader: string, databaseName: string): string {
+	const start = content.indexOf(sectionHeader);
+	if (start === -1) return content;
+	const fromHeader = content.slice(start);
+	const dm = fromHeader.match(/database_name\s*=\s*"[^"]+"/);
+	if (!dm || dm.index === undefined) return content;
+	const absStart = start + dm.index;
+	const absEnd = absStart + dm[0].length;
+	return content.slice(0, absStart) + `database_name = "${databaseName}"` + content.slice(absEnd);
+}
+
+function replaceProductionWorkerSuffix(content: string, oldSlug: string, newSlug: string): string {
+	if (!oldSlug || oldSlug === newSlug) return content;
+	return content.replaceAll(`"${oldSlug}-production"`, `"${newSlug}-production"`);
+}
+
 function updateWranglerToml(filePath: string, projectName: string, emailFrom: string) {
 	let content = fs.readFileSync(filePath, "utf8");
-	// Update worker name
-	content = content.replace(/^name\s*=\s*".*"/m, `name = "${projectName}"`);
-	// Update all database_name entries
-	content = content.replace(/database_name\s*=\s*"starter-preview"/g, `database_name = "${projectName}-preview"`);
-	content = content.replace(/database_name\s*=\s*"starter"/g, `database_name = "${projectName}"`);
-	// Update all Cloudflare Email Service sender allow-lists
+	const previousSlug = readWorkerSlugFromWrangler(content);
+
+	content = content.replace(/^name\s*=\s*"[^"]+"/m, `name = "${projectName}"`);
+	content = setD1DatabaseNameAfterHeader(content, "[[d1_databases]]", projectName);
+	content = setD1DatabaseNameAfterHeader(content, "[[env.preview.d1_databases]]", `${projectName}-preview`);
+	content = setD1DatabaseNameAfterHeader(content, "[[env.production.d1_databases]]", projectName);
+	content = replaceProductionWorkerSuffix(content, previousSlug, projectName);
 	content = content.replace(/allowed_sender_addresses\s*=\s*\[[^\]]*\]/g, `allowed_sender_addresses = ["${emailFrom}"]`);
 	fs.writeFileSync(filePath, content, "utf8");
 }
@@ -165,14 +186,6 @@ function updateConfig(configPath: string, appName: string, emailFrom: string) {
 
 function updatePackageJsonScripts(pkgPath: string, projectName: string) {
 	const pkg = readJSON(pkgPath);
-	// Update migration scripts to use new project name
-	const scripts = pkg.scripts || {};
-	for (const key of Object.keys(scripts)) {
-		if (typeof scripts[key] === "string") {
-			scripts[key] = scripts[key].replace(/\bstarter\b/g, projectName);
-		}
-	}
-	pkg.scripts = scripts;
 	pkg.name = projectName;
 	writeJSON(pkgPath, pkg);
 }
@@ -224,7 +237,7 @@ async function main() {
 
 	console.log("\n✅ Init complete!");
 	console.log("\nNext steps:");
-	console.log("  1. Run migrations: npm run db:migrate:local");
+	console.log("  1. Run migrations: npm run db:migrate");
 	console.log("  2. Set CLI_API_KEY in .env.local (and in each .env.<env> for remote envs)");
 	console.log("  3. Start dev server: npm run dev");
 	console.log("\nOptional:");

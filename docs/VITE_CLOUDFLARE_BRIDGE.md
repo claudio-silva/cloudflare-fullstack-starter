@@ -50,6 +50,8 @@ npm run build             →  wrangler.json contains base/local config (for dev
 
 The customizer reads the D1 database names and IDs directly from `wrangler.toml` at build time, so there is a **single source of truth** for your configuration. After `npm run init` renames your project and updates `wrangler.toml`, everything else adapts automatically — you don't need to update `vite.config.ts` manually.
 
+For preview and production builds, the mutating customizer also re-injects, when present in `wrangler.toml`: **`[env.*.vars]`**, **`routes`**, **`[[env.*.kv_namespaces]]`** (including `KV_RATE` when configured), **`[[env.*.r2_buckets]]`**, and **`[env.*.triggers]` / `crons`**, plus **`send_email`**. If you add a new per-env top-level table under `[env.preview]` or `[env.production]`, mirror it in `vite.config.ts` or it will be missing from the flat deploy config.
+
 **Important implementation detail:** the plugin's `config` option accepts either a partial config object or a mutating function `(cfg) => void`. The object/merge form *appends* to arrays like `d1_databases`, resulting in duplicate entries. The mutating function form *replaces* values in-place and is what this project uses to ensure correctness.
 
 ### 2. One-command deploy (`deploy:preview`, `deploy:production`)

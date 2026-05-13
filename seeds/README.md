@@ -35,7 +35,7 @@ npm run db:seed -- --env preview --file admin-bootstrap.sql
 npm run db:seed -- --env production --file admin-bootstrap.sql
 
 # Or use the shorthand scripts
-npm run db:seed:local
+npm run db:seed
 npm run db:seed:preview
 npm run db:seed:production
 ```

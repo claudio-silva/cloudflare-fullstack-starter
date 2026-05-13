@@ -120,45 +120,50 @@ const users = await db.selectFrom("users").selectAll().execute();
 
 ```bash
 # Development
-pnpm dev                    # Start dev server (logs appear in terminal)
+npm run dev                         # Start dev server (logs appear in terminal)
 
 # Database — migrations
-pnpm db:migrate:local       # Run migrations locally
-pnpm db:migrate:preview:safe        # Migrate preview with pre-migration backup
-pnpm db:migrate:production:safe     # Migrate production with pre-migration backup
+npm run db:migrate                  # Run migrations locally
+npm run db:migrate:preview:safe     # Migrate preview with pre-migration backup
+npm run db:migrate:production:safe  # Migrate production with pre-migration backup
+
+# Database — migration status
+npm run db:migrations:list
+npm run db:migrations:list:preview
+npm run db:migrations:list:production
 
 # Database — backup & restore
-pnpm db:backup:local        # Export local D1 to .wrangler/backups/
-pnpm db:backup:production   # Export production D1 to .wrangler/backups/
-pnpm db:restore:local:latest        # Restore latest backup (auto-backs-up current DB first)
-pnpm db:restore -- --env production --file prod-backup.sql
+npm run db:backup        # Export local D1 to .wrangler/backups/
+npm run db:backup:production   # Export production D1 to .wrangler/backups/
+npm run db:restore:latest        # Restore latest backup (auto-backs-up current DB first)
+npm run db:restore -- --env production --file prod-backup.sql
 
 # Database — time-travel (remote envs only)
-pnpm db:time-travel:info -- --env production
-pnpm db:time-travel:restore -- --env production --timestamp "2026-04-01 12:00:00"
+npm run db:time-travel:info -- --env production
+npm run db:time-travel:restore -- --env production --timestamp "2026-04-01 12:00:00"
 
 # Database — seeds
-pnpm db:seed -- --env local --file admin-bootstrap.sql
+npm run db:seed -- --env local --file admin-bootstrap.sql
 
 # Auth CLI
 # Requires CLI_API_KEY in .env.<env>; key must also be deployed to the worker
 # dev server must be running for local
-# Available user management commands (run `npm auth help <command>` to see options):
-pnpm auth list-users
-pnpm auth create-user
-pnpm auth edit-user
-pnpm auth delete-user
-pnpm auth activate-user
-pnpm auth set-role
-pnpm auth show-user
+# Available user management commands (run `npm run auth help <command>` to see options):
+npm run auth list-users
+npm run auth create-user
+npm run auth edit-user
+npm run auth delete-user
+npm run auth activate-user
+npm run auth set-role
+npm run auth show-user
 
 # Build & Deploy
-pnpm build                  # Build for production
-pnpm deploy:production      # Deploy to Cloudflare (auto-syncs secrets)
+npm run build                  # Build for production
+npm run deploy:production      # Deploy to Cloudflare (auto-syncs secrets)
 
 # Logs (deployed environments only)
-pnpm tail:preview           # Stream logs from preview
-pnpm tail:production        # Stream logs from production
+npm run tail:preview           # Stream logs from preview
+npm run tail:production        # Stream logs from production
 ```
 
 ## Common Tasks
@@ -176,8 +181,8 @@ pnpm tail:production        # Stream logs from production
 ### Add Database Table
 1. Create migration in `migrations/`
 2. Add types to `src/worker/types/database.ts`
-3. Run `pnpm db:migrate:local`
-4. For remote envs, prefer `pnpm db:migrate:preview:safe` / `pnpm db:migrate:production:safe` (takes a backup first)
+3. Run `npm run db:migrate`
+4. For remote envs, prefer `npm run db:migrate:preview:safe` / `npm run db:migrate:production:safe` (takes a backup first)
 
 ## Configuration
 
@@ -201,7 +206,7 @@ Update `src/config.ts` to customize app name, email settings, etc.
 3. `.env.local` / `.env.preview` / `.env.production` — Secrets per environment (gitignored)
 
 **How env files work:**
-- `.env.local` — Loaded during local development (`pnpm dev`)
+- `.env.local` — Loaded during local development (`npm run dev`)
 - `.env.preview` / `.env.production` — Synced to Cloudflare before deploy
 
 **Variable access by context:**
@@ -215,7 +220,7 @@ const environment = c.env.ENVIRONMENT;  // from wrangler.toml
 ```
 
 **Deploying secrets:**
-- `pnpm deploy:preview` / `pnpm deploy:production` automatically syncs secrets from `.env.<env>` files
+- `npm run deploy:preview` / `npm run deploy:production` automatically syncs secrets from `.env.<env>` files
 - Only changed secrets are synced (tracked via hash file)
 
 **CLI auth (`CLI_API_KEY`):**

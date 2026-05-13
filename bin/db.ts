@@ -451,6 +451,36 @@ Examples:
 );
 
 program.addCommand(
+	new Command("migrations-list")
+		.description("List pending D1 migration files for an environment (wrangler d1 migrations list).")
+		.addOption(
+			new Option("-e, --env <environment>", "Target environment.")
+				.choices(allowedEnvironments)
+				.default("local"),
+		)
+		.addHelpText(
+			"after",
+			`
+Examples:
+  db migrations-list --env local
+  db migrations-list --env preview
+  db migrations-list --env production
+`,
+		)
+		.action((options: { env: DbEnvironment }) => {
+			const env = options.env;
+			runWrangler([
+				"d1",
+				"migrations",
+				"list",
+				getDatabaseName(env),
+				...getEnvFlags(env),
+				...getRemoteFlags(env),
+			]);
+		}),
+);
+
+program.addCommand(
 	new Command("backup")
 		.description("Export a local or remote D1 database to a SQL file.")
 		.addOption(
