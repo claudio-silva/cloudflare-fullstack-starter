@@ -89,6 +89,7 @@ app.get("/api/cli/users", cliAuthMiddleware, async (c) => {
 
 app.get("/api/cli/users/:email", cliAuthMiddleware, async (c) => {
 	const email = c.req.param("email");
+	if (!email) return c.json({ error: "Email is required" }, 400);
 	const db = new Kysely<Database>({ dialect: new D1Dialect({ database: requireDb(c) }) });
 
 	const user = await db.selectFrom("users").where("email", "=", email).selectAll().executeTakeFirst();
@@ -200,6 +201,7 @@ app.post("/api/cli/users", cliAuthMiddleware, async (c) => {
 
 app.put("/api/cli/users/:email/password", cliAuthMiddleware, async (c) => {
 	const email = c.req.param("email");
+	if (!email) return c.json({ error: "Email is required" }, 400);
 	const { password } = await c.req.json<{ password: string }>();
 	if (!password || password.length < 8) {
 		return c.json({ error: "Password must be at least 8 characters" }, 400);
@@ -224,6 +226,7 @@ app.put("/api/cli/users/:email/password", cliAuthMiddleware, async (c) => {
 
 app.put("/api/cli/users/:email", cliAuthMiddleware, async (c) => {
 	const currentEmail = c.req.param("email");
+	if (!currentEmail) return c.json({ error: "Email is required" }, 400);
 	const updateData = await c.req.json<{ name?: string; email?: string; password?: string; role?: string }>();
 	if (!updateData.name && !updateData.email && !updateData.password && !updateData.role) {
 		return c.json({ error: "No fields to update" }, 400);
@@ -304,6 +307,7 @@ app.put("/api/cli/users/:email", cliAuthMiddleware, async (c) => {
 
 app.put("/api/cli/users/:email/role", cliAuthMiddleware, async (c) => {
 	const email = c.req.param("email");
+	if (!email) return c.json({ error: "Email is required" }, 400);
 	const { role } = await c.req.json<{ role: string }>();
 	if (!role || !ALLOWED_ROLES.includes(role as UserRole)) {
 		return c.json({ error: `Invalid role. Allowed: ${ALLOWED_ROLES.join(", ")}` }, 400);
@@ -332,6 +336,7 @@ app.put("/api/cli/users/:email/role", cliAuthMiddleware, async (c) => {
 
 app.put("/api/cli/users/:email/activate", cliAuthMiddleware, async (c) => {
 	const email = c.req.param("email");
+	if (!email) return c.json({ error: "Email is required" }, 400);
 	const { activated } = await c.req.json<{ activated: boolean }>();
 	if (typeof activated !== "boolean") {
 		return c.json({ error: "activated must be a boolean" }, 400);
@@ -354,6 +359,7 @@ app.put("/api/cli/users/:email/activate", cliAuthMiddleware, async (c) => {
 
 app.delete("/api/cli/users/:email", cliAuthMiddleware, async (c) => {
 	const email = c.req.param("email");
+	if (!email) return c.json({ error: "Email is required" }, 400);
 	const db = new Kysely<Database>({ dialect: new D1Dialect({ database: requireDb(c) }) });
 
 	const user = await db.selectFrom("users").where("email", "=", email).select("id").executeTakeFirst();
