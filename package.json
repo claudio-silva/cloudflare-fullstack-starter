@@ -130,7 +130,7 @@
     "tailwindcss-animate": "^1.0.7",
     "tsx": "^4.20.6",
     "vaul": "^1.1.2",
-    "zod": "^3.25.76"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.40.2",
