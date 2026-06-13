@@ -1,0 +1,50 @@
+# Dependabot configuration
+# Goal: drastically reduce PR noise by batching updates into a few grouped,
+# scheduled PRs instead of one PR per package.
+# Docs: https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+version: 2
+updates:
+  # ---- npm (application dependencies) ----
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Lisbon"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(dev-deps)"
+    groups:
+      # One PR for all non-breaking version bumps (prod + dev).
+      npm-minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
+      # One PR for all security fixes, regardless of bump size.
+      npm-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+    # Major bumps stay as individual PRs so they get reviewed deliberately.
+
+  # ---- GitHub Actions used by workflows ----
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Lisbon"
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "ci"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
