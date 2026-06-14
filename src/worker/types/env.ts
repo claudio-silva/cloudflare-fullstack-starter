@@ -9,6 +9,7 @@ export type CloudflareEmailSendBinding = {
 };
 
 export type AppEnv = {
+	ASSETS?: Fetcher;
 	DB: D1DatabaseType;
 	ENVIRONMENT?: string;
 	EMAIL_PROVIDER?: EmailProvider;

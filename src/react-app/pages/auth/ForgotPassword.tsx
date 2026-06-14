@@ -15,7 +15,7 @@ import { CheckCircle2, AlertCircle } from "lucide-react";
 import { config } from "../../../config";
 
 const forgotPasswordSchema = z.object({
-	email: z.string().email("Please enter a valid email address"),
+	email: z.email("Please enter a valid email address"),
 });
 
 type ForgotPasswordFormData = z.infer<typeof forgotPasswordSchema>;

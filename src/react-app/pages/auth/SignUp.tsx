@@ -17,7 +17,7 @@ import { config } from "../../../config";
 
 const signUpSchema = z.object({
 	name: z.string().max(100, "Name must be 100 characters or less").optional().or(z.literal("")),
-	email: z.string().email("Please enter a valid email address"),
+	email: z.email("Please enter a valid email address"),
 	password: z.string().min(8, "Password must be at least 8 characters"),
 	confirmPassword: z.string().min(8, "Password must be at least 8 characters"),
 }).refine((data) => data.password === data.confirmPassword, {
