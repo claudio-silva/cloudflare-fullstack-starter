@@ -124,7 +124,7 @@
     "react-resizable-panels": "^4.12.0",
     "react-router-dom": "^7.18.1",
     "recharts": "^3.9.1",
-    "resend": "^6.16.0",
+    "resend": "^6.17.0",
     "sonner": "^2.0.6",
     "tailwind-merge": "^3.3.1",
     "tsx": "^4.23.0",
