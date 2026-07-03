@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "engines": {
-    "node": ">=22.14.0 <23"
+    "node": ">=22.15.0 <23"
   },
   "cloudflare": {
     "label": "Cloudflare Fullstack SaaS Starter",
