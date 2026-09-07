@@ -23,6 +23,8 @@ export interface Database {
     refreshToken: string | null;
     accessToken: string | null;
     accessTokenExpiresAt: number | null;
+    idToken: string | null;
+    refreshTokenExpiresAt: number | null;
     scope: string | null;
     password: string | null;
     createdAt: number;
