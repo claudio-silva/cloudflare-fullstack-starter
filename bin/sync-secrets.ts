@@ -22,7 +22,6 @@ import { join } from "path";
 const HASH_DIR = ".wrangler/secrets";
 const NON_SECRET_KEYS = new Set([
 	"ENVIRONMENT",
-	"EMAIL_PROVIDER",
 	"AUTH_EMAILS_LOCAL_ENABLED",
 ]);
 // Cloudflare aggressively rate-limits `wrangler secret put`. A short pause
@@ -135,6 +134,11 @@ async function main() {
 
 	const secrets = parseEnvFile(envFile);
 	const secretKeys = Object.keys(secrets);
+
+	if (!secrets.BETTER_AUTH_SECRET) {
+		console.error(`  ✗ BETTER_AUTH_SECRET is missing or empty in ${envFile}. The Worker refuses to start auth without it.`);
+		process.exit(1);
+	}
 
 	if (secretKeys.length === 0) {
 		console.log(`  No secrets found in ${envFile}`);

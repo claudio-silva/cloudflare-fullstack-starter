@@ -10,7 +10,8 @@ The project is based on a SaaS starter template built on Cloudflare's edge platf
 - **Backend**: Hono on Cloudflare Workers
 - **Database**: Cloudflare D1 (SQLite at the edge)
 - **Auth**: Better Auth (email/password with verification)
-- **Email**: Cloudflare Email Service or Resend (pluggable provider)
+- **Email**: Cloudflare Email Service (`send_email` binding, no third-party provider)
+- **Tests**: Vitest (`@cloudflare/vitest-plugin`) for the Worker + D1; Playwright for a smoke E2E
 
 ## Critical Architecture
 
@@ -53,7 +54,9 @@ src/
 │   └── lib/
 │       └── auth/client.ts  # Better Auth React client
 └── worker/                 # Hono backend
-    ├── index.ts            # API routes + CLI endpoints
+    ├── index.ts            # Mounts routes with app.route(); exports Durable Objects
+    ├── routes/             # One file per feature (cli.ts, profile.ts, ...)
+    ├── durable-objects/    # Durable Object classes (example included)
     ├── middleware/auth.ts  # Better Auth config
     ├── types/database.ts   # Kysely types
     └── utils/              # Email templates and provider adapters
@@ -61,6 +64,8 @@ src/
 src/cli/                    # CLI commands (auth user management + db utilities)
 src/config.ts               # Global app configuration (app name, etc.)
 bin/                        # CLI entry points (init, auth, db)
+test/                       # Vitest worker integration tests (D1 migrations applied)
+e2e/                        # Playwright smoke tests
 migrations/                 # D1 SQL migrations
 seeds/                      # Idempotent SQL seed files
 ```
@@ -78,17 +83,18 @@ Wrap routes with `<ProtectedRoute>` to require authentication:
 ```
 
 ### Adding API Endpoints
-Add routes in `src/worker/index.ts`:
+Create one module per feature in `src/worker/routes/` and mount it in `src/worker/index.ts` with `app.route()`. Don't grow `index.ts` with handlers:
 ```typescript
-// Public endpoint
-app.get("/api/health", (c) => c.json({ status: "ok" }));
-
-// Protected endpoint (requires auth)
-app.use("/api/protected/*", authMiddleware);
-app.get("/api/protected/data", async (c) => {
+// src/worker/routes/items.ts
+export const items = new Hono<AppBindings>();
+items.use("*", authMiddleware);          // protected; omit for public routes
+items.get("/", async (c) => {
   const user = c.get("user");
   // ...
 });
+
+// src/worker/index.ts
+app.route("/api/items", items);
 ```
 
 ### Using shadcn/ui Components
@@ -121,6 +127,8 @@ const users = await db.selectFrom("users").selectAll().execute();
 ```bash
 # Development
 npm run dev                         # Start dev server (logs appear in terminal)
+npm test                            # Vitest worker integration tests
+npm run test:e2e                    # Playwright smoke test (starts the dev server)
 
 # Database — migrations
 npm run db:migrate                  # Run migrations locally
@@ -174,7 +182,7 @@ npm run tail:production        # Stream logs from production
 3. Add navigation as appropriate for your app (TopBar doesn't include nav by default)
 
 ### Add an API Endpoint
-1. Add route in `src/worker/index.ts`
+1. Add a module in `src/worker/routes/` and mount it in `src/worker/index.ts` with `app.route()`
 2. Use `authMiddleware` if authentication required
 3. Access D1 via `c.env.DB`
 
@@ -215,7 +223,7 @@ Update `src/config.ts` to customize app name, email settings, etc.
 const apiUrl = import.meta.env.VITE_API_URL;
 
 // Server-side (Worker) - all variables from wrangler.toml + .env files
-const emailProvider = c.env.EMAIL_PROVIDER;
+const baseUrl = c.env.APP_BASE_URL;
 const environment = c.env.ENVIRONMENT;  // from wrangler.toml
 ```
 
@@ -228,12 +236,21 @@ const environment = c.env.ENVIRONMENT;  // from wrangler.toml
 - Generate one per environment: `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`
 - Set it in each `.env.<env>` file; the deploy scripts sync it to the Worker automatically.
 
+## Downstream Projects
+
+Projects built on this starter should edit few starter files so later upstream pulls stay cheap. Put project-specific values in `src/config.ts`, `wrangler.toml` vars/bindings and the `env/*.template` files, and add features as new files (routes, pages) rather than rewriting starter ones. Durable Objects need a top-level binding plus a migration tag; see `docs/VITE_CLOUDFLARE_BRIDGE.md`. Scripts are package-manager agnostic (npm default, pnpm works).
+
+## UI Components
+
+Use the bundled shadcn/ui components (`@/components/ui/`) first, or compositions of them. Import an external component library or write a custom component only when nothing bundled covers the need or an external implementation is clearly better.
+
 ## Don'ts
 
 - Don't access database from frontend
 - Don't run separate frontend/backend servers
 - Don't modify shadcn/ui component internals (extend with wrappers)
 - Don't hardcode URLs (use environment-based config)
+- Don't add third-party email providers (email is Cloudflare Email Service only)
 
 ## Project-Specific Notes
 

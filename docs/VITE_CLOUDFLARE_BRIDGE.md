@@ -52,6 +52,8 @@ The customizer reads the D1 database names and IDs directly from `wrangler.toml`
 
 For preview and production builds, the mutating customizer also re-injects, when present in `wrangler.toml`: **`[env.*.vars]`**, **`routes`**, **`[[env.*.kv_namespaces]]`** (including `KV_RATE` when configured), **`[[env.*.r2_buckets]]`**, and **`[env.*.triggers]` / `crons`**, plus **`send_email`**. If you add a new per-env top-level table under `[env.preview]` or `[env.production]`, mirror it in `vite.config.ts` or it will be missing from the flat deploy config.
 
+**Durable Objects** need no mirroring: declare `[[durable_objects.bindings]]` and `[[migrations]]` only at the **top level** of `wrangler.toml`. The generated flat `wrangler.json` is built from the top level and the customizer leaves those fields untouched, so they apply to every environment (verified with `wrangler deploy --dry-run`). Do **not** duplicate them under `[env.*]`.
+
 **Important implementation detail:** the plugin's `config` option accepts either a partial config object or a mutating function `(cfg) => void`. The object/merge form *appends* to arrays like `d1_databases`, resulting in duplicate entries. The mutating function form *replaces* values in-place and is what this project uses to ensure correctness.
 
 ### 2. One-command deploy (`deploy:preview`, `deploy:production`)
@@ -77,7 +79,7 @@ Cloudflare Workers access secrets via `c.env.*`, but secrets can't live in `wran
 - Reads `.env.preview` or `.env.production`.
 - Computes a SHA-256 hash of the file and compares it with a stored hash (in `.wrangler/secrets/`).
 - If changed, calls `wrangler secret put` for each secret — only syncing what has changed, not re-uploading everything every time.
-- Skips `VITE_*` variables (client-side only, not secrets) and config vars such as `ENVIRONMENT`, `EMAIL_PROVIDER`, and `AUTH_EMAILS_LOCAL_ENABLED` (already set in `wrangler.toml`).
+- Skips `VITE_*` variables (client-side only, not secrets) and config vars such as `ENVIRONMENT` and `AUTH_EMAILS_LOCAL_ENABLED` (already set in `wrangler.toml`).
 
 You never have to manually run `wrangler secret put` or visit the Cloudflare dashboard to manage secrets. Just edit `.env.production` and run `npm run deploy:production`.
 
@@ -145,3 +147,28 @@ All scripts use only cross-platform syntax:
 - **Add a D1 or email binding** — add it to `wrangler.toml`; it's picked up at build time by `vite.config.ts`.
 
 You never need to use `wrangler secret put` manually, manage Cloudflare dashboard secrets by hand, or worry about which environment a deploy is targeting.
+
+---
+
+## Durable Objects
+
+`src/worker/durable-objects/ExampleCounter.ts` and `src/worker/routes/example-counter.ts` are a working example. Three pieces must line up:
+
+1. **Binding** in `wrangler.toml` (top level): `[[durable_objects.bindings]]` with `name` and `class_name`.
+2. **Migration** in `wrangler.toml` (top level): `[[migrations]]` with a unique `tag` and `new_sqlite_classes = ["YourClass"]`. Add a new tag (never edit an old one) for renames or deletes (`renamed_classes`, `deleted_classes`).
+3. **Export** the class from the Worker entry (`src/worker/index.ts`).
+
+Add the binding type to `AppEnv` in `src/worker/types/env.ts`, then run `npm run cf-typegen`. Tests run Durable Objects locally in the Vitest pool (see `test/worker.test.ts`).
+
+---
+
+## Using the starter as a subfolder (pnpm workspace / git subtree)
+
+The scripts do not assume npm or the repository root: they resolve files relative to the package directory (the current working directory of the script runner) and print next-step commands for whichever package manager launched them.
+
+Minimal adaptation when the starter lives at `app/` in a pnpm workspace:
+
+- Run scripts from the package: `pnpm --filter ./app dev`, or `pnpm -C app db:migrate`.
+- The `.env.*` files, `wrangler.toml`, `migrations/` and `seeds/` all live inside `app/`.
+- `package-lock.json` is irrelevant there; delete it and use the workspace `pnpm-lock.yaml`. Allow build scripts for `esbuild`, `workerd` and `sharp` in `pnpm-workspace.yaml` (`onlyBuiltDependencies`).
+- Keep project-specific changes to `src/config.ts`, `wrangler.toml` vars and the env templates so later `git subtree pull`s stay cheap; add features as new files under `src/worker/routes/`.

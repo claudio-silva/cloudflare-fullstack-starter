@@ -3,6 +3,7 @@ import { Routes, Route, useLocation } from "react-router-dom";
 import { TopBar } from "@/components/TopBar";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { Home } from "@/pages/Home";
+import { NotFound } from "@/pages/NotFound";
 import { Profile } from "@/pages/Profile";
 import { SignUp } from "@/pages/auth/SignUp";
 import { VerifyEmail } from "@/pages/auth/VerifyEmail";
@@ -68,20 +69,8 @@ function AppContent() {
 					</ProtectedRoute>
 				}
 			/>
-			<Route
-				path="*"
-				element={
-					<ProtectedRoute>
-						{shouldShowTopBar ? (
-							<TopBar>
-								<Home />
-							</TopBar>
-						) : (
-							<Home />
-						)}
-					</ProtectedRoute>
-				}
-			/>
+			{/* 404 — public, so unknown URLs don't bounce through login */}
+			<Route path="*" element={<NotFound />} />
 		</Routes>
 	);
 }

@@ -15,13 +15,23 @@ run_worker_first = ["/api/*"]
 
 [vars]
 ENVIRONMENT = "local"
-EMAIL_PROVIDER = "cloudflare"
 AUTH_EMAILS_LOCAL_ENABLED = "false"
 
 [[send_email]]
-name = "SEND_EMAIL"
+name = "EMAIL"
 allowed_sender_addresses = ["noreply@example.com"]
 remote = true
+
+# Durable Objects: declare ONLY at top level. The Vite plugin builds a flat
+# wrangler.json from the top level, so these apply to every environment.
+# See docs/VITE_CLOUDFLARE_BRIDGE.md.
+[[durable_objects.bindings]]
+name = "EXAMPLE_COUNTER"
+class_name = "ExampleCounter"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ExampleCounter"]
 
 [[d1_databases]]
 binding = "DB"
@@ -31,7 +41,6 @@ database_id = "local"
 [env.preview]
 [env.preview.vars]
 ENVIRONMENT = "preview"
-EMAIL_PROVIDER = "cloudflare"
 
 [[env.preview.d1_databases]]
 binding = "DB"
@@ -39,13 +48,12 @@ database_name = "cloudflare-fullstack-starter-preview"
 database_id = "YOUR_PREVIEW_D1_DATABASE_ID"
 
 [[env.preview.send_email]]
-name = "SEND_EMAIL"
+name = "EMAIL"
 allowed_sender_addresses = ["noreply@example.com"]
 
 [env.production]
 [env.production.vars]
 ENVIRONMENT = "production"
-EMAIL_PROVIDER = "cloudflare"
 
 [[env.production.d1_databases]]
 binding = "DB"
@@ -53,5 +61,5 @@ database_name = "cloudflare-fullstack-starter"
 database_id = "YOUR_PRODUCTION_D1_DATABASE_ID"
 
 [[env.production.send_email]]
-name = "SEND_EMAIL"
+name = "EMAIL"
 allowed_sender_addresses = ["noreply@example.com"]

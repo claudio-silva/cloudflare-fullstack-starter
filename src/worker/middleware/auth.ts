@@ -13,16 +13,9 @@ type Environment = "local" | "preview" | "production" | "test";
 function getBaseURL(c: AppContext, environment: Environment): string {
 	if (c.env.APP_BASE_URL) return c.env.APP_BASE_URL;
 
-	switch (environment) {
-		case "local":
-			return "http://localhost:5173";
-		case "preview":
-			return "https://preview.example.com";
-		case "production":
-			return "https://app.example.com";
-		default:
-			return "http://localhost:5173";
-	}
+	return environment === "preview" || environment === "production"
+		? config.baseUrls[environment]
+		: config.baseUrls.local;
 }
 
 function isEnabled(value?: string): boolean {
@@ -42,7 +35,7 @@ function getAuthEmailSender(c: AppContext, environment: Environment, authEmailsE
 		return createEmailSender(c.env);
 	} catch (error) {
 		if (environment === "local") {
-			console.warn("[EMAIL] Auth email provider is not configured; skipping local auth emails.", error instanceof Error ? error.message : error);
+			console.warn("[EMAIL] Auth email binding is not configured; skipping local auth emails.", error instanceof Error ? error.message : error);
 			return null;
 		}
 
@@ -71,8 +64,13 @@ export function createAuth(c: AppContext) {
 	if (environment === "local") {
 		console.log(
 			`[AUTH] Environment: ${environment}, Auth emails: ${authEmailsEnabled ? "enabled" : "disabled"}, `
-			+ `Email sender: ${emailSender ? `configured (${emailSender.provider})` : "not configured"}`,
+			+ `Email sender: ${emailSender ? `configured` : "not configured"}`,
 		);
+	}
+
+	const secret = c.env.BETTER_AUTH_SECRET;
+	if (!secret && environment !== "local" && environment !== "test") {
+		throw new Error("BETTER_AUTH_SECRET is not configured. Set it in .env.<env> and redeploy.");
 	}
 
 	const shouldRequireEmailVerification = authEmailsEnabled && !!emailSender;
@@ -81,6 +79,8 @@ export function createAuth(c: AppContext) {
 	const googleOAuthEnabled = config.auth.enableGoogleAuth && c.env.GOOGLE_CLIENT_ID && c.env.GOOGLE_CLIENT_SECRET;
 
 	return betterAuth({
+		// In local/test, Better Auth falls back to its built-in dev secret.
+		secret,
 		database: {
 			db,
 			type: "sqlite",
@@ -108,14 +108,14 @@ export function createAuth(c: AppContext) {
 			},
 			sendResetPassword: async ({ user, url }) => {
 				if (!emailSender) {
-					console.warn("[EMAIL] Auth emails are disabled or email provider is not configured; skipping password reset email.");
+					console.warn("[EMAIL] Auth emails are disabled or email binding is not configured; skipping password reset email.");
 					return;
 				}
 				// Modify URL to use frontend route instead of API route and include email for auto sign-in
 				const modifiedUrl = url.replace("/api/auth/reset-password", "/reset-password")
 					+ `&email=${encodeURIComponent(user.email)}`;
 				const html = getPasswordResetEmailTemplate(user.name || user.email, modifiedUrl);
-				await emailSender.sendVerificationEmail({
+				await emailSender.sendEmail({
 					to: user.email,
 					subject: "Reset your password",
 					html,
@@ -127,12 +127,12 @@ export function createAuth(c: AppContext) {
 			autoSignInAfterVerification: true,
 			sendVerificationEmail: async ({ user, url }) => {
 				if (!emailSender) {
-					console.warn("[EMAIL] Auth emails are disabled or email provider is not configured; skipping verification email.");
+					console.warn("[EMAIL] Auth emails are disabled or email binding is not configured; skipping verification email.");
 					return;
 				}
 				const modifiedUrl = url.replace("/api/auth/verify-email", "/verify-email");
 				const html = getVerificationEmailTemplate(user.name || user.email, modifiedUrl);
-				await emailSender.sendVerificationEmail({
+				await emailSender.sendEmail({
 					to: user.email,
 					subject: "Verify your account",
 					html,

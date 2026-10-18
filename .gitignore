@@ -32,3 +32,8 @@ dist-ssr
 .env.preview
 .env.production
 .env.*.local
+
+test-results/
+playwright-report/
+pnpm-lock.yaml
+pnpm-workspace.yaml

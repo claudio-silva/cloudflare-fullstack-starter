@@ -134,7 +134,9 @@ To enable real email verification locally with the default Cloudflare Email Serv
 echo "AUTH_EMAILS_LOCAL_ENABLED=true" >> .env.local
 ```
 
-Cloudflare Email Service uses the `SEND_EMAIL` binding in `wrangler.toml`, so no API key is required. For Resend, set `EMAIL_PROVIDER=resend` and `EMAIL_API_KEY` in the relevant `.env` file.
+Cloudflare Email Service uses the `EMAIL` binding in `wrangler.toml`, so no API key is required (see `docs/EMAIL.md`).
+
+For preview/production, also set `BETTER_AUTH_SECRET` (a random 32-byte value, different per environment) in `.env.preview` / `.env.production`; the Worker refuses to run auth without it.
 
 ## Verify Setup
 

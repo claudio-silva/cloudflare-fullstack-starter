@@ -14,6 +14,10 @@ type Answers = {
 	emailFrom: string;
 };
 
+// Package-manager agnostic: show next-step commands for whichever PM ran init.
+const packageManager = (process.env.npm_config_user_agent ?? "npm").split("/")[0];
+const run = (script: string) => `${packageManager} run ${script}`;
+
 const isInteractive = process.stdin.isTTY;
 
 function parseArgs(): Partial<Answers> & { help?: boolean } {
@@ -171,9 +175,12 @@ function readConfigAppName(configPath: string) {
 	return match?.[1] ?? "My App";
 }
 
-function updateConfig(configPath: string, appName: string, emailFrom: string) {
+function updateConfig(configPath: string, answers: Answers) {
+	const { appName, emailFrom, appDomain, previewDomain } = answers;
 	const content = fs.readFileSync(configPath, "utf8");
 	const updated = content
+		.replace(/preview:\s*"[^"]*"/, `preview: "${previewDomain}"`)
+		.replace(/production:\s*"[^"]*"/, `production: "${appDomain}"`)
 		.replace(/appName:\s*"[^"]*"/, `appName: "${appName}"`)
 		.replace(/fromAddress:\s*"[^"]*"/, `fromAddress: "${emailFrom}"`);
 
@@ -228,7 +235,7 @@ async function main() {
 	console.log("  ✓ wrangler.toml");
 
 	// Update shared config (UI + emails)
-	updateConfig(configPath, appName, emailFrom);
+	updateConfig(configPath, answers);
 	console.log("  ✓ src/config.ts");
 
 	// Create/update env files from templates without mutating templates
@@ -237,14 +244,15 @@ async function main() {
 
 	console.log("\n✅ Init complete!");
 	console.log("\nNext steps:");
-	console.log("  1. Run migrations: npm run db:migrate");
+	console.log(`  1. Run migrations: ${run("db:migrate")}`);
 	console.log("  2. Set CLI_API_KEY in .env.local (and in each .env.<env> for remote envs)");
-	console.log("  3. Start dev server: npm run dev");
+	console.log(`  3. Start dev server: ${run("dev")}`);
 	console.log("\nOptional:");
 	console.log("  • Set AUTH_EMAILS_LOCAL_ENABLED=true in .env.local to test auth emails locally");
-	console.log("  • For Resend, set EMAIL_PROVIDER=resend and EMAIL_API_KEY in the relevant .env file");
-	console.log("  • Create a user: npm run auth create-user -u admin@example.com -p password");
-	console.log("  • Seed data: add .sql files to seeds/ and run: npm run db:seed -- --env local --file <name>.sql");
+	console.log("  • Set BETTER_AUTH_SECRET in each .env.<env> (required for preview/production)");
+	console.log("  • Onboard your sending domain in Cloudflare Email Service (see docs/EMAIL.md)");
+	console.log(`  • Create a user: ${run("auth")} create-user -u admin@example.com -p password`);
+	console.log(`  • Seed data: add .sql files to seeds/ and run: ${run("db:seed")} -- --env local --file <name>.sql`);
 }
 
 main().catch((err) => {

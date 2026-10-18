@@ -202,7 +202,7 @@ export default defineConfig(({ mode }) => {
 		mode === "preview"
 			? (cfg: WorkerConfig): void => {
 					cfg.name = `${baseName}-preview`;
-					cfg.vars = previewVars ?? { ENVIRONMENT: "preview", EMAIL_PROVIDER: "cloudflare" };
+					cfg.vars = previewVars ?? { ENVIRONMENT: "preview" };
 					cfg.d1_databases = [
 						{
 							binding: "DB",
@@ -212,7 +212,7 @@ export default defineConfig(({ mode }) => {
 					];
 					cfg.send_email = [
 						{
-							name: "SEND_EMAIL",
+							name: "EMAIL",
 							allowed_sender_addresses: [previewEmailSender],
 						},
 					];
@@ -232,7 +232,7 @@ export default defineConfig(({ mode }) => {
 			: mode === "production"
 				? (cfg: WorkerConfig): void => {
 						cfg.name = `${baseName}-production`;
-						cfg.vars = productionVars ?? { ENVIRONMENT: "production", EMAIL_PROVIDER: "cloudflare" };
+						cfg.vars = productionVars ?? { ENVIRONMENT: "production" };
 						cfg.d1_databases = [
 							{
 								binding: "DB",
@@ -242,7 +242,7 @@ export default defineConfig(({ mode }) => {
 						];
 						cfg.send_email = [
 							{
-								name: "SEND_EMAIL",
+								name: "EMAIL",
 								allowed_sender_addresses: [productionEmailSender],
 							},
 						];

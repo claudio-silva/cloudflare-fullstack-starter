@@ -41,7 +41,7 @@ export interface Database {
   verifications: {
     id: string;
     identifier: string;
-    token: string;
+    value: string;
     expiresAt: number;
     createdAt: number;
     updatedAt: number;

@@ -30,7 +30,7 @@ This starter removes that overhead **entirely**. Create a project from the templ
 | **Multi-Environment** | Local, Preview, and Production environments with separate databases, configurations and secrets |
 | **Secrets Management** | Secrets are automatically synced from `.env.<env>` files to Cloudflare (optional), no need to manually set them in the dashboard (but you still can) |
 | **Complete Auth Flow** | Sign up, email verification, login, logout, profile management, powered by [Better Auth](https://www.better-auth.com/) |
-| **Transactional emails** | Email verification and password reset with Cloudflare Email Service by default, plus Resend via provider adapter |
+| **Transactional emails** | Email verification and password reset with Cloudflare Email Service |
 | **CLI Tools** | User management and full database tooling (migrate, backup, restore, time-travel, seed) across all environments, from your terminal |
 | **Dead simple deployment** | Deploy to Cloudflare's global network with one command |
 | **Built-in Observability** | Monitor your Worker logs, metrics, traces, performance and health |
@@ -38,16 +38,12 @@ This starter removes that overhead **entirely**. Create a project from the templ
 | **Beautiful UI** | 50+ [shadcn/ui](https://ui.shadcn.com/) components, dark/light theme with FOUC prevention |
 | **AI-Assisted Installation and Development** | [AGENTS_SETUP.md](docs/AGENTS_SETUP.md) and [AGENTS.md](AGENTS.md) are included for easy installation and enhanced development assistance |
 
-### Alternative: Public Website Template
-
-If you just want a public website (**landing page, marketing site**), check out the **`minimal` branch** — stripped of authentication, database, CLI, and app shell, but still includes React, TypeScript, Vite, Hono, Workers, shadcn/ui, and Tailwind.
-
 ## Why Cloudflare?
 
 Cloudflare's developer platform offers a unique combination that's hard to match:
 
 - **Edge performance** — Your code runs in 300+ data centers worldwide, milliseconds from your users
-- **Unified stack** — Workers, D1 database, R2 storage, KV, Queues, and more, all integrated
+- **Unified stack** — Workers, D1 database, Durable Objects, Email and more on one platform (R2, KV and cron are wired into the build config in `vite.config.ts`, but no example code is included)
 - **Generous free tier** — Start with **zero cost**:
   - **Workers**: 100,000 requests/day
   - **D1 Database**: 5 GB storage, 5 million reads/day
@@ -134,7 +130,7 @@ cd my-app
 
 ```bash
 npm install
-# or: pnpm install
+# or: pnpm install  (scripts are package-manager agnostic; npm is the default and the CI uses it)
 ```
 
 ### 3. Initialize project
@@ -157,13 +153,22 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 
 The same key must also be deployed to the Worker — the deploy scripts sync it automatically from the `.env.*` file.
 
-### 5. Run migrations and start development
+### 5. Set `BETTER_AUTH_SECRET` (preview/production)
+
+Better Auth signs sessions and tokens with this secret. It is **required** in preview and production (the Worker refuses to run auth without it) and optional locally. Use a different value per environment:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
+# paste the output as: BETTER_AUTH_SECRET=<value>   (in .env.preview / .env.production)
+```
+
+### 6. Run migrations and start development
 
 ```bash
 npm run db:migrate
 ```
 
-### 6. Start development
+### 7. Start development
 
 ```bash
 npm run dev
@@ -215,7 +220,7 @@ If wrangler is logged in, you can do it from the command line:
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS, shadcn/ui |
 | Backend | Hono (Workers), Cloudflare Vite Plugin, Better Auth, Kysely |
 | Database | Cloudflare D1 (clustered SQLite) |
-| Email | Cloudflare Email Service or Resend via provider adapters |
+| Email | Cloudflare Email Service (`send_email` binding) |
 | Deployment | Cloudflare Workers/Pages Runtime |
 
 ### Auth Features
@@ -259,10 +264,14 @@ If wrangler is logged in, you can do it from the command line:
 │   │   └── lib/auth/        # Better Auth client
 │   └── worker/              # Hono API backend
 │       ├── middleware/      # Auth middleware
-│       ├── utils/           # Email templates and provider adapters
-│       └── index.ts         # API routes
+│       ├── routes/          # One module per feature, mounted with app.route()
+│       ├── durable-objects/ # Durable Object example
+│       ├── utils/           # Email sender and templates
+│       └── index.ts         # Mounts routes
 ├── src/cli/                 # CLI commands (auth user management, db utilities)
 ├── bin/                     # CLI entry points (init, auth, db)
+├── test/                    # Vitest worker integration tests
+├── e2e/                     # Playwright smoke tests
 ├── migrations/              # D1 SQL migrations
 ├── seeds/                   # Idempotent SQL seed files (see seeds/README.md)
 ├── wrangler.toml            # Cloudflare config
@@ -395,7 +404,7 @@ The app runs locally without requiring email. To test real auth emails locally w
 echo "AUTH_EMAILS_LOCAL_ENABLED=true" >> .env.local
 ```
 
-Cloudflare Email Service uses the `SEND_EMAIL` binding in `wrangler.toml`, so no API key is required. For Resend, set `EMAIL_PROVIDER=resend` and put the API key in `EMAIL_API_KEY`.
+Cloudflare Email Service uses the `EMAIL` binding in `wrangler.toml`, so no API key is required. See [docs/EMAIL.md](docs/EMAIL.md) for domain onboarding.
 
 ### Preview/Production
 
@@ -407,6 +416,7 @@ Cloudflare Email Service uses the `SEND_EMAIL` binding in `wrangler.toml`, so no
 5. Add your secrets to `.env.preview` and `.env.production`:
    ```bash
    echo "CLI_API_KEY=<your-generated-key>" >> .env.production
+   echo "BETTER_AUTH_SECRET=<another-generated-key>" >> .env.production
    ```
 6. Deploy:
    ```bash
@@ -438,6 +448,8 @@ npm run dev          # Start dev server (http://localhost:5173)
 npm run build        # Build for production
 npm run preview      # Preview production build
 npm run lint         # Run ESLint
+npm test             # Vitest: Worker + D1 integration tests
+npm run test:e2e     # Playwright smoke test (installs: npx playwright install chromium)
 npm run check        # Type check + build + deploy dry-run
 ```
 
@@ -472,16 +484,8 @@ Also update prod and preview domain URLs in `.env.<env-name>.example` and `.env.
 3. Wrap with `<ProtectedRoute>` and `<TopBar>` if auth required
 4. Add navigation as appropriate for your app design
 
-### Email Provider
-Cloudflare Email Service is the default provider and uses the `SEND_EMAIL` binding declared in `wrangler.toml`. `npm run init` derives a sender such as `noreply@myapp.com` from `--app-domain https://app.myapp.com` and updates both `src/config.ts` and the binding allow-lists.
-
-To use Resend instead, set:
-```bash
-EMAIL_PROVIDER=resend
-EMAIL_API_KEY=re_xxxxxxxxxxxxx
-```
-
-Additional providers can be added by implementing the `EmailSender` interface in `src/worker/utils/email.ts`.
+### Email
+Email is sent through Cloudflare Email Service only, via the `EMAIL` (`send_email`) binding declared in `wrangler.toml`. `npm run init` derives a sender such as `noreply@myapp.com` from `--app-domain https://app.myapp.com` and updates both `src/config.ts` and the binding allow-lists. Domain onboarding, templates and the optional inbound handler are covered in [docs/EMAIL.md](docs/EMAIL.md).
 
 ## Observability Features
 
