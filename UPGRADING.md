@@ -48,6 +48,12 @@ npm run test:e2e       # from 2.0.0 on, optional
 
 ---
 
+## 3.0.1 — 2026-10-19
+
+Documentation only. **No required actions.** `AGENTS.md`, `docs/DATABASES.md` and the skill now state that the portability rules (D1 has no transactions, MySQL has no `RETURNING`, ...) apply to **starter-owned** database code only; project code may use anything its chosen database supports. Take the doc changes if you want them, then set `starter.version`.
+
+---
+
 ## 3.0.0 — 2026-10-19
 
 Database layer rewrite: **database-agnostic migrations, seeds, types and tests** (D1/SQLite, PostgreSQL, MySQL). You may upgrade **straight from 1.x or 2.x to 3.0.0**: skip the database stage of 2.0.0 (the SQL migration `0003`) and the whole 2.1.0 entry; this entry supersedes them. Apply the other 2.0.0 stages first if the project predates them.
