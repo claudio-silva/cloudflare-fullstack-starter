@@ -34,7 +34,8 @@ This starter removes that overhead **entirely**. Create a project from the templ
 | **CLI Tools** | User management and full database tooling (migrate, backup, restore, time-travel, seed) across all environments, from your terminal |
 | **Dead simple deployment** | Deploy to Cloudflare's global network with one command |
 | **Built-in Observability** | Monitor your Worker logs, metrics, traces, performance and health |
-| **CI/CD Ready** | GitHub Actions workflow validates every push: lint, type-check, and build must pass.<br>You can also display the CI status badge in your README.md |
+| **CI/CD Ready** | GitHub Actions workflow validates every push: lint, type-check, tests, build and an E2E smoke test must pass.<br>You can also display the CI status badge in your README.md |
+| **Testing** | Vitest integration tests running in the Workers runtime against D1 (migrations applied) and Durable Objects, plus a Playwright E2E smoke test |
 | **Beautiful UI** | 50+ [shadcn/ui](https://ui.shadcn.com/) components, dark/light theme with FOUC prevention |
 | **AI-Assisted Installation and Development** | [AGENTS_SETUP.md](docs/AGENTS_SETUP.md) and [AGENTS.md](AGENTS.md) are included for easy installation and enhanced development assistance |
 
@@ -127,6 +128,8 @@ cd my-app
 ```
 
 ### 2. Install dependencies
+
+Requires **Node.js 26** (`.nvmrc`; with nvm run `nvm install && nvm use`).
 
 ```bash
 npm install
@@ -221,6 +224,7 @@ If wrangler is logged in, you can do it from the command line:
 | Backend | Hono (Workers), Cloudflare Vite Plugin, Better Auth, Kysely |
 | Database | Cloudflare D1 (clustered SQLite) |
 | Email | Cloudflare Email Service (`send_email` binding) |
+| Testing | Vitest (`@cloudflare/vitest-plugin`), Playwright |
 | Deployment | Cloudflare Workers/Pages Runtime |
 
 ### Auth Features
