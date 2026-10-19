@@ -378,7 +378,7 @@ npm run db:seed -- --env production --file admin-bootstrap
 
 > **Tip:** You can pass extra options after `--` in any `npm run db:*` shorthand, e.g. `npm run db:backup -- --archive-dir ./tmp`.
 
-See [docs/DATABASES.md](docs/DATABASES.md) for migrations, seeds, the portable-SQL rules and how to use PostgreSQL or MySQL.
+See [docs/DATABASES.md](docs/DATABASES.md) for migrations, seeds, the portability notes and how to use PostgreSQL or MySQL.
 
 ## Environment Setup
 

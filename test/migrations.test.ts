@@ -42,7 +42,7 @@ describe("D1 specifics", () => {
 		await expect(migrateDatabase(db, { kind: "sqlite" })).rejects.toThrow(/legacy d1_migrations table/);
 	});
 
-	it("does not support transactions (portable code must not rely on them)", async () => {
+	it("D1 does not support transactions (documented limitation; starter code does not use them)", async () => {
 		const db = await freshD1();
 		await expect(db.transaction().execute(async () => undefined)).rejects.toThrow(/Transactions are not supported/);
 	});

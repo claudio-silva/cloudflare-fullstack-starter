@@ -114,7 +114,7 @@ import { createDb } from "../db";
 const db = createDb(c.env);
 const users = await db.selectFrom("users").selectAll().execute();
 ```
-**Write database-portable code** (the app runs on D1/SQLite, PostgreSQL and MySQL): no transactions, no `RETURNING`, case-insensitive search with `lower()`, timestamps/booleans via `dbNow()`/`dbBool()`, idempotent inserts via `ignoreConflict()`, column types from `columnTypes()` in migrations. Full rules, other databases and provider APIs: `docs/DATABASES.md`.
+**Portability scope:** starter-owned database code (the auth tables, the CLI routes, migrations 0001-0003, seed helpers) is kept portable across D1/SQLite, PostgreSQL and MySQL so every supported database works out of the box; keep it that way when you edit those files (helpers: `dbNow()`, `dbBool()`, `toIso()`, `ignoreConflict()`, `columnTypes()`). **Your own code is not restricted:** once the project has chosen its database, use whatever that database supports (transactions on PostgreSQL/MySQL, `RETURNING`, native types, raw SQL). Differences worth knowing, other databases and provider APIs: `docs/DATABASES.md`.
 
 ## Commands
 
@@ -260,7 +260,6 @@ Use the bundled shadcn/ui components (`@/components/ui/`) first, or compositions
 
 - Don't access database from frontend
 - Don't build a Kysely instance or name a dialect outside `src/worker/db/`
-- Don't use transactions, `RETURNING`, epoch-integer timestamps or raw dialect SQL (breaks portability across D1/PostgreSQL/MySQL)
 - Don't run separate frontend/backend servers
 - Don't modify shadcn/ui component internals (extend with wrappers)
 - Don't hardcode URLs (use environment-based config)

@@ -16,16 +16,23 @@ Because D1 is the default, anything D1-specific is called out below (backup, res
 
 Table types are in `src/worker/types/database.ts` (`AuthDatabase` for Better Auth tables; add yours to `Database`).
 
-## The portable subset (rules for application code)
+## Portability: starter code vs your code
 
-1. **Column types** come from `columnTypes(kind)` (`src/worker/db/migrations/columns.ts`): ids/emails/tokens `varchar(255)` (MySQL cannot index unbounded text), flags `boolean`, instants real datetimes (`timestamptz`, MySQL `datetime(3)`). **Never epoch integers**: Better Auth sends `Date`/boolean on PostgreSQL and MySQL.
-2. **No interactive transactions.** D1 does not support them (`db.transaction()` throws). Make each operation a single statement or an idempotent sequence.
-3. **No `RETURNING` clauses** (MySQL has none). Insert, then select.
-4. **Case-insensitive search** with `lower(col) like lower(?)` (`LIKE` is case-insensitive on SQLite/MySQL, case-sensitive on PostgreSQL).
-5. **Timestamps/booleans** via `dbNow()`/`dbBool()`; read with `toIso()`/`Boolean()`.
-6. **Upserts/idempotent inserts** via `ignoreConflict()`.
-7. **No raw dialect SQL** in routes. If you truly need it, branch on `databaseKind`.
-8. **Schema changes** only through the Kysely schema builder (no `ALTER COLUMN`/adding constraints to existing tables; SQLite cannot do them. Rebuild the table instead).
+**Starter-owned database code** (Better Auth tables, the CLI routes, migrations 0001-0003, the seed helpers) is written in a portable subset so it works on every supported database and is tested on all of them. Keep it portable when you modify those files.
+
+**Your own code is not restricted.** After you choose your database, use whatever it supports: transactions on PostgreSQL/MySQL, `RETURNING` on PostgreSQL/SQLite, native column types, raw SQL, vendor features. You can also trim the other databases from `test/cross-db` and CI once you are sure you will not switch. The notes below only matter if you want to keep the option of changing database later, or when you touch starter-owned code.
+
+Differences the starter works around (and the helper it uses):
+
+| Difference | Starter's approach |
+|---|---|
+| **Column types.** MySQL cannot index unbounded `text`; MySQL has no `timestamptz` | `columnTypes(kind)` in `src/worker/db/migrations/columns.ts`: ids/emails/tokens `varchar(255)`, flags `boolean`, instants `timestamptz` (MySQL `datetime(3)`) |
+| **Timestamps/booleans on Better Auth tables.** The adapter sends `Date`/boolean on PostgreSQL and MySQL, so epoch-integer columns fail there | Real datetime/boolean columns; write with `dbNow()`/`dbBool()`, read with `toIso()`/`Boolean()`. If your code writes to the auth tables, use the helpers (or match your database's types yourself) |
+| **Transactions.** D1 does not support interactive transactions (`db.transaction()` throws); PostgreSQL and MySQL do | Starter code does not use them. Your code on PostgreSQL/MySQL may |
+| **`RETURNING`.** Not available in MySQL | Starter code inserts, then selects |
+| **`LIKE` case sensitivity.** Insensitive on SQLite/MySQL, sensitive on PostgreSQL | `lower(col) like lower(?)` in the CLI user search |
+| **Idempotent insert.** `ON CONFLICT DO NOTHING` (SQLite/PostgreSQL) vs `INSERT IGNORE` (MySQL) | `ignoreConflict()` |
+| **Schema alterations.** SQLite cannot `ALTER COLUMN` or add constraints to existing tables | Starter migrations only use the Kysely schema builder operations all three support; rebuild a table when needed |
 
 ## Migrations: baseline + incremental
 
@@ -46,7 +53,7 @@ src/worker/db/migrations/
 A test (`test/support/cross-db-suite.ts`) proves baseline and incremental give the **same schema** on every database, so they cannot drift silently.
 
 ### Adding a migration
-1. Create `incremental/0004_<name>.ts` exporting a factory `(kind) => ({ up })` (copy `0003_...`), using `columnTypes(kind)`. Register it in `migrations/index.ts`. Never edit or rename an applied one.
+1. Create `incremental/0004_<name>.ts` exporting a factory `(kind) => ({ up })` (copy `0003_...`), using `columnTypes(kind)` to stay portable (or your database's native DDL once you have chosen it). Register it in `migrations/index.ts`. Never edit or rename an applied one.
 2. Apply the same change to `baseline.ts` and append the new name to its `squashes`.
 3. Update the table types in `src/worker/types/database.ts`.
 4. `npm test` (the drift test fails if baseline and incrementals disagree).
@@ -132,4 +139,4 @@ Env vars `TEST_POSTGRES_URL` / `TEST_MYSQL_URL` select the servers (see `docker-
 
 1. Ask what the data layer really needs (relational SQL? provider features such as realtime or RLS? an existing production database?).
 2. Prefer Path 1; if a provider is wanted or already in use, propose Path 2 and explain the latency trade-off; offer Path 3 only when a single external database is a hard requirement.
-3. Whatever the path, keep every connection in factory functions beside `createDb` and respect the portable subset.
+3. Whatever the path, keep every connection in factory functions beside `createDb`. Do not impose the portable subset on the user's own code; tell them which differences exist and let them decide.
