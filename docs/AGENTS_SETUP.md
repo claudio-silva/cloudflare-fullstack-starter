@@ -4,7 +4,7 @@ One-time setup instructions for AI coding agents to initialize this template.
 
 ## Node.js
 
-Use **Node.js 22 LTS** (see `.nvmrc` at the repo root). `package.json` declares a matching `engines.node` range, and `.npmrc` sets `engine-strict=true` so installs fail fast on the wrong runtime. GitHub Actions CI uses the same minor version.
+Use **Node.js 26** (see `.nvmrc` at the repo root). `package.json` declares a matching `engines.node` range, and `.npmrc` sets `engine-strict=true` so installs fail fast on the wrong runtime. GitHub Actions CI uses the same major version.
 
 ## Installing the Template
 
