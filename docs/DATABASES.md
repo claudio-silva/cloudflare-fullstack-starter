@@ -2,7 +2,7 @@
 
 The starter is **database-agnostic by design**: schema creation, migrations, seeds, auth and the application queries run unchanged on **Cloudflare D1 (SQLite, the default)**, **PostgreSQL** and **MySQL**. The same behavioural test suite runs against D1, PGlite, a real PostgreSQL 17 server and a real MySQL 8.4 server. The core stays on Cloudflare Workers; the database is your choice.
 
-Because D1 is the default, anything D1-specific is called out below (backup, restore, time-travel).
+Because D1 is the default, anything D1-specific is called out below (time-travel). Backup and restore work on every supported database.
 
 ## The seam: `src/worker/db/index.ts`
 
@@ -63,7 +63,7 @@ Inside the Worker, through `POST /api/cli/migrate` (protected by `CLI_API_KEY`; 
 
 ```bash
 npm run db:migrate                    # local (dev server must be running) 
-npm run db:migrate:preview:safe       # D1 backup first, then migrate
+npm run db:migrate:preview:safe       # backup first, then migrate
 npm run db:migrate:production:safe
 npm run db:migrations:list[:preview|:production]
 ```
@@ -121,7 +121,7 @@ For MySQL use `MysqlDialect` with `mysql2` (pass `timezone: "Z"`, and `disableEv
 
 - Add the Hyperdrive/connection binding to `wrangler.toml` and `AppEnv`, and the driver to `package.json`.
 - Migrations, seeds, auth and tests need **no changes**.
-- D1-only tools stop applying: `db:backup`, `db:restore`, `db:time-travel` (use your provider's backups/point-in-time recovery; `migrate --safe` skips the D1 export).
+- `db:backup`, `db:restore` and `migrate --safe` keep working: they go through the Worker (`/api/cli/backup/*`, `/api/cli/restore/*`) and read every table of whatever database `createDb` returns. Only `db:time-travel` is D1-specific; for large production databases also use your provider's native backups/point-in-time recovery.
 - The starter tests exercise real PostgreSQL and MySQL servers through Node drivers; they do not go through Hyperdrive from a Worker, so smoke-test that connection yourself.
 
 ## Testing across databases

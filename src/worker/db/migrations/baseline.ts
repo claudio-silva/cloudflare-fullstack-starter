@@ -29,7 +29,7 @@ export function createBaseline(kind: DatabaseKind): Baseline {
 				.createTable("accounts")
 				.addColumn("accountId", t.id, (c) => c.primaryKey())
 				.addColumn("id", t.id, (c) => c.unique())
-				.addColumn("userId", t.id, (c) => c.notNull().references("users.id").onDelete("cascade"))
+				.addColumn("userId", t.id, (c) => c.notNull())
 				.addColumn("providerId", t.short, (c) => c.notNull())
 				.addColumn("provider", t.short)
 				.addColumn("providerAccountId", t.short)
@@ -42,18 +42,22 @@ export function createBaseline(kind: DatabaseKind): Baseline {
 				.addColumn("updatedAt", t.timestamp, (c) => c.notNull())
 				.addColumn("idToken", t.text)
 				.addColumn("refreshTokenExpiresAt", t.timestamp)
+				// A table constraint, not inline `references`: MySQL silently ignores the inline form.
+				.addForeignKeyConstraint("accounts_userId_fk", ["userId"], "users", ["id"], (fk) => fk.onDelete("cascade"))
 				.execute();
 
 			await db.schema
 				.createTable("sessions")
 				.addColumn("id", t.id, (c) => c.primaryKey())
-				.addColumn("userId", t.id, (c) => c.notNull().references("users.id").onDelete("cascade"))
+				.addColumn("userId", t.id, (c) => c.notNull())
 				.addColumn("token", t.short, (c) => c.notNull().unique())
 				.addColumn("expiresAt", t.timestamp, (c) => c.notNull())
 				.addColumn("ipAddress", t.short)
 				.addColumn("userAgent", t.text)
 				.addColumn("createdAt", t.timestamp, (c) => c.notNull())
 				.addColumn("updatedAt", t.timestamp, (c) => c.notNull())
+				// A table constraint, not inline `references`: MySQL silently ignores the inline form.
+				.addForeignKeyConstraint("sessions_userId_fk", ["userId"], "users", ["id"], (fk) => fk.onDelete("cascade"))
 				.execute();
 
 			await db.schema

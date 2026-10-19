@@ -1,17 +1,9 @@
 import { Command, Option } from "commander";
 import { execFileSync } from "node:child_process";
-import {
-	existsSync,
-	mkdirSync,
-	readFileSync,
-	readdirSync,
-	renameSync,
-	statSync,
-	unlinkSync,
-	writeFileSync,
-} from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync, unlinkSync } from "node:fs";
 import { basename, resolve } from "node:path";
 import { createInterface } from "node:readline";
+import { applyRestore, prepareRestore, readBackup, writeBackup } from "../src/cli/utils/backup";
 import { connectToDatabase } from "../src/cli/utils/db";
 
 type DbEnvironment = "local" | "preview" | "production";
@@ -20,6 +12,7 @@ const program = new Command();
 
 const allowedEnvironments: DbEnvironment[] = ["local", "preview", "production"];
 const commandTimeoutMs = 180_000;
+const backupExtension = ".backup.jsonl";
 const defaultArchiveDir = resolve(process.cwd(), ".wrangler", "backups");
 
 function getDatabaseName(env: DbEnvironment): string {
@@ -45,20 +38,6 @@ function getDatabaseName(env: DbEnvironment): string {
 		);
 	}
 	return match[1];
-}
-
-function getEnvFlags(env: DbEnvironment): string[] {
-	if (env === "local") {
-		return ["--local"];
-	}
-	return ["--env", env];
-}
-
-function getRemoteFlags(env: DbEnvironment): string[] {
-	if (env === "local") {
-		return [];
-	}
-	return ["--remote"];
 }
 
 function runWrangler(args: string[]): void {
@@ -116,7 +95,7 @@ function listBackupFiles(env: DbEnvironment = "local", archiveDir?: string): str
 	}
 
 	const files = readdirSync(backupDir)
-		.filter((name) => name.endsWith(".sql"))
+		.filter((name) => name.endsWith(backupExtension))
 		.filter((name) => inferBackupEnvironment(name) === env)
 		.map((name) => resolve(backupDir, name))
 		.filter((filePath) => {
@@ -190,121 +169,29 @@ function parseTimestamp(raw: string): string {
 	return new Date(parsed).toISOString();
 }
 
-function resolveOutputPath(env: DbEnvironment, archiveDir?: string): string {
-	const outputDir = resolveArchiveDir(archiveDir);
-	if (!existsSync(outputDir)) {
-		mkdirSync(outputDir, { recursive: true });
+function getProjectName(): string {
+	try {
+		const name = (JSON.parse(readFileSync(resolve(process.cwd(), "package.json"), "utf8")) as { name?: string }).name;
+		return (name ?? "database").replace(/[^a-zA-Z0-9._-]/g, "-");
+	} catch {
+		return "database";
 	}
-	const dbName = getDatabaseName(env);
-	return resolve(outputDir, `${dbName}-${env}-${formatTimestampForFilename()}.sql`);
+}
+
+/** `<project>-<env>-<timestamp><suffix>.backup.jsonl` inside the archive directory. */
+function backupFilePath(env: DbEnvironment, archiveDir: string, suffix = ""): string {
+	return resolve(archiveDir, `${getProjectName()}-${env}-${formatTimestampForFilename()}${suffix}${backupExtension}`);
 }
 
 function latestBackupFile(env: DbEnvironment, archiveDir?: string): string | null {
-	const files = listBackupFiles(env, archiveDir);
-	if (files.length === 0) {
-		return null;
-	}
+	// Safety copies taken by `restore` are not restore points to offer as "latest".
+	const files = listBackupFiles(env, archiveDir).filter((file) => !basename(file).includes("-before-restore"));
 	return files.at(-1) ?? null;
-}
-
-function getLocalStateDir(): string {
-	return resolve(process.cwd(), ".wrangler", "state", "v3", "d1");
-}
-
-function collectLocalSqliteFiles(dirPath: string): string[] {
-	const entries = readdirSync(dirPath, { withFileTypes: true });
-	const files: string[] = [];
-
-	for (const entry of entries) {
-		const entryPath = resolve(dirPath, entry.name);
-		if (entry.isDirectory()) {
-			files.push(...collectLocalSqliteFiles(entryPath));
-			continue;
-		}
-
-		if (entry.name.endsWith(".sqlite") && entry.name !== "metadata.sqlite" && !entry.name.includes("-restore-")) {
-			files.push(entryPath);
-		}
-	}
-
-	return files;
-}
-
-function isWritable(path: string): boolean {
-	try {
-		statSync(path);
-		return true;
-	} catch {
-		return false;
-	}
-}
-
-function uniqueBackupPath(fileName: string, archiveDir: string): string {
-	const backupDir = archiveDir;
-	if (!existsSync(backupDir)) {
-		mkdirSync(backupDir, { recursive: true });
-	}
-
-	const baseName = basename(fileName, ".sqlite");
-	const timestamp = formatTimestampForFilename(new Date());
-	let attempt = 0;
-
-	while (true) {
-		const suffix = attempt === 0 ? "" : `-${attempt}`;
-		const candidate = resolve(backupDir, `${baseName}-restore-${timestamp}${suffix}.sqlite`);
-		if (!existsSync(candidate)) {
-			return candidate;
-		}
-		attempt += 1;
-	}
-}
-
-function resetLocalSqliteDbForRestore(archiveDir: string): string[] {
-	const stateDir = getLocalStateDir();
-	const backupTargets: string[] = [];
-
-	if (!existsSync(stateDir)) {
-		return backupTargets;
-	}
-
-	const sqliteFiles = collectLocalSqliteFiles(stateDir);
-	if (sqliteFiles.length === 0) {
-		return backupTargets;
-	}
-
-	for (const fileName of sqliteFiles) {
-		const filePath = resolve(stateDir, fileName);
-		if (!isWritable(filePath)) {
-			continue;
-		}
-
-		const backupPath = uniqueBackupPath(fileName, archiveDir);
-		renameSync(filePath, backupPath);
-		backupTargets.push(backupPath);
-
-		writeFileSync(filePath, "", "utf8");
-
-		const walPath = `${filePath}-wal`;
-		if (isWritable(walPath)) {
-			const walBackup = `${backupPath}-wal`;
-			renameSync(walPath, walBackup);
-			backupTargets.push(walBackup);
-		}
-
-		const shmPath = `${filePath}-shm`;
-		if (isWritable(shmPath)) {
-			const shmBackup = `${backupPath}-shm`;
-			renameSync(shmPath, shmBackup);
-			backupTargets.push(shmBackup);
-		}
-	}
-
-	return backupTargets;
 }
 
 program
 	.name("db")
-	.description("D1 database operations: migrations, backups, restore, time-travel, and seeding.")
+	.description("Database operations: migrations, backups, restore, seeding (any supported database) and D1 time-travel.")
 	.version("1.0.0");
 
 const backupsCommand = new Command("backups")
@@ -408,11 +295,13 @@ program.addCommand(backupsCommand);
 
 function describeApiFailure(env: DbEnvironment, error: unknown): never {
 	const message = error instanceof Error ? error.message : String(error);
-	const hint =
-		env === "local"
-			? "Is the dev server running (npm run dev)? Local migrations also run automatically on the first API request."
-			: "Is the Worker deployed with this schema version, and CLI_API_KEY set in .env." + env + "?";
-	console.error(`Database command failed: ${message}\n${hint}`);
+	const looksLikeConnection = /fetch failed|ECONNREFUSED|HTTP \d+|API key|CLI_API_KEY/i.test(message);
+	const hint = !looksLikeConnection
+		? ""
+		: env === "local"
+			? "\nIs the dev server running (npm run dev)? Local migrations also run automatically on the first API request."
+			: `\nIs the Worker deployed with this version of the code, and CLI_API_KEY set in .env.${env}?`;
+	console.error(`Database command failed: ${message}${hint}`);
 	process.exit(1);
 }
 
@@ -424,7 +313,7 @@ program.addCommand(
 				.choices(allowedEnvironments)
 				.default("local"),
 		)
-		.option("--safe", "Take a D1 backup before running migrations (D1 only; use your provider's backups otherwise).")
+		.option("--safe", "Back up the whole database before running migrations (works with every supported database).")
 		.option("-a, --archive-dir <path>", "Directory used to store migration backup.")
 		.addHelpText(
 			"after",
@@ -441,28 +330,13 @@ Examples:
 		)
 		.action(async (options: { env: DbEnvironment; safe?: boolean; archiveDir?: string }) => {
 			const env = options.env;
-			if (options.safe) {
-				let databaseName: string | null = null;
-				try {
-					databaseName = getDatabaseName(env);
-				} catch {
-					console.warn("No D1 database configured in wrangler.toml; skipping the D1 backup. Use your database provider's backups.");
-				}
-				if (databaseName) {
-					runWrangler([
-						"d1",
-						"export",
-						databaseName,
-						...getEnvFlags(env),
-						...getRemoteFlags(env),
-						"--output",
-						resolveOutputPath(env, options.archiveDir),
-						"--skip-confirmation",
-					]);
-				}
-			}
 			try {
 				const client = await connectToDatabase(env);
+				if (options.safe) {
+					const file = backupFilePath(env, resolveArchiveDir(options.archiveDir), "-before-migrate");
+					console.log(`Backing up ${env} before migrating: ${file}`);
+					await writeBackup(client, env, file);
+				}
 				const result = await client.migrate();
 				console.log(`Migration mode: ${result.mode}`);
 				console.log(result.applied.length ? `Applied: ${result.applied.join(", ")}` : "Nothing to apply.");
@@ -502,104 +376,116 @@ Examples:
 
 program.addCommand(
 	new Command("backup")
-		.description("Export a local or remote D1 database to a SQL file.")
+		.description("Back up the whole database (every table, not just auth) to a file, through the Worker.")
 		.addOption(
 			new Option("-e, --env <environment>", "Target environment.")
 				.choices(allowedEnvironments)
 				.default("local"),
 		)
-		.option("-o, --output <file>", "Destination .sql file path. Defaults to .wrangler/backups/<db>-<env>-<timestamp>.sql.")
+		.option("-o, --output <file>", "Destination file path. Defaults to .wrangler/backups/<project>-<env>-<timestamp>.backup.jsonl.")
 		.option("-a, --archive-dir <path>", "Directory where the backup file is stored.")
 		.addHelpText(
 			"after",
 			`
+Works with every supported database (D1, PostgreSQL, MySQL): rows are read through the Worker
+(/api/cli/backup/*, protected by CLI_API_KEY) and written to a JSON Lines file. The schema is not
+included: it belongs to the migrations, and the file records which ones were applied.
+Take backups while the app is quiet; for a point-in-time snapshot of a D1 database use time-travel.
+
 Examples:
-  db backup --env local
-  db backup --env local --output ./tmp/local-backup.sql
-  db backup --env preview
+  db backup --env local        (dev server must be running)
   db backup --env production
+  db backup --env preview --output ./tmp/preview.backup.jsonl
 `,
 		)
-		.action((options: { env: DbEnvironment; output?: string; archiveDir?: string }) => {
+		.action(async (options: { env: DbEnvironment; output?: string; archiveDir?: string }) => {
 			const env = options.env;
 			const archiveDir = resolveArchiveDir(options.archiveDir);
-			const output = options.output
-				? joinArchivePath(archiveDir, options.output)
-				: resolveOutputPath(env, archiveDir);
-			runWrangler([
-				"d1",
-				"export",
-				getDatabaseName(env),
-				...getEnvFlags(env),
-				...getRemoteFlags(env),
-				"--output",
-				output,
-				"--skip-confirmation",
-			]);
+			const output = options.output ? joinArchivePath(archiveDir, options.output) : backupFilePath(env, archiveDir);
+			try {
+				const client = await connectToDatabase(env);
+				console.log(`Backing up ${env} to ${output}`);
+				const { tables, rows } = await writeBackup(client, env, output);
+				console.log(`Done: ${rows} row(s) from ${tables} table(s).`);
+			} catch (error) {
+				describeApiFailure(env, error);
+			}
 		}),
 );
 
 program.addCommand(
 	new Command("restore")
-		.description("Restore a local or remote database from an exported SQL backup.")
+		.description("Replace the database contents with a backup made by `db backup`, through the Worker.")
 		.addOption(
 			new Option("-e, --env <environment>", "Target environment.")
 				.choices(allowedEnvironments)
 				.default("local"),
 		)
-		.option("-f, --file <path>", "Path to the backup file.")
+		.option("-f, --file <path>", "Path to the backup file (relative to the archive directory).")
 		.option("-a, --archive-dir <path>", "Directory where backup files are stored.")
-		.option("--latest", "Use the latest local backup from the archive directory for this environment.")
+		.option("--latest", "Use the latest backup from the archive directory for this environment.")
+		.option("-y, --yes", "Do not ask for confirmation (required in non-interactive shells for remote environments).")
+		.option("--no-safety-backup", "Do not back up the current contents before replacing them.")
 		.addHelpText(
 			"after",
 			`
+Replaces ALL data in every table. Before touching anything the backup file is verified, the database
+is checked to be at the same schema version, and (unless --no-safety-backup) the current contents are
+saved to a "-before-restore" backup you can restore from if something goes wrong. A fresh, unmigrated
+database is migrated first. The restore is not atomic: if it stops half-way, restore the safety backup.
+
 Examples:
-  db restore --env local --file local-backup.sql
   db restore --env local --latest
-  db restore --env preview --file preview-backup.sql
-  db restore --env preview --file preview-backup.sql --archive-dir ./.my-backups
+  db restore --env local --file local-backup.backup.jsonl
+  db restore --env production --file prod.backup.jsonl --yes
 `,
 		)
-		.action((options: { env: DbEnvironment; file?: string; latest?: boolean; archiveDir?: string }) => {
+		.action(async (options: { env: DbEnvironment; file?: string; latest?: boolean; archiveDir?: string; yes?: boolean; safetyBackup: boolean }) => {
 			const env = options.env;
-			const file = options.file;
-			const useLatest = Boolean(options.latest);
 			const archiveDir = resolveArchiveDir(options.archiveDir);
-			if (!file && !useLatest) {
+			if (!options.file && !options.latest) {
 				throw new Error("Either --file or --latest is required.");
 			}
-			if (file && useLatest) {
+			if (options.file && options.latest) {
 				throw new Error("Use either --file or --latest, not both.");
 			}
+			const file = options.file ? joinArchivePath(archiveDir, options.file) : latestBackupFile(env, archiveDir);
+			if (!file) {
+				throw new Error(`No backup file found for environment ${env}. Provide --file or create a backup first.`);
+			}
 
-			const sqlFile = file ? joinArchivePath(archiveDir, file) : latestBackupFile(env, archiveDir);
-			if (!sqlFile) {
-				throw new Error(
-					`No backup file found for environment ${env}. Provide --file or create a backup first.`,
+			let safetyFile: string | undefined;
+			try {
+				const { header, counts } = await readBackup(file);
+				const client = await connectToDatabase(env);
+				const { info, warnings } = await prepareRestore(client, header);
+				for (const warning of warnings) console.warn(`Warning: ${warning}`);
+				const rowTotal = Object.values(counts).reduce((a, b) => a + b, 0);
+				console.log(
+					`Restoring ${basename(file)} (taken ${header.createdAt} from ${header.environment}, ${rowTotal} row(s)) into ${env}.\nThis REPLACES all data in ${info.tables.length} table(s).`,
 				);
-			}
-
-			if (env === "local") {
-				const backups = resetLocalSqliteDbForRestore(archiveDir);
-				if (backups.length > 0) {
-					console.log("Local database backup(s) created before restore:");
-					for (const backup of backups) {
-						console.log(`  - ${backup}`);
+				if (env !== "local" && !options.yes) {
+					if (!process.stdin.isTTY) {
+						throw new Error("Refusing to restore a remote environment without confirmation. Pass --yes.");
 					}
-				} else {
-					console.log("No existing local sqlite file to backup before restore.");
+					if (!(await askYesNo("Continue?"))) {
+						console.log("Aborted.");
+						return;
+					}
 				}
+				if (options.safetyBackup) {
+					safetyFile = backupFilePath(env, archiveDir, "-before-restore");
+					console.log(`Saving the current contents first: ${safetyFile}`);
+					await writeBackup(client, env, safetyFile);
+				}
+				await applyRestore(client, file, counts, info);
+				console.log("Restore complete.");
+			} catch (error) {
+				if (safetyFile && existsSync(safetyFile)) {
+					console.error(`The database may be partially restored. Its previous contents are in ${safetyFile}; run: db restore --env ${env} --file ${safetyFile}`);
+				}
+				describeApiFailure(env, error);
 			}
-
-			runWrangler([
-				"d1",
-				"execute",
-				getDatabaseName(env),
-				...getEnvFlags(env),
-				...getRemoteFlags(env),
-				"--file",
-				sqlFile,
-			]);
 		}),
 );
 

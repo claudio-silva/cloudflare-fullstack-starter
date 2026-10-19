@@ -137,10 +137,10 @@ npm run db:migrations:list:preview
 npm run db:migrations:list:production
 
 # Database — backup & restore
-npm run db:backup        # Export local D1 to .wrangler/backups/
-npm run db:backup:production   # Export production D1 to .wrangler/backups/
-npm run db:restore:latest        # Restore latest backup (auto-backs-up current DB first)
-npm run db:restore -- --env production --file prod-backup.sql
+npm run db:backup        # Back up the whole local database (any supported DB) to .wrangler/backups/*.backup.jsonl
+npm run db:backup:production   # Same for production
+npm run db:restore:latest        # Restore latest backup (takes a safety backup of the current data first)
+npm run db:restore -- --env production --file prod.backup.jsonl --yes
 
 # Database — time-travel (remote envs only)
 npm run db:time-travel:info -- --env production
@@ -244,7 +244,7 @@ Services that can reasonably be swapped sit behind an **adapter**: a small inter
 
 To add or replace a provider, follow `docs/EMAIL.md`.
 
-**Data:** D1 is the default, but the schema, migrations, seeds, auth and tests are portable across D1/SQLite, PostgreSQL and MySQL (all tested). Connections come from `createDb()` in `src/worker/db`; for another SQL database, a second store, or a provider SDK (Supabase, Neon, ...), follow `docs/DATABASES.md`. Only backup/restore/time-travel are D1-specific. Prefer keeping auth on D1 and putting domain data elsewhere if a provider is wanted. When a user brings a new service need that has Cloudflare and non-Cloudflare options, introduce an adapter following the same pattern rather than hard-wiring either.
+**Data:** D1 is the default, but the schema, migrations, seeds, auth and tests are portable across D1/SQLite, PostgreSQL and MySQL (all tested). Connections come from `createDb()` in `src/worker/db`; for another SQL database, a second store, or a provider SDK (Supabase, Neon, ...), follow `docs/DATABASES.md`. Backup/restore work on every supported database (logical, through the Worker API); only time-travel is D1-specific. Prefer keeping auth on D1 and putting domain data elsewhere if a provider is wanted. When a user brings a new service need that has Cloudflare and non-Cloudflare options, introduce an adapter following the same pattern rather than hard-wiring either.
 
 ## Downstream Projects
 

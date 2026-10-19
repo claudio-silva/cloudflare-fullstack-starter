@@ -108,7 +108,7 @@ New databases get the baseline in one step; existing ones the pending incrementa
 | `npm run db:migrations:list` | Show applied/pending migrations (local) |
 | `npm run db:migrations:list:preview` / `:production` | Same against remote D1 (requires `wrangler` login) |
 | `npm run db:migrations:list:all` | Runs all three in sequence |
-| `npm run db:backup` / `:preview` / `:production` | Export D1 to `.sql` |
+| `npm run db:backup` / `:preview` / `:production` | Back up the whole database to `.backup.jsonl` (any supported DB) |
 | `npm run deploy:preview` / `deploy:production` | Sync secrets, bake env, deploy |
 
 ## Set Up `CLI_API_KEY`

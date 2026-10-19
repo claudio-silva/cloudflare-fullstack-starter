@@ -48,7 +48,7 @@ type CreateUserResponse = BasicResponse & { userId?: string };
 type EditUserResponse = BasicResponse & { user?: { email: string } };
 type DeleteAllUsersResponse = BasicResponse & { deletedCount?: number };
 
-type CliDatabaseClient = {
+export type CliDatabaseClient = {
 	createUser: (data: CreateUserPayload) => Promise<CreateUserResponse>;
 	updatePassword: (email: string, password: string) => Promise<BasicResponse>;
 	deleteUser: (email: string) => Promise<BasicResponse>;
@@ -62,6 +62,19 @@ type CliDatabaseClient = {
 	migrations: () => Promise<MigrationStatus[]>;
 	listSeeds: () => Promise<string[]>;
 	runSeed: (name: string) => Promise<BasicResponse>;
+	backupInfo: () => Promise<BackupInfo>;
+	backupRows: (table: string, offset: number, limit: number) => Promise<unknown[]>;
+	restoreClear: (table: string) => Promise<void>;
+	restoreRows: (table: string, rows: unknown[]) => Promise<void>;
+	restoreFinish: (table: string) => Promise<{ rowCount: number }>;
+};
+
+export type BackupInfo = {
+	kind: "sqlite" | "postgres" | "mysql";
+	/** Names of the applied migrations. */
+	migrations: string[];
+	/** Data tables, parents before the tables that reference them. */
+	tables: Array<{ name: string; columns: string[]; primaryKey: string[]; restoreChunkRows: number }>;
 };
 
 type MigrateResponse = { mode: "baseline" | "adopted-legacy" | "incremental"; applied: string[] };
@@ -192,6 +205,23 @@ export async function connectToDatabase(environment: Environment): Promise<CliDa
 			(await makeApiRequest<{ migrations: MigrationStatus[] }>("GET", "/api/cli/migrations", undefined, environment)).migrations,
 		listSeeds: async () => (await makeApiRequest<{ seeds: string[] }>("GET", "/api/cli/seeds", undefined, environment)).seeds,
 		runSeed: (name) => makeApiRequest<BasicResponse>("POST", "/api/cli/seed", { name }, environment),
+		backupInfo: () => makeApiRequest<BackupInfo>("GET", "/api/cli/backup/info", undefined, environment),
+		backupRows: async (table, offset, limit) =>
+			(
+				await makeApiRequest<{ rows: unknown[] }>(
+					"GET",
+					`/api/cli/backup/rows?table=${encodeURIComponent(table)}&offset=${offset}&limit=${limit}`,
+					undefined,
+					environment,
+				)
+			).rows,
+		restoreClear: async (table) => {
+			await makeApiRequest("POST", "/api/cli/restore/clear", { table }, environment);
+		},
+		restoreRows: async (table, rows) => {
+			await makeApiRequest("POST", "/api/cli/restore/rows", { table, rows }, environment);
+		},
+		restoreFinish: (table) => makeApiRequest<{ rowCount: number }>("POST", "/api/cli/restore/finish", { table }, environment),
 		setRole: (email, role) =>
 			makeApiRequest<BasicResponse>(
 				"PUT",

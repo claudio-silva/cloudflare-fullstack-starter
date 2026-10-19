@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { sql, Kysely } from "kysely";
 import { describe, expect, it } from "vitest";
+import { describeSchema } from "../src/worker/db/backup";
 import { D1Dialect } from "../src/worker/db/d1-dialect";
 import { migrateDatabase } from "../src/worker/db/migrations";
 import { createMigrations } from "../src/worker/db/migrations";
@@ -12,9 +13,9 @@ let next = 0;
 
 async function freshD1() {
 	const db = new Kysely<any>({ dialect: new D1Dialect({ database: bindings[next++ % 2] }) }); // eslint-disable-line @typescript-eslint/no-explicit-any
-	const { rows } = await sql<{ name: string }>`select name from sqlite_master where type = 'table' and name not like 'sqlite_%' and name not like '_cf_%'`.execute(db);
-	await sql`pragma foreign_keys = off`.execute(db);
-	for (const r of rows) await sql.raw(`drop table if exists "${r.name}"`).execute(db);
+	// Children first, so foreign keys never block a drop.
+	for (const table of (await describeSchema(db, "sqlite")).reverse()) await sql.raw(`drop table if exists "${table.name}"`).execute(db);
+	for (const name of ["kysely_migration", "kysely_migration_lock", "d1_migrations"]) await sql.raw(`drop table if exists "${name}"`).execute(db);
 	return db;
 }
 

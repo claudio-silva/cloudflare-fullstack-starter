@@ -25,7 +25,7 @@
 
 | Kind | Files | Rule |
 |---|---|---|
-| Starter-owned | `bin/`, `src/cli/`, `src/worker/adapters/`, `src/worker/middleware/`, `src/worker/utils/`, `src/worker/db/index.ts`, `src/worker/db/d1-dialect.ts`, `src/worker/db/migrations/{migrate,columns,types}.ts`, `test/support/`, `src/react-app/components/ui/`, `vitest.config.ts`, `playwright.config.ts`, `.github/workflows/ci.yml`, `docs/` | Take upstream changes; re-apply local edits if any |
+| Starter-owned | `bin/`, `src/cli/`, `src/worker/adapters/`, `src/worker/middleware/`, `src/worker/utils/`, `src/worker/db/index.ts`, `src/worker/db/d1-dialect.ts`, `src/worker/db/backup.ts`, `src/worker/db/migrations/{migrate,columns,types}.ts`, `test/support/`, `src/react-app/components/ui/`, `vitest.config.ts`, `playwright.config.ts`, `.github/workflows/ci.yml`, `docs/` | Take upstream changes; re-apply local edits if any |
 | Shared (merge carefully) | `src/worker/db/migrations/{baseline,index}.ts`, `src/worker/db/migrations/incremental/`, `src/worker/db/seeds/`, `package.json`, `vite.config.ts`, `wrangler.toml`, `src/worker/index.ts`, `src/react-app/App.tsx`, `src/worker/types/*`, `AGENTS.md`, `README.md` | Three-way merge, never overwrite |
 | Project-owned | `src/config.ts` values, `env/*.template` values, `.env.*`, `migrations/` already applied, `seeds/`, all project pages/routes/components | Never overwrite; only add what a log entry requires |
 
@@ -48,6 +48,38 @@ npm run test:e2e       # from 2.0.0 on, optional
 
 ---
 
+## 3.1.0 — 2026-10-19
+
+Whole-database backup and restore on every supported database, a MySQL foreign-key fix, and a dependency audit. **No schema change on D1/SQLite/PostgreSQL.** Small required actions below.
+
+### Breaking changes
+
+1. **`db:backup`, `db:restore` and `migrate --safe` are database-agnostic.** They go through the Worker (`GET /api/cli/backup/*`, `POST /api/cli/restore/*`, protected by `CLI_API_KEY`) instead of `wrangler d1 export/execute`, so the dev server must be running for `local`, and the Worker must be deployed (with the new routes) for remote environments.
+2. **New backup format:** `*.backup.jsonl` (JSON Lines: header with the applied migrations, rows per table in dependency order, end record with counts). It covers **every table** (auth and your own). Old `.sql` backups are not read by `db:restore`; restore them manually with `wrangler d1 execute <db> --file <backup>.sql [--remote]`.
+3. **Restore rules:** the target must be at the same migration level as the backup (a fresh, unmigrated database is migrated first); contents are replaced table by table, **not atomically**, so a safety backup of the current data is taken first. New flags: `--yes` (required for remote environments in non-interactive shells), `--no-safety-backup`. Restoring across database kinds (for example D1 to PostgreSQL) is best-effort.
+4. **MySQL foreign keys:** `0001_initial` and the baseline declared `accounts.userId` and `sessions.userId` as inline `references`, which MySQL silently ignores, so MySQL installs from 3.0.0 have no foreign key and no cascade on those columns. They are now table constraints (`accounts_userId_fk`, `sessions_userId_fk`). D1 and PostgreSQL were unaffected.
+5. `tsconfig.cli.json` is new and `tsc -b` now type-checks `bin/` and `src/cli/`. `package-lock.json` was refreshed with `npm audit fix` (0 vulnerabilities).
+
+### Required actions
+
+- Take the starter-owned changes in `bin/`, `src/cli/`, `src/worker/db/backup.ts`, `src/worker/routes/cli.ts`, `test/support/`, `tsconfig*.json`, `docs/`; merge `src/worker/db/migrations/{baseline,incremental/0001_initial}.ts`, `test/*.test.ts` and `package.json` carefully.
+- **MySQL installs created with 3.0.0 only:** add the missing constraints once (remove orphan rows first if any):
+  ```sql
+  DELETE FROM accounts WHERE userId NOT IN (SELECT id FROM users);
+  DELETE FROM sessions WHERE userId NOT IN (SELECT id FROM users);
+  ALTER TABLE accounts ADD CONSTRAINT accounts_userId_fk FOREIGN KEY (userId) REFERENCES users (id) ON DELETE CASCADE;
+  ALTER TABLE sessions ADD CONSTRAINT sessions_userId_fk FOREIGN KEY (userId) REFERENCES users (id) ON DELETE CASCADE;
+  ```
+  (Do not edit the applied migration for other installs: the schema-drift test compares baseline and incrementals, and both now carry the constraints for new databases.)
+- Deploy the Worker **before** running `db:backup:<env>` against a remote environment.
+- Verify: `npx tsc -b`, `npm test`, `npm run test:db`, then `npm run db:backup` and `npm run db:restore:latest` locally.
+
+### Known limits
+
+Restore is not atomic. Self-referencing and cyclic foreign keys are not ordered automatically. Backups of a database that is being written to may be inconsistent. Very large databases are better served by the provider's native backups. Windows is not supported.
+
+---
+
 ## 3.0.1 — 2026-10-19
 
 Documentation only. **No required actions.** `AGENTS.md`, `docs/DATABASES.md` and the skill now state that the portability rules (D1 has no transactions, MySQL has no `RETURNING`, ...) apply to **starter-owned** database code only; project code may use anything its chosen database supports. Take the doc changes if you want them, then set `starter.version`.
@@ -67,7 +99,7 @@ Database layer rewrite: **database-agnostic migrations, seeds, types and tests**
 5. **Starter-owned database code is portable** (`docs/DATABASES.md`); project code is **not** required to be. Only one thing is needed in project code: writes to the auth tables (`users`, `accounts`, ...) must produce values that match the column types (see the stage 1 note); new databases now have real datetime/boolean columns.
 6. **Types:** `createdAt`/`updatedAt`/`expiresAt` are `Timestamp` (`Date | string`), `emailVerified` is `DbBoolean`, `role`/`emailVerified` are `Generated`. The CLI API now returns ISO strings and boolean `emailVerified`. (Old D1 rows can hold epoch numbers written by the previous CLI and ISO strings written by Better Auth; `toIso()` handles both.)
 7. **Seeds are TypeScript**, registered in `src/worker/db/seeds/index.ts` (`seeds/*.sql` and the `seeds/` directory are gone). `db:seed --file` takes a seed name.
-8. **Tooling:** `db:migrate`, `db:migrations:list` and `db:seed` call the Worker (CLI_API_KEY). **Local development migrates automatically** on the first API request, so the Playwright `webServer` no longer runs `db:migrate`. `migrate --safe` takes a D1 backup only when a D1 database is configured. `db:backup`, `db:restore`, `db:time-travel` remain D1-only.
+8. **Tooling:** `db:migrate`, `db:migrations:list` and `db:seed` call the Worker (CLI_API_KEY). **Local development migrates automatically** on the first API request, so the Playwright `webServer` no longer runs `db:migrate`. (3.0.0 only: `db:backup`/`db:restore` stayed D1-only; they became database-agnostic in 3.1.0.)
 9. **Tests:** Vitest has two projects (`worker`, `cross-db`); new devDependencies `mysql2`, `pg`, `@types/pg`, `@electric-sql/pglite`; new `docker-compose.test.yml`, scripts `test:db:up|down`, `test:db`; CI runs PostgreSQL and MySQL services. `test/apply-migrations.ts` now uses the runner (no `readD1Migrations`).
 
 ### Required actions (in this order)

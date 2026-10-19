@@ -26,7 +26,7 @@ This starter removes that overhead **entirely**. Create a project from the templ
 | **API routes on workers** | Hono's elegant routing for backend endpoints |
 | **Hot Module Replacement** (HMR) | Rapid development with instant updates |
 | **TypeScript + ESLint** | Full type safety across frontend, backend, and database queries |
-| **Database Ready (and database-agnostic)** | [Cloudflare D1](https://developers.cloudflare.com/d1/) by default, with portable Kysely migrations (baseline for new installs + incremental for upgrades), seeds, and D1 backup/restore/time-travel from the CLI. The same schema, migrations, auth and tests run on PostgreSQL and MySQL too ([docs/DATABASES.md](docs/DATABASES.md)) |
+| **Database Ready (and database-agnostic)** | [Cloudflare D1](https://developers.cloudflare.com/d1/) by default, with portable Kysely migrations (baseline for new installs + incremental for upgrades), seeds, and whole-database backup/restore (any supported database) plus D1 time-travel from the CLI. The same schema, migrations, auth and tests run on PostgreSQL and MySQL too ([docs/DATABASES.md](docs/DATABASES.md)) |
 | **Multi-Environment** | Local, Preview, and Production environments with separate databases, configurations and secrets |
 | **Secrets Management** | Secrets are automatically synced from `.env.<env>` files to Cloudflare (optional), no need to manually set them in the dashboard (but you still can) |
 | **Complete Auth Flow** | Sign up, email verification, login, logout, profile management, powered by [Better Auth](https://www.better-auth.com/) |
@@ -218,8 +218,8 @@ If wrangler is logged in, you can do it from the command line:
 ### Database Features
 - Portable migrations (TypeScript, Kysely) applied per-environment via `npm run db:migrate:*`; new databases get a single baseline, existing ones the pending incremental migrations; local dev migrates automatically
 - **Safe migrate** — automatically takes a pre-migration backup before applying schema changes (`--safe`)
-- **Backup** — export any environment's D1 database to a timestamped `.sql` file in `.wrangler/backups/` with one command
-- **Restore** — restore from any backup file; for local databases, the current SQLite file is auto-backed-up before overwrite
+- **Backup** — export the whole database (auth **and** your own tables) of any environment to a timestamped `.backup.jsonl` file in `.wrangler/backups/`; works on D1, PostgreSQL and MySQL
+- **Restore** — replace the database contents from a backup file; a safety backup of the current data is taken first (`--no-safety-backup` to skip, `--yes` to skip the prompt). The schema must be at the same migration level as the backup
 - **Backup management** — list and clean up old backups per-environment, with `--dry-run` and `--all` options
 - **Time Travel** — inspect and restore to any historical state of a remote D1 database using Cloudflare's built-in time-travel (point-in-time restore by timestamp or bookmark)
 - **Seeds** — run idempotent TypeScript seeds (`src/worker/db/seeds/`) against any environment, separately from migrations
@@ -337,11 +337,11 @@ npm run db:migrations:list:preview
 npm run db:migrations:list:production
 npm run db:migrations:list:all
 
-# Safe migrate: takes a D1 backup before applying (recommended for remote envs)
+# Safe migrate: takes a backup before applying (recommended for remote envs)
 npm run db:migrate:preview:safe
 npm run db:migrate:production:safe
 
-# Backups — export D1 to a .sql file in .wrangler/backups/
+# Backups — whole database to a .backup.jsonl file in .wrangler/backups/
 npm run db:backup
 npm run db:backup:preview
 npm run db:backup:production
@@ -358,10 +358,10 @@ npm run db:backups:clean -- --env local --all        # delete without prompting
 npm run db:backups:clean -- --env local --dry-run    # preview what would be deleted
 
 # Restore from backup
-npm run db:restore:latest                                         # auto-picks latest, auto-backs-up existing local DB first
-npm run db:restore -- --env local --file my-backup.sql
-npm run db:restore -- --env preview --file preview-backup.sql
-npm run db:restore -- --env production --file production-backup.sql
+npm run db:restore:latest                                         # auto-picks latest, takes a safety backup of the current data first
+npm run db:restore -- --env local --file my.backup.jsonl
+npm run db:restore -- --env preview --file preview.backup.jsonl
+npm run db:restore -- --env production --file production.backup.jsonl --yes
 
 # Time Travel (remote envs only — requires D1 Time Travel to be enabled)
 npm run db:time-travel -- --env preview time-travel info

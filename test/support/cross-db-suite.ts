@@ -2,8 +2,10 @@ import { betterAuth } from "better-auth";
 import { sql, type Kysely } from "kysely";
 import { describe, expect, it } from "vitest";
 import { dbBool, dbNow, ignoreConflict, toIso, type DatabaseKind } from "../../src/worker/db";
+import { clearTable, describeSchema, exportRows, finishTable, importRows, type EncodedRow } from "../../src/worker/db/backup";
 import { migrateDatabase } from "../../src/worker/db/migrations";
 import type { Database } from "../../src/worker/types/database";
+import { createProjectTables } from "./project-tables";
 import { schemaSnapshot } from "./schema-snapshot";
 
 type AnyDb = Kysely<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -61,6 +63,82 @@ export function defineCrossDbSuite(label: string, kind: DatabaseKind, fresh: () 
 			await seed();
 			const count = await db.selectFrom("users").select(sql<number>`count(*)`.as("n")).where("id", "=", "seed-admin").executeTakeFirstOrThrow();
 			expect(Number(count.n)).toBe(1);
+		});
+
+		it("backs up and restores the whole database, including project tables and every value type", async () => {
+			const db = (await fresh()) as AnyDb;
+			await migrateDatabase(db, { kind });
+			await createProjectTables(db, kind);
+
+			const now = dbNow(kind);
+			await db.insertInto("users").values({ id: "u1", email: "a@example.com", name: "A", createdAt: now, updatedAt: now, emailVerified: dbBool(true, kind) }).execute();
+			await db.insertInto("sessions").values({ id: "s1", userId: "u1", token: "tok", expiresAt: now, createdAt: now, updatedAt: now }).execute();
+			await db.insertInto("z_parent").values({ title: "first" }).execute();
+			await db.insertInto("z_parent").values({ title: "second" }).execute();
+			await db
+				.insertInto("a_child")
+				.values({
+					parent_id: 1,
+					note: "it's \"quoted\"\nnew line ✓",
+					done: dbBool(true, kind),
+					stamp: now,
+					payload: kind === "postgres" ? Buffer.from([0, 1, 254, 255]) : kind === "mysql" ? Buffer.from([0, 1, 254, 255]) : new Uint8Array([0, 1, 254, 255]),
+					big: "9007199254740993",
+					meta: JSON.stringify({ tags: ["a", "b"], n: 1 }),
+					nothing: null,
+				})
+				.execute();
+
+			const read = async () => ({
+				users: await db.selectFrom("users").selectAll().orderBy("id").execute(),
+				sessions: await db.selectFrom("sessions").selectAll().orderBy("id").execute(),
+				z_parent: await db.selectFrom("z_parent").selectAll().orderBy("id").execute(),
+				a_child: await db.selectFrom("a_child").selectAll().orderBy("id").execute(),
+			});
+			const before = await read();
+
+			const schema = await describeSchema(db, kind);
+			const names = schema.map((t) => t.name);
+			expect(names).toEqual(expect.arrayContaining(["users", "sessions", "z_parent", "a_child"]));
+			expect(names).not.toContain("kysely_migration");
+			// Parents come before the tables that reference them, whatever the alphabet says.
+			expect(names.indexOf("z_parent")).toBeLessThan(names.indexOf("a_child"));
+			expect(names.indexOf("users")).toBeLessThan(names.indexOf("sessions"));
+			expect(schema.find((t) => t.name === "z_parent")?.primaryKey).toEqual(["id"]);
+
+			// Export through JSON, as the CLI does, paging two rows at a time.
+			const dump = new Map<string, EncodedRow[]>();
+			for (const table of schema) {
+				const rows: EncodedRow[] = [];
+				for (let offset = 0; ; offset += 2) {
+					const page = JSON.parse(JSON.stringify(await exportRows(db, table, offset, 2))) as EncodedRow[];
+					rows.push(...page);
+					if (page.length < 2) break;
+				}
+				dump.set(table.name, rows);
+			}
+			expect(dump.get("z_parent")).toHaveLength(2);
+
+			// Wipe, then restore in dependency order.
+			for (const table of [...schema].reverse()) await clearTable(db, table);
+			expect((await read()).z_parent).toHaveLength(0);
+			for (const table of schema) {
+				const rows = dump.get(table.name)!;
+				await importRows(db, kind, table, rows);
+				expect((await finishTable(db, kind, table)).rowCount).toBe(rows.length);
+			}
+			expect(await read()).toEqual(before);
+
+			// Generated ids continue after the restored ones (PostgreSQL sequences are moved past them).
+			await db.insertInto("z_parent").values({ title: "third" }).execute();
+			expect((await db.selectFrom("z_parent").select("id").orderBy("id").execute()).map((r) => Number(r.id))).toEqual([1, 2, 3]);
+		});
+
+		it("refuses to restore rows for columns the database does not have", async () => {
+			const db = (await fresh()) as AnyDb;
+			await migrateDatabase(db, { kind });
+			const users = (await describeSchema(db, kind)).find((t) => t.name === "users")!;
+			await expect(importRows(db, kind, users, [{ id: "x", nope: 1 }])).rejects.toThrow(/does not exist/);
 		});
 
 		it("runs Better Auth sign-up and sign-in", async () => {

@@ -5,6 +5,7 @@ import { sql, type Kysely, type Updateable } from "kysely";
 import type { Database } from "../types/database";
 import type { AppBindings, AppContext } from "../types/context";
 import { createDb, databaseKind, dbBool, dbNow, toIso } from "../db";
+import { appliedMigrations, clearTable, describeSchema, exportRows, finishTable, importRows, restoreChunkRows, type EncodedRow } from "../db/backup";
 import { migrateDatabase, migrationStatus } from "../db/migrations";
 import { seeds } from "../db/seeds";
 
@@ -396,4 +397,61 @@ cli.post("/seed", async (c) => {
 	}
 	await seed(createDb(c.env), { kind: databaseKind });
 	return c.json({ success: true, seed: name });
+});
+
+// Backup and restore (database-agnostic; driven by `npm run db:backup` / `db:restore`, see docs/DATABASES.md).
+cli.get("/backup/info", async (c) => {
+	const db = createDb(c.env);
+	const tables = await describeSchema(db, databaseKind);
+	return c.json({
+		kind: databaseKind,
+		migrations: await appliedMigrations(db),
+		tables: tables.map((t) => ({
+			name: t.name,
+			columns: t.columns.map((col) => col.name),
+			primaryKey: t.primaryKey,
+			restoreChunkRows: restoreChunkRows(databaseKind, t),
+		})),
+	});
+});
+
+/** Looks the table up in the live schema, which also validates the name taken from the request. */
+async function findTable(c: AppContext, name: string | undefined) {
+	return (await describeSchema(createDb(c.env), databaseKind)).find((t) => t.name === name);
+}
+
+cli.get("/backup/rows", async (c) => {
+	const { table: name, offset, limit } = c.req.query();
+	const table = await findTable(c, name);
+	if (!table) return c.json({ error: `Unknown table "${name ?? ""}"` }, 404);
+	const rows = await exportRows(createDb(c.env), table, Math.max(0, Number(offset) || 0), Math.min(1000, Math.max(1, Number(limit) || 500)));
+	return c.json({ rows });
+});
+
+cli.post("/restore/clear", async (c) => {
+	const { table: name } = await c.req.json<{ table?: string }>();
+	const table = await findTable(c, name);
+	if (!table) return c.json({ error: `Unknown table "${name ?? ""}"` }, 404);
+	await clearTable(createDb(c.env), table);
+	return c.json({ success: true });
+});
+
+cli.post("/restore/rows", async (c) => {
+	const { table: name, rows } = await c.req.json<{ table?: string; rows?: EncodedRow[] }>();
+	const table = await findTable(c, name);
+	if (!table || !Array.isArray(rows)) return c.json({ error: `Unknown table "${name ?? ""}" or missing rows` }, 400);
+	try {
+		await importRows(createDb(c.env), databaseKind, table, rows);
+	} catch (error) {
+		console.error("[CLI] Restore failed", error);
+		return c.json({ error: error instanceof Error ? error.message : "Restore failed" }, 500);
+	}
+	return c.json({ success: true, inserted: rows.length });
+});
+
+cli.post("/restore/finish", async (c) => {
+	const { table: name } = await c.req.json<{ table?: string }>();
+	const table = await findTable(c, name);
+	if (!table) return c.json({ error: `Unknown table "${name ?? ""}"` }, 404);
+	return c.json(await finishTable(createDb(c.env), databaseKind, table));
 });

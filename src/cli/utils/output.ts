@@ -2,7 +2,7 @@ import { format } from "date-fns";
 
 type TableRow = Record<string, unknown>;
 
-type Timestamp = number | string | Date;
+type Timestamp = number | string | Date | null;
 
 type PrintableAccount = {
 	accountId: string;
@@ -68,8 +68,8 @@ export function printUser(user: PrintableUser): void {
 	console.log(`Name:        ${user.name || "N/A"}`);
 	console.log(`Image:       ${user.image || "N/A"}`);
 	console.log(`Verified:    ${user.emailVerified ? "Yes" : "No"}`);
-	console.log(`Created:     ${format(new Date(user.createdAt), "yyyy-MM-dd HH:mm:ss")}`);
-	console.log(`Updated:     ${format(new Date(user.updatedAt), "yyyy-MM-dd HH:mm:ss")}`);
+	console.log(`Created:     ${formatTimestamp(user.createdAt)}`);
+	console.log(`Updated:     ${formatTimestamp(user.updatedAt)}`);
 
 	if (user.account) {
 		console.log("\nAccount Details");
@@ -77,8 +77,8 @@ export function printUser(user: PrintableUser): void {
 		console.log(`Provider:    ${user.account.providerId}`);
 		console.log(`Account ID:  ${user.account.accountId}`);
 		console.log(`Has Password: ${user.account.hasPassword ? "Yes" : "No"}`);
-		console.log(`Created:     ${format(new Date(user.account.createdAt), "yyyy-MM-dd HH:mm:ss")}`);
-		console.log(`Updated:     ${format(new Date(user.account.updatedAt), "yyyy-MM-dd HH:mm:ss")}`);
+		console.log(`Created:     ${formatTimestamp(user.account.createdAt)}`);
+		console.log(`Updated:     ${formatTimestamp(user.account.updatedAt)}`);
 	}
 
 	if (user.sessions !== undefined) {
@@ -106,7 +106,8 @@ export function printWarning(message: string): void {
 	console.warn(`⚠️  ${message}`);
 }
 
-export function formatTimestamp(timestamp: number | string | Date): string {
+export function formatTimestamp(timestamp: Timestamp): string {
+	if (timestamp === null) return "-";
 	// Handle various timestamp formats from API/database
 	if (typeof timestamp === "string") {
 		return format(new Date(timestamp), "yyyy-MM-dd HH:mm:ss");
