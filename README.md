@@ -42,7 +42,7 @@ This starter removes that overhead **entirely**. Create a project from the templ
 
 ## Cloudflare-first, not Cloudflare-only
 
-The starter uses Cloudflare services wherever one fits (D1, Email Service, Durable Objects, ...), because that is where the cost, simplicity and latency advantages are. It never forces you to: services that people commonly swap sit behind small adapters (email today), so you can use another provider, or convert a project that already depends on one, without rewriting the app.
+The starter uses Cloudflare services wherever one fits (D1, Email Service, Durable Objects, ...), because that is where the cost, simplicity and latency advantages are. It never forces you to: services that people commonly swap sit behind small adapters (email today), and database access goes through one connection factory ([docs/DATABASES.md](docs/DATABASES.md)), so you can use another provider, or convert a project that already depends on one, without rewriting the app.
 
 ## Why Cloudflare?
 
@@ -208,7 +208,7 @@ If wrangler is logged in, you can do it from the command line:
 |-------|------------|
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS, shadcn/ui |
 | Backend | Hono (Workers), Cloudflare Vite Plugin, Better Auth, Kysely |
-| Database | Cloudflare D1 (clustered SQLite) |
+| Database | Cloudflare D1 (SQLite) by default; other databases and provider APIs supported via a single connection seam ([docs/DATABASES.md](docs/DATABASES.md)) |
 | Email | Adapter: Cloudflare Email Service (default), pluggable |
 | Testing | Vitest (`@cloudflare/vitest-plugin`), Playwright |
 | Deployment | Cloudflare Workers/Pages Runtime |

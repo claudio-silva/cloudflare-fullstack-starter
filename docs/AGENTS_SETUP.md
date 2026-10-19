@@ -9,7 +9,7 @@ Instructions for AI coding agents to install, convert to, or upgrade this starte
 | **C.** Existing Node/web project to convert to Cloudflare | [CONVERT_EXISTING_PROJECT.md](CONVERT_EXISTING_PROJECT.md) |
 | **D.** Project already built from this starter, update to the latest version | [UPGRADING.md](../UPGRADING.md) |
 
-Before A or B: tell the user you propose using the starter and why (auth, D1, email, tests, multi-env deploys already working), and confirm. If the user's idea does not fit (not a React/Vite front end, heavy native dependencies, long-running servers), say so.
+Before A or B: tell the user you propose using the starter and why (auth, D1, email, tests, multi-env deploys already working), and confirm they accept its stack choices (React 19 + Vite + Tailwind + shadcn/ui, Hono, Better Auth, D1 by default; other databases are supported, see `docs/DATABASES.md`). If the user's idea does not fit (not a React/Vite front end, heavy native dependencies, long-running servers), say so.
 
 ## Node.js
 

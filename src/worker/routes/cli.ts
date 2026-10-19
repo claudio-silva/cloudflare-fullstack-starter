@@ -1,11 +1,10 @@
 import { Hono } from "hono";
 import type { Next } from "hono";
-import { Kysely } from "kysely";
-import { D1Dialect } from "kysely-d1";
 import bcrypt from "bcryptjs";
+import type { Kysely } from "kysely";
 import type { Database } from "../types/database";
 import type { AppBindings, AppContext } from "../types/context";
-import { requireDb } from "../utils/db";
+import { createDb } from "../db";
 
 async function deleteSessionsForUser(db: Kysely<Database>, userId: string): Promise<void> {
 	await db.deleteFrom("sessions").where("userId", "=", userId).execute();
@@ -47,7 +46,7 @@ cli.use("*", cliAuthMiddleware);
 cli.get("/users", async (c) => {
 	const { search, limit } = c.req.query();
 	const limitNum = limit ? parseInt(limit, 10) : 50;
-	const db = new Kysely<Database>({ dialect: new D1Dialect({ database: requireDb(c) }) });
+	const db = createDb(c.env);
 
 	let query = db.selectFrom("users").selectAll().orderBy("createdAt", "desc").limit(limitNum);
 	if (search) {
@@ -76,7 +75,7 @@ cli.get("/users", async (c) => {
 cli.get("/users/:email", async (c) => {
 	const email = c.req.param("email");
 	if (!email) return c.json({ error: "Email is required" }, 400);
-	const db = new Kysely<Database>({ dialect: new D1Dialect({ database: requireDb(c) }) });
+	const db = createDb(c.env);
 
 	const user = await db.selectFrom("users").where("email", "=", email).selectAll().executeTakeFirst();
 	if (!user) {
@@ -137,7 +136,7 @@ cli.post("/users", async (c) => {
 		return c.json({ error: `Invalid role. Allowed: ${ALLOWED_ROLES.join(", ")}` }, 400);
 	}
 
-	const db = new Kysely<Database>({ dialect: new D1Dialect({ database: requireDb(c) }) });
+	const db = createDb(c.env);
 	const existing = await db.selectFrom("users").where("email", "=", email).select("id").executeTakeFirst();
 	if (existing) {
 		return c.json({ error: "User already exists" }, 409);
@@ -193,7 +192,7 @@ cli.put("/users/:email/password", async (c) => {
 		return c.json({ error: "Password must be at least 8 characters" }, 400);
 	}
 
-	const db = new Kysely<Database>({ dialect: new D1Dialect({ database: requireDb(c) }) });
+	const db = createDb(c.env);
 	const user = await db.selectFrom("users").where("email", "=", email).select("id").executeTakeFirst();
 	if (!user) {
 		return c.json({ error: "User not found" }, 404);
@@ -222,7 +221,7 @@ cli.put("/users/:email", async (c) => {
 		return c.json({ error: `Invalid role. Allowed: ${ALLOWED_ROLES.join(", ")}` }, 400);
 	}
 
-	const db = new Kysely<Database>({ dialect: new D1Dialect({ database: requireDb(c) }) });
+	const db = createDb(c.env);
 	const user = await db
 		.selectFrom("users")
 		.where("email", "=", currentEmail)
@@ -298,7 +297,7 @@ cli.put("/users/:email/role", async (c) => {
 	if (!role || !ALLOWED_ROLES.includes(role as UserRole)) {
 		return c.json({ error: `Invalid role. Allowed: ${ALLOWED_ROLES.join(", ")}` }, 400);
 	}
-	const db = new Kysely<Database>({ dialect: new D1Dialect({ database: requireDb(c) }) });
+	const db = createDb(c.env);
 	const user = await db.selectFrom("users").where("email", "=", email).selectAll().executeTakeFirst();
 	if (!user) {
 		return c.json({ error: "User not found" }, 404);
@@ -328,7 +327,7 @@ cli.put("/users/:email/activate", async (c) => {
 		return c.json({ error: "activated must be a boolean" }, 400);
 	}
 
-	const db = new Kysely<Database>({ dialect: new D1Dialect({ database: requireDb(c) }) });
+	const db = createDb(c.env);
 	const user = await db.selectFrom("users").where("email", "=", email).select("id").executeTakeFirst();
 	if (!user) {
 		return c.json({ error: "User not found" }, 404);
@@ -346,7 +345,7 @@ cli.put("/users/:email/activate", async (c) => {
 cli.delete("/users/:email", async (c) => {
 	const email = c.req.param("email");
 	if (!email) return c.json({ error: "Email is required" }, 400);
-	const db = new Kysely<Database>({ dialect: new D1Dialect({ database: requireDb(c) }) });
+	const db = createDb(c.env);
 
 	const user = await db.selectFrom("users").where("email", "=", email).select("id").executeTakeFirst();
 	if (!user) {
@@ -362,7 +361,7 @@ cli.delete("/users/:email", async (c) => {
 });
 
 cli.delete("/users", async (c) => {
-	const db = new Kysely<Database>({ dialect: new D1Dialect({ database: requireDb(c) }) });
+	const db = createDb(c.env);
 	await db.deleteFrom("sessions").execute();
 	await db.deleteFrom("verifications").execute();
 	await db.deleteFrom("accounts").execute();

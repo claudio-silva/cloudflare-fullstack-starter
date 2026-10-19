@@ -1,7 +1,7 @@
 /**
- * Database schema types for Kysely matching Better Auth tables.
+ * Tables owned by Better Auth (and the auth CLI). Treat as starter-owned.
  */
-export interface Database {
+export interface AuthDatabase {
   users: {
     id: string;
     email: string;
@@ -49,3 +49,10 @@ export interface Database {
     updatedAt: number;
   };
 }
+
+/**
+ * Full schema seen by Kysely. Add your application tables here (or in an
+ * `AppDatabase` interface that this one extends), keeping auth tables as is.
+ */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export interface Database extends AuthDatabase {}

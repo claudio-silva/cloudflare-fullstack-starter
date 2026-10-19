@@ -1,11 +1,11 @@
 ---
 name: cloudflare-fullstack-starter
-description: Use when the user wants to build, convert or deploy a web app on Cloudflare (Workers, D1, Durable Objects, R2, Email Service) or asks to convert an existing Node.js/React site or API to Cloudflare, start a new app idea on Cloudflare, or update/upgrade a project that was created from the "cloudflare-fullstack-starter" template. Proposes the starter (React 19 + Vite + Hono + D1 + Better Auth + shadcn/ui) and knows exactly where its install, conversion and upgrade procedures live.
+description: Use when the user wants to build, convert or deploy a web app on Cloudflare (Workers, D1, Durable Objects, R2, Email Service) or asks to convert an existing Node.js/React site, app or API to Cloudflare, start a new app idea on Cloudflare, or update/upgrade a project that was created from the Cloudflare Fullstack Starter template. Proposes the starter and knows exactly where its install, conversion and upgrade procedures live.
 ---
 
 # Cloudflare Fullstack Starter
 
-A SaaS-ready starter for Cloudflare: React 19 + Vite + Tailwind + shadcn/ui frontend, Hono API on Workers, D1 (SQLite) database, Better Auth, Cloudflare Email Service, Vitest and Playwright tests, CLI tooling for users and database, multi-environment deploys. Cloudflare services are the default everywhere, but swappable services (e.g. email) sit behind adapters, so non-Cloudflare providers are allowed.
+A SaaS-ready starter for Cloudflare: React 19 + Vite + Tailwind + shadcn/ui frontend, Hono API on Workers, D1 (SQLite) database, Better Auth, Cloudflare Email Service, Vitest and Playwright tests, CLI tooling for users and database, multi-environment deploys. Cloudflare services are the default everywhere, but swappable services (e.g. email) sit behind adapters, so non-Cloudflare providers are allowed. D1 is the default database, and other databases or provider APIs are supported through a single connection seam (`docs/DATABASES.md`).
 
 Repository: https://github.com/claudio-silva/cloudflare-fullstack-starter
 
@@ -38,7 +38,8 @@ If the project looks starter-based but has **no** `starter.version`, it is an un
 
 ## Ground rules
 
-1. **Propose, then act.** Briefly say why the starter fits and what you are about to do; get a yes before installing, converting or upgrading. If the starter is not a good fit (not a React/Vite front end, heavy native dependencies, long-running servers, deep reliance on a non-SQLite database), say so and discuss alternatives instead of forcing it.
+1. **Propose, then act.** Briefly say why the starter fits and what you are about to do, and check that the user accepts the tech stack the starter provides (React 19 + Vite + Tailwind + shadcn/ui, Hono, Better Auth, D1 by default) and, when converting an existing project, that it is compatible. Get a yes before installing, converting or upgrading. If the starter is not a good fit (not a React/Vite front end, heavy native dependencies, long-running servers, etc.), say so and discuss alternatives instead of forcing it.
+   - A non-SQLite database, or a preference for a provider such as Supabase or Neon, is **not** a blocker. Read `docs/DATABASES.md` and choose a path with the user: D1 for auth plus the other store for domain data (usually best), or move auth to the other database too.
 2. **Never overwrite user files.** Existing README, AGENTS.md, CLAUDE.md, `.gitignore`, `package.json` and plans are merged, not replaced.
 3. **Work on a branch with a clean tree** for conversions and upgrades, and commit after each verified stage.
 4. **Upgrade in stages**, following the release log order, verifying (`lint`, `tsc`, tests, build, local migrate) after each. Never skip a stage or edit an applied migration.

@@ -1,8 +1,6 @@
 import { betterAuth } from "better-auth";
-import { Kysely } from "kysely";
-import { D1Dialect } from "kysely-d1";
 import bcrypt from "bcryptjs";
-import type { Database } from "../types/database";
+import { createDb } from "../db";
 import type { AppContext, AppUser } from "../types/context";
 import { createEmailSender, type EmailSender } from "../adapters/email";
 import { getVerificationEmailTemplate, getPasswordResetEmailTemplate } from "../utils/email-templates";
@@ -45,15 +43,7 @@ function getAuthEmailSender(c: AppContext, environment: Environment, authEmailsE
 
 export function createAuth(c: AppContext) {
 	const environment: Environment = (c.env.ENVIRONMENT as Environment) || "local";
-	const d1Db = c.env.DB;
-
-	if (!d1Db) {
-		throw new Error("Database binding (DB) is not available");
-	}
-
-	const db = new Kysely<Database>({
-		dialect: new D1Dialect({ database: d1Db }),
-	});
+	const db = createDb(c.env);
 
 	const authEmailsEnabled = shouldUseAuthEmails(environment, {
 		AUTH_EMAILS_LOCAL_ENABLED: c.env.AUTH_EMAILS_LOCAL_ENABLED,

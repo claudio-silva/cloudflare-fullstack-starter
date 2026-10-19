@@ -57,8 +57,9 @@ src/
     ├── index.ts            # Mounts routes with app.route(); exports Durable Objects
     ├── routes/             # One file per feature (cli.ts, profile.ts, ...)
     ├── durable-objects/    # Durable Object classes (example included)
+    ├── db.ts               # createDb(env): the one place a DB connection is built
     ├── middleware/auth.ts  # Better Auth config
-    ├── types/database.ts   # Kysely types
+    ├── types/database.ts   # Kysely types (AuthDatabase + your tables)
     ├── adapters/           # Swappable service adapters (email)
     └── utils/              # Email templates and helpers
 
@@ -108,18 +109,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 See `docs/SHADCN_COMPONENTS.md` for the full component list.
 
 ### Database Queries (Backend Only)
-Use Kysely in worker code:
+Get the connection from the single factory in `src/worker/db.ts`; never construct Kysely in routes:
 ```typescript
-import { Kysely } from "kysely";
-import { D1Dialect } from "kysely-d1";
-import type { Database } from "./types/database";
+import { createDb } from "../db";
 
-const db = new Kysely<Database>({
-  dialect: new D1Dialect({ database: c.env.DB }),
-});
-
+const db = createDb(c.env);
 const users = await db.selectFrom("users").selectAll().execute();
 ```
+Using another database or a provider API alongside D1: see `docs/DATABASES.md`.
 
 ## Commands
 
@@ -247,7 +244,9 @@ Services that can reasonably be swapped sit behind an **adapter**: a small inter
 - Implementations: `cloudflare.ts` (default); add others beside it
 - Selection: `config.email.provider`; provider secrets live in `.env.<env>`
 
-To add or replace a provider, follow `docs/EMAIL.md`. When a user brings a new service need that has Cloudflare and non-Cloudflare options, introduce an adapter following the same pattern rather than hard-wiring either.
+To add or replace a provider, follow `docs/EMAIL.md`.
+
+**Data:** D1 is the default and the starter's tooling assumes it, but it is not mandatory. Connections come from `createDb()` in `src/worker/db.ts`; for another SQL database, a second store, or a provider SDK (Supabase, Neon, ...), follow `docs/DATABASES.md`. Prefer keeping auth on D1 and putting domain data elsewhere if a provider is wanted. When a user brings a new service need that has Cloudflare and non-Cloudflare options, introduce an adapter following the same pattern rather than hard-wiring either.
 
 ## Downstream Projects
 
@@ -262,6 +261,7 @@ Use the bundled shadcn/ui components (`@/components/ui/`) first, or compositions
 ## Don'ts
 
 - Don't access database from frontend
+- Don't build a Kysely instance or name a dialect outside `src/worker/db.ts`
 - Don't run separate frontend/backend servers
 - Don't modify shadcn/ui component internals (extend with wrappers)
 - Don't hardcode URLs (use environment-based config)

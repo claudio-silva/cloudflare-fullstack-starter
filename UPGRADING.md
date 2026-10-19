@@ -48,6 +48,25 @@ npm run test:e2e       # from 2.0.0 on, optional
 
 ---
 
+## 2.1.0 — 2026-10-19
+
+Small release; one stage. Requires 2.0.0 first.
+
+### Breaking changes
+
+1. **Database connections are created in one place:** new `src/worker/db.ts` exports `createDb(env)`. `src/worker/utils/db.ts` (`requireDb`) was removed. Any project route that imported `requireDb` or builds `new Kysely({ dialect: new D1Dialect(...) })` inline keeps working only if it is updated.
+2. `src/worker/types/database.ts`: the auth tables are now `AuthDatabase`; `Database extends AuthDatabase` is where project tables go. Code importing `Database` is unaffected.
+
+### Required actions
+- Take `src/worker/db.ts`; replace `requireDb(c)` / inline Kysely construction in project routes with `createDb(c.env)`; remove the now-unused `kysely`/`kysely-d1` imports there.
+- In `database.ts`, rename the existing auth interface to `AuthDatabase` and add `export interface Database extends AuthDatabase {}`; move any project tables you added into `Database` (or an interface it extends).
+- Optional: read `docs/DATABASES.md` if the project uses, or plans to use, another database or a provider API.
+
+### Verify
+Standard verification.
+
+---
+
 ## 2.0.0 — 2026-10-19
 
 First versioned release. Baseline for this entry is the unversioned `main` as of 2026-07-03 (commit `5d89c05`, tag `v1.0.0`). Large release; **upgrade in the stages below**.

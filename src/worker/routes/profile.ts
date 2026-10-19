@@ -1,10 +1,7 @@
 import { Hono } from "hono";
-import { Kysely } from "kysely";
-import { D1Dialect } from "kysely-d1";
-import type { Database } from "../types/database";
 import type { AppBindings } from "../types/context";
 import { authMiddleware } from "../middleware/auth";
-import { requireDb } from "../utils/db";
+import { createDb } from "../db";
 
 /** Authenticated user routes, mounted at `/api`. */
 export const profile = new Hono<AppBindings>();
@@ -22,7 +19,7 @@ profile.delete("/profile", authMiddleware, async (c) => {
 		return c.json({ error: "User not authenticated" }, 401);
 	}
 
-	const db = new Kysely<Database>({ dialect: new D1Dialect({ database: requireDb(c) }) });
+	const db = createDb(c.env);
 
 	// Delete all user data
 	await db.deleteFrom("sessions").where("userId", "=", user.id).execute();

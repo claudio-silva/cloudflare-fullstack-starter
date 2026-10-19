@@ -10,7 +10,7 @@ Inventory the project and write the findings down:
 |---|---|
 | Front end: React + Vite? Next.js? Vue? Plain HTML? | The starter is React 19 + Vite. React/Vite ports directly. Other frameworks mean rewriting the UI (confirm with the user) or choosing a different approach. |
 | Back end: Express/Fastify/Koa/Nest? Serverless functions? | Handlers port to Hono routes (`src/worker/routes/*.ts`). Long-running processes, background threads and local file state do not fit Workers. |
-| Database: Postgres/MySQL/Mongo/SQLite? ORM? | SQLite-compatible schemas port to D1 (Kysely). Others: convert the schema (SQL dialect differences, types, constraints) or keep the existing database reachable from Workers (e.g. Hyperdrive) and tell the user the trade-off. |
+| Database: Postgres/MySQL/Mongo/SQLite? ORM? Provider SDK (Supabase, Neon...)? | Not a blocker. Read `docs/DATABASES.md` and pick a path with the user: port to D1; keep auth on D1 and the domain data in the existing database/provider (usually best); or move auth to the other database too. Schema translation between SQLite, PostgreSQL and MySQL is real work, not find-and-replace. |
 | Auth: own sessions, Passport, Auth0, Clerk...? | Starter ships Better Auth (email/password, Google). Decide: migrate users (password hashes may not be portable) or keep the existing provider. |
 | File storage / uploads | R2 (or keep existing storage behind an adapter). |
 | Scheduled jobs / queues / websockets | Cron triggers, Queues, Durable Objects. |
@@ -23,7 +23,7 @@ If the project is a poor fit, say so and offer alternatives rather than forcing 
 
 ## 2. Plan and get approval
 
-Present a short plan to the user: what moves where, what is replaced, what is kept (and why), data migration approach, risks, and an order of work. **Cloudflare-first, not Cloudflare-only:** default to Cloudflare services when they fit (D1, R2, Email Service...), but if the user prefers to keep a third-party service, keep it behind an adapter (see `docs/EMAIL.md` for the pattern: interface in `src/worker/adapters/<service>/types.ts`, one file per implementation, registry in `index.ts`, selection in `src/config.ts`).
+First confirm the user accepts the starter's stack (React 19 + Vite + Tailwind + shadcn/ui, Hono, Better Auth, D1 by default) and that the project is compatible with it; if not, discuss alternatives. Present a short plan to the user: what moves where, what is replaced, what is kept (and why), data migration approach, risks, and an order of work. **Cloudflare-first, not Cloudflare-only:** default to Cloudflare services when they fit (D1, R2, Email Service...), but if the user prefers to keep a third-party service, keep it behind an adapter (see `docs/EMAIL.md` for the pattern: interface in `src/worker/adapters/<service>/types.ts`, one file per implementation, registry in `index.ts`, selection in `src/config.ts`).
 
 ## 3. Set up on a branch
 
