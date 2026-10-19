@@ -127,13 +127,11 @@ function parseWranglerToml(filePath: string) {
 
 	const previewEmailSender =
 		content.match(/\[\[env\.preview\.send_email\]\][^[]*allowed_sender_addresses\s*=\s*\[\s*"([^"]+)"/s)?.[1] ??
-		content.match(/\[\[send_email\]\][^[]*allowed_sender_addresses\s*=\s*\[\s*"([^"]+)"/s)?.[1] ??
-		"noreply@example.com";
+		content.match(/\[\[send_email\]\][^[]*allowed_sender_addresses\s*=\s*\[\s*"([^"]+)"/s)?.[1];
 
 	const productionEmailSender =
 		content.match(/\[\[env\.production\.send_email\]\][^[]*allowed_sender_addresses\s*=\s*\[\s*"([^"]+)"/s)?.[1] ??
-		content.match(/\[\[send_email\]\][^[]*allowed_sender_addresses\s*=\s*\[\s*"([^"]+)"/s)?.[1] ??
-		"noreply@example.com";
+		content.match(/\[\[send_email\]\][^[]*allowed_sender_addresses\s*=\s*\[\s*"([^"]+)"/s)?.[1];
 
 	const previewRoutes = extractEnvRoutes(content, "preview");
 	const productionRoutes = extractEnvRoutes(content, "production");
@@ -210,12 +208,10 @@ export default defineConfig(({ mode }) => {
 							database_id: previewDb.id,
 						},
 					];
-					cfg.send_email = [
-						{
-							name: "EMAIL",
-							allowed_sender_addresses: [previewEmailSender],
-						},
-					];
+					// Only when the Cloudflare email adapter is used (binding kept in wrangler.toml).
+					if (previewEmailSender) {
+						cfg.send_email = [{ name: "EMAIL", allowed_sender_addresses: [previewEmailSender] }];
+					}
 					if (previewRoutes?.length) {
 						cfg.routes = previewRoutes;
 					}
@@ -240,12 +236,9 @@ export default defineConfig(({ mode }) => {
 								database_id: productionDb.id,
 							},
 						];
-						cfg.send_email = [
-							{
-								name: "EMAIL",
-								allowed_sender_addresses: [productionEmailSender],
-							},
-						];
+						if (productionEmailSender) {
+							cfg.send_email = [{ name: "EMAIL", allowed_sender_addresses: [productionEmailSender] }];
+						}
 						if (productionRoutes?.length) {
 							cfg.routes = productionRoutes;
 						}

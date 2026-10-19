@@ -242,6 +242,15 @@ async function main() {
 	updateEnvFiles(root, answers);
 	console.log("  ✓ env files");
 
+	// Starter-distribution files (agent skill + plugin manifests) are not part of a project.
+	for (const dir of ["skills", ".claude-plugin"]) {
+		const target = path.join(root, dir);
+		if (fs.existsSync(target)) {
+			fs.rmSync(target, { recursive: true, force: true });
+			console.log(`  ✓ removed ${dir}/ (starter distribution files)`);
+		}
+	}
+
 	console.log("\n✅ Init complete!");
 	console.log("\nNext steps:");
 	console.log(`  1. Run migrations: ${run("db:migrate")}`);

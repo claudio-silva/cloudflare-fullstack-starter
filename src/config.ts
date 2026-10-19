@@ -6,7 +6,7 @@
  *
  * For environment-specific settings (like API URLs), use:
  * - wrangler.toml [vars] for backend environment variables
- * - .env files for secrets (BETTER_AUTH_SECRET, CLI_API_KEY, etc.)
+ * - .env files for secrets (BETTER_AUTH_SECRET, CLI_API_KEY, adapter API keys, etc.)
  *
  * For deployment-specific settings, see wrangler.toml environments.
  */
@@ -33,9 +33,13 @@ export const config = {
 
 	// Email settings
 	email: {
-		// The "from" address for outgoing emails (Cloudflare Email Service).
-		// Must be on a domain onboarded in Cloudflare and listed in
-		// wrangler.toml `allowed_sender_addresses` (see docs/EMAIL.md).
+		// Email adapter: "cloudflare" (Cloudflare Email Service via the `EMAIL`
+		// binding). Other providers can be added as adapters in
+		// src/worker/adapters/email (see docs/EMAIL.md).
+		provider: "cloudflare",
+		// The "from" address for outgoing emails. It must be allowed by the
+		// provider: for "cloudflare", a domain onboarded in Cloudflare and listed
+		// in wrangler.toml `allowed_sender_addresses`; for other adapters, whatever the provider requires.
 		fromAddress: "noreply@example.com",
 	},
 } as const;

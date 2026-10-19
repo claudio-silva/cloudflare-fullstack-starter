@@ -4,7 +4,7 @@ import { D1Dialect } from "kysely-d1";
 import bcrypt from "bcryptjs";
 import type { Database } from "../types/database";
 import type { AppContext, AppUser } from "../types/context";
-import { createEmailSender, type EmailSender } from "../utils/email";
+import { createEmailSender, type EmailSender } from "../adapters/email";
 import { getVerificationEmailTemplate, getPasswordResetEmailTemplate } from "../utils/email-templates";
 import { config } from "../../config";
 
@@ -35,7 +35,7 @@ function getAuthEmailSender(c: AppContext, environment: Environment, authEmailsE
 		return createEmailSender(c.env);
 	} catch (error) {
 		if (environment === "local") {
-			console.warn("[EMAIL] Auth email binding is not configured; skipping local auth emails.", error instanceof Error ? error.message : error);
+			console.warn("[EMAIL] Auth email provider is not configured; skipping local auth emails.", error instanceof Error ? error.message : error);
 			return null;
 		}
 
@@ -108,7 +108,7 @@ export function createAuth(c: AppContext) {
 			},
 			sendResetPassword: async ({ user, url }) => {
 				if (!emailSender) {
-					console.warn("[EMAIL] Auth emails are disabled or email binding is not configured; skipping password reset email.");
+					console.warn("[EMAIL] Auth emails are disabled or email provider is not configured; skipping password reset email.");
 					return;
 				}
 				// Modify URL to use frontend route instead of API route and include email for auto sign-in
@@ -127,7 +127,7 @@ export function createAuth(c: AppContext) {
 			autoSignInAfterVerification: true,
 			sendVerificationEmail: async ({ user, url }) => {
 				if (!emailSender) {
-					console.warn("[EMAIL] Auth emails are disabled or email binding is not configured; skipping verification email.");
+					console.warn("[EMAIL] Auth emails are disabled or email provider is not configured; skipping verification email.");
 					return;
 				}
 				const modifiedUrl = url.replace("/api/auth/verify-email", "/verify-email");

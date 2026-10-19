@@ -10,7 +10,7 @@ The project is based on a SaaS starter template built on Cloudflare's edge platf
 - **Backend**: Hono on Cloudflare Workers
 - **Database**: Cloudflare D1 (SQLite at the edge)
 - **Auth**: Better Auth (email/password with verification)
-- **Email**: Cloudflare Email Service (`send_email` binding, no third-party provider)
+- **Email**: pluggable adapter; Cloudflare Email Service by default (`send_email` binding)
 - **Tests**: Vitest (`@cloudflare/vitest-plugin`) for the Worker + D1; Playwright for a smoke E2E
 
 ## Critical Architecture
@@ -59,7 +59,8 @@ src/
     ├── durable-objects/    # Durable Object classes (example included)
     ├── middleware/auth.ts  # Better Auth config
     ├── types/database.ts   # Kysely types
-    └── utils/              # Email templates and provider adapters
+    ├── adapters/           # Swappable service adapters (email)
+    └── utils/              # Email templates and helpers
 
 src/cli/                    # CLI commands (auth user management + db utilities)
 src/config.ts               # Global app configuration (app name, etc.)
@@ -236,7 +237,21 @@ const environment = c.env.ENVIRONMENT;  // from wrangler.toml
 - Generate one per environment: `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`
 - Set it in each `.env.<env>` file; the deploy scripts sync it to the Worker automatically.
 
+## Platform Philosophy: Cloudflare-First, Not Cloudflare-Only
+
+Prefer Cloudflare services (D1, Email Service, R2, KV, Durable Objects, ...) whenever one fits: cost, simplicity and latency are the reasons this starter exists. But never force them: if the user prefers another provider, or is converting a project that already uses one, support it.
+
+Services that can reasonably be swapped sit behind an **adapter**: a small interface in `src/worker/adapters/<service>/types.ts`, one file per implementation, and a registry in `index.ts` that picks the implementation from `src/config.ts`. Feature code only imports the registry. Email is the reference example:
+
+- Interface: `EmailSender.sendEmail({ to, subject, html, text? })`
+- Implementations: `cloudflare.ts` (default); add others beside it
+- Selection: `config.email.provider`; provider secrets live in `.env.<env>`
+
+To add or replace a provider, follow `docs/EMAIL.md`. When a user brings a new service need that has Cloudflare and non-Cloudflare options, introduce an adapter following the same pattern rather than hard-wiring either.
+
 ## Downstream Projects
+
+`package.json` has a `starter` field (`starter.version`) recording which starter release the project is based on. Keep it, and update it only as part of an upgrade (see `UPGRADING.md`).
 
 Projects built on this starter should edit few starter files so later upstream pulls stay cheap. Put project-specific values in `src/config.ts`, `wrangler.toml` vars/bindings and the `env/*.template` files, and add features as new files (routes, pages) rather than rewriting starter ones. Durable Objects need a top-level binding plus a migration tag; see `docs/VITE_CLOUDFLARE_BRIDGE.md`. Scripts are package-manager agnostic (npm default, pnpm works).
 
@@ -250,7 +265,7 @@ Use the bundled shadcn/ui components (`@/components/ui/`) first, or compositions
 - Don't run separate frontend/backend servers
 - Don't modify shadcn/ui component internals (extend with wrappers)
 - Don't hardcode URLs (use environment-based config)
-- Don't add third-party email providers (email is Cloudflare Email Service only)
+- Don't call a service SDK/API directly from feature code when an adapter exists (go through `src/worker/adapters/`)
 
 ## Project-Specific Notes
 

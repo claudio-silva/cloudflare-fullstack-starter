@@ -30,14 +30,19 @@ This starter removes that overhead **entirely**. Create a project from the templ
 | **Multi-Environment** | Local, Preview, and Production environments with separate databases, configurations and secrets |
 | **Secrets Management** | Secrets are automatically synced from `.env.<env>` files to Cloudflare (optional), no need to manually set them in the dashboard (but you still can) |
 | **Complete Auth Flow** | Sign up, email verification, login, logout, profile management, powered by [Better Auth](https://www.better-auth.com/) |
-| **Transactional emails** | Email verification and password reset with Cloudflare Email Service |
+| **Transactional emails** | Email verification and password reset through a swappable adapter: Cloudflare Email Service by default, other providers easy to add |
 | **CLI Tools** | User management and full database tooling (migrate, backup, restore, time-travel, seed) across all environments, from your terminal |
 | **Dead simple deployment** | Deploy to Cloudflare's global network with one command |
 | **Built-in Observability** | Monitor your Worker logs, metrics, traces, performance and health |
 | **CI/CD Ready** | GitHub Actions workflow validates every push: lint, type-check, tests, build and an E2E smoke test must pass.<br>You can also display the CI status badge in your README.md |
 | **Testing** | Vitest integration tests running in the Workers runtime against D1 (migrations applied) and Durable Objects, plus a Playwright E2E smoke test |
 | **Beautiful UI** | 50+ [shadcn/ui](https://ui.shadcn.com/) components, dark/light theme with FOUC prevention |
+| **Agent skill, release log and upgrade guide** | An installable skill plus [UPGRADING.md](UPGRADING.md) (breaking changes per release, staged upgrades) so agents can install, convert and upgrade without trial and error |
 | **AI-Assisted Installation and Development** | [AGENTS_SETUP.md](docs/AGENTS_SETUP.md) and [AGENTS.md](AGENTS.md) are included for easy installation and enhanced development assistance |
+
+## Cloudflare-first, not Cloudflare-only
+
+The starter uses Cloudflare services wherever one fits (D1, Email Service, Durable Objects, ...), because that is where the cost, simplicity and latency advantages are. It never forces you to: services that people commonly swap sit behind small adapters (email today), so you can use another provider, or convert a project that already depends on one, without rewriting the app.
 
 ## Why Cloudflare?
 
@@ -67,51 +72,32 @@ This is especially important when dealing with unfamiliar runtimes like Cloudfla
 
 ---
 
-## 🤖 AI Agent Installation
+## 🤖 AI Agent Installation, Conversion and Upgrade
 
-If you're using an AI-powered IDE (Cursor, Windsurf, etc.), you can ask your agent to install this template directly. Use this prompt:
+You can ask your coding agent to **install** the starter, **convert** an existing project to Cloudflare, or **upgrade** a project built from the starter. Install the agent skill once, so the agent proposes the starter at the right moment and follows the documented procedure instead of improvising:
 
-> **Prompt:** Install the Cloudflare Full-Stack Starter template into this project. Read the setup instructions at https://raw.githubusercontent.com/claudio-silva/cloudflare-fullstack-starter/main/docs/AGENTS_SETUP.md
+```bash
+# Any agent supported by the skills CLI (Claude Code, Cursor, Codex, ...)
+npx skills add claudio-silva/cloudflare-fullstack-starter
 
-Or use the slash command shortcut (if your IDE supports it):
-
+# Claude Code plugin marketplace
+/plugin marketplace add claudio-silva/cloudflare-fullstack-starter
+/plugin install cloudflare-fullstack-starter@cloudflare-fullstack-starter
 ```
-/install-cloudflare-starter
-```
 
-<details>
-<summary><strong>Instructions for adding the slash command</strong></summary>
+Then just ask, for example: *"Create this app on Cloudflare"*, *"Convert this site to Cloudflare"*, or *"Update this project to the latest starter version"*.
 
-#### Cursor
+Without the skill, give the agent this prompt (it works for all four scenarios):
 
-1. Open **Settings** → **Cursor Settings** → **Rules**
-2. Under **User Rules**, click **Add new rule**
-3. Create a rule with:
-   - **Name:** `install-cloudflare-starter`
-   - **Rule:**
-     ```
-     Install the Cloudflare Full-Stack Starter template into the current project. First, read the setup instructions at:
-     https://raw.githubusercontent.com/claudio-silva/cloudflare-fullstack-starter/main/docs/AGENTS_SETUP.md
-     
-     Follow those instructions to:
-     1. Download and extract the template into the current directory
-     2. Install dependencies
-     3. Run the non-interactive init script with sensible defaults
-     4. Verify the setup works
-     
-     The current directory may be empty or contain only IDE configuration files — this is expected when starting a new project.
-     ```
+> **Prompt:** Use the Cloudflare Full-Stack Starter for this project. Read https://raw.githubusercontent.com/claudio-silva/cloudflare-fullstack-starter/main/docs/AGENTS_SETUP.md and follow the scenario that matches (new app in an empty folder, new app in a folder with existing files, convert an existing project, or upgrade an existing starter-based project).
 
-#### Windsurf
+The procedures live in the repository, so they are always current:
 
-1. Open **Settings** → **AI Settings** → **Custom Commands**
-2. Add a new command with similar instructions
-
-</details>
-
-<br>
-
-The agent will follow the instructions in **[docs/AGENTS_SETUP.md](docs/AGENTS_SETUP.md)** to set up the project.
+| Scenario | Guide |
+|---|---|
+| New app, empty folder, or folder with existing files | [docs/AGENTS_SETUP.md](docs/AGENTS_SETUP.md) |
+| Convert an existing Node/web project | [docs/CONVERT_EXISTING_PROJECT.md](docs/CONVERT_EXISTING_PROJECT.md) |
+| Upgrade a starter-based project (staged, with breaking changes per release) | [UPGRADING.md](UPGRADING.md) |
 
 ---
 
@@ -223,7 +209,7 @@ If wrangler is logged in, you can do it from the command line:
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS, shadcn/ui |
 | Backend | Hono (Workers), Cloudflare Vite Plugin, Better Auth, Kysely |
 | Database | Cloudflare D1 (clustered SQLite) |
-| Email | Cloudflare Email Service (`send_email` binding) |
+| Email | Adapter: Cloudflare Email Service (default), pluggable |
 | Testing | Vitest (`@cloudflare/vitest-plugin`), Playwright |
 | Deployment | Cloudflare Workers/Pages Runtime |
 
@@ -408,13 +394,13 @@ The app runs locally without requiring email. To test real auth emails locally w
 echo "AUTH_EMAILS_LOCAL_ENABLED=true" >> .env.local
 ```
 
-Cloudflare Email Service uses the `EMAIL` binding in `wrangler.toml`, so no API key is required. See [docs/EMAIL.md](docs/EMAIL.md) for domain onboarding.
+The default Cloudflare Email Service adapter uses the `EMAIL` binding in `wrangler.toml`, so no API key is required. See [docs/EMAIL.md](docs/EMAIL.md) for domain onboarding and other providers.
 
 ### Preview/Production
 
 **One-time setup:**
 1. Create D1 databases in the Cloudflare dashboard (one for preview, one for production)
-2. Activate Cloudflare Email Service for your sender domain
+2. Set up email: onboard your sender domain in Cloudflare Email Service (default), or configure another provider (see [docs/EMAIL.md](docs/EMAIL.md))
 3. Run `npm run init` or update `src/config.ts` and `wrangler.toml` so `config.email.fromAddress` matches the `allowed_sender_addresses` entries
 4. Update `wrangler.toml` with the real database IDs (replacing the placeholder values)
 5. Add your secrets to `.env.preview` and `.env.production`:
@@ -489,7 +475,7 @@ Also update prod and preview domain URLs in `.env.<env-name>.example` and `.env.
 4. Add navigation as appropriate for your app design
 
 ### Email
-Email is sent through Cloudflare Email Service only, via the `EMAIL` (`send_email`) binding declared in `wrangler.toml`. `npm run init` derives a sender such as `noreply@myapp.com` from `--app-domain https://app.myapp.com` and updates both `src/config.ts` and the binding allow-lists. Domain onboarding, templates and the optional inbound handler are covered in [docs/EMAIL.md](docs/EMAIL.md).
+Email goes through an adapter chosen by `config.email.provider` in `src/config.ts`. The default is Cloudflare Email Service via the `EMAIL` (`send_email`) binding declared in `wrangler.toml`; `npm run init` derives a sender such as `noreply@myapp.com` from `--app-domain https://app.myapp.com` and updates both `src/config.ts` and the binding allow-lists. Other providers plug in by implementing one small interface. Domain onboarding, provider switching, adding adapters and the optional inbound handler are covered in [docs/EMAIL.md](docs/EMAIL.md).
 
 ## Observability Features
 

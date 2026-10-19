@@ -1,6 +1,11 @@
 {
   "name": "cloudflare-fullstack-starter",
   "description": "SaaS-ready fullstack template: React + Vite + Hono + Cloudflare Workers + D1 + Better Auth + shadcn/ui",
+  "starter": {
+    "name": "cloudflare-fullstack-starter",
+    "repo": "https://github.com/claudio-silva/cloudflare-fullstack-starter",
+    "version": "2.0.0"
+  },
   "version": "1.0.0",
   "type": "module",
   "engines": {

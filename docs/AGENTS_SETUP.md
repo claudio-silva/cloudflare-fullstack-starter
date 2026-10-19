@@ -1,45 +1,60 @@
 # Agent Setup Guide
 
-One-time setup instructions for AI coding agents to initialize this template.
+Instructions for AI coding agents to install, convert to, or upgrade this starter. **Pick your scenario first.**
+
+| Scenario | Go to |
+|---|---|
+| **A.** Empty folder, new app | [Scenario A](#scenario-a-empty-folder) |
+| **B.** Folder already has files (plans, specs, docs, assets), new app | [Scenario B](#scenario-b-folder-with-existing-files) |
+| **C.** Existing Node/web project to convert to Cloudflare | [CONVERT_EXISTING_PROJECT.md](CONVERT_EXISTING_PROJECT.md) |
+| **D.** Project already built from this starter, update to the latest version | [UPGRADING.md](../UPGRADING.md) |
+
+Before A or B: tell the user you propose using the starter and why (auth, D1, email, tests, multi-env deploys already working), and confirm. If the user's idea does not fit (not a React/Vite front end, heavy native dependencies, long-running servers), say so.
 
 ## Node.js
 
-Use **Node.js 26** (see `.nvmrc` at the repo root). `package.json` declares a matching `engines.node` range, and `.npmrc` sets `engine-strict=true` so installs fail fast on the wrong runtime. GitHub Actions CI uses the same major version.
+Use **Node.js 26** (see `.nvmrc` at the repo root). `package.json` declares a matching `engines.node` range, and `.npmrc` sets `engine-strict=true` so installs fail fast on the wrong runtime. GitHub Actions CI uses the same major version. With nvm: `nvm install && nvm use`.
 
-## Installing the Template
+## Choosing a release
 
-### Option 1: Into an Existing Directory (Typical IDE Workflow)
-
-When working in an IDE like Cursor or Windsurf, you typically start with an empty project directory (possibly containing only `.cursor/`, `.git/`, or similar IDE files). Use this method:
+Install the **latest release tag**, not an arbitrary `main` commit, unless the user asks otherwise. `package.json` ships a `starter.version` field; keep it (the upgrade procedure in `UPGRADING.md` depends on it).
 
 ```bash
-# From the project root directory
-curl -L https://github.com/claudio-silva/cloudflare-fullstack-starter/archive/refs/heads/main.tar.gz | tar xz --strip-components=1
+git ls-remote --tags --sort=-v:refname https://github.com/claudio-silva/cloudflare-fullstack-starter | head -3
 ```
 
-This extracts the template contents directly into the current directory without creating a subdirectory.
+## Scenario A: empty folder
 
-If the directory already has a `.git` folder, keep it. Otherwise, initialize git:
-```bash
-git init
-```
-
-### Option 2: GitHub CLI (Creates New Repo)
-
-If you need to create a new GitHub repository:
-```bash
-gh repo create my-app --template claudio-silva/cloudflare-fullstack-starter --clone
-cd my-app
-```
-
-### Option 3: Git Clone (New Directory)
+The directory is empty or has only IDE/VCS files (`.git/`, `.cursor/`, `.claude/`). Extract the latest tag into it:
 
 ```bash
-git clone https://github.com/claudio-silva/cloudflare-fullstack-starter.git my-app
-cd my-app
-rm -rf .git
-git init
+TAG=$(git ls-remote --tags --sort=-v:refname https://github.com/claudio-silva/cloudflare-fullstack-starter | head -1 | sed 's#.*refs/tags/##;s#\^{}##')
+curl -L "https://github.com/claudio-silva/cloudflare-fullstack-starter/archive/refs/tags/$TAG.tar.gz" | tar xz --strip-components=1
 ```
+
+If there is no `.git`, run `git init`. Then continue with [Non-Interactive Initialization](#non-interactive-initialization).
+
+Alternatives: `gh repo create my-app --template claudio-silva/cloudflare-fullstack-starter --clone`, or clone into a new directory and `rm -rf .git && git init`.
+
+## Scenario B: folder with existing files
+
+The user already has content (a plan, specs, docs, design assets, maybe a README or `AGENTS.md`). **Never overwrite it.**
+
+1. Read what is there first, especially any plan or spec. Note choices that conflict with the starter (framework, database, auth) and raise them with the user before proceeding.
+2. Download the starter into a temporary directory, outside the project:
+   ```bash
+   STARTER=$(mktemp -d)
+   git clone --depth 1 --branch "$TAG" https://github.com/claudio-silva/cloudflare-fullstack-starter "$STARTER"
+   rm -rf "$STARTER/.git"
+   ```
+3. Copy only what does not exist yet: `rsync -a --ignore-existing "$STARTER"/ ./` (or equivalent). Files that already existed are untouched.
+4. Merge the files that collided, by hand (list them with `diff -rq "$STARTER" . | grep "^Files"`):
+   - `README.md`: keep the user's; do not import the starter's.
+   - `AGENTS.md` / `CLAUDE.md`: keep the user's content and append the starter's `AGENTS.md` under a heading such as `# Starter architecture & conventions`.
+   - `.gitignore`: append missing lines.
+   - `package.json`: if the user has none, take the starter's. If they do, merge dependencies/scripts and keep the `starter` field.
+   - `docs/`: starter docs and user docs coexist; rename on name collisions.
+5. Continue with [Non-Interactive Initialization](#non-interactive-initialization), then reconcile the user's plan with the installed structure (routes in `src/worker/routes/`, pages in `src/react-app/pages/`, migrations in `migrations/`).
 
 ## D1 naming convention
 
@@ -67,8 +82,9 @@ npm install
 
 ### What Init Does
 1. Sets `package.json` `name` to the new slug
-2. Updates `wrangler.toml` top-level worker `name`, all D1 `database_name` values (convention above), optional `[env.production] name = "<slug>-production"`, and Email sender allow-lists
+2. Updates `wrangler.toml` top-level worker `name`, all D1 `database_name` values (convention above), optional `[env.production] name = "<slug>-production"`, and email sender allow-lists
 3. Creates `.env.local`, `.env.preview`, `.env.production` from templates (fills in your choices; does **not** overwrite existing files)
+4. Removes starter-distribution files that a project does not need (`skills/`, `.claude-plugin/`)
 
 > Migrations are **not** run by `init`. Run them manually after init (see below).
 
@@ -119,7 +135,7 @@ Use this when moving from local dev to real Cloudflare resources. Paths are rela
 
 ## CI and clone hygiene
 
-The default GitHub Actions workflow runs `npm ci`, `npm run lint`, `npx tsc --noEmit`, and `npm run build` only. It does **not** call Cloudflare APIs, write to `wrangler.toml`, or mutate `.env.*`. Do not commit filled-in remote `database_id` values for real accounts if this checkout is a public template fork; keep placeholders until the operator wires their own IDs.
+The default GitHub Actions workflow runs `npm ci`, lint, type check, Vitest tests and the build, plus a separate Playwright smoke job. It does **not** call Cloudflare APIs, write to `wrangler.toml`, or mutate `.env.*`. Do not commit filled-in remote `database_id` values for real accounts if this checkout is a public template fork; keep placeholders until the operator wires their own IDs.
 
 ## Environment Setup
 
@@ -129,12 +145,12 @@ No `.env.local` file is required for basic local development beyond `CLI_API_KEY
 - Work with default placeholder domains
 
 ### Optional: Enable Email
-To enable real email verification locally with the default Cloudflare Email Service provider, set:
+To enable real email verification locally, set:
 ```bash
 echo "AUTH_EMAILS_LOCAL_ENABLED=true" >> .env.local
 ```
 
-Cloudflare Email Service uses the `EMAIL` binding in `wrangler.toml`, so no API key is required (see `docs/EMAIL.md`).
+The default email adapter (Cloudflare Email Service) uses the `EMAIL` binding in `wrangler.toml`, so no API key is required. To use another provider, see `docs/EMAIL.md`.
 
 For preview/production, also set `BETTER_AUTH_SECRET` (a random 32-byte value, different per environment) in `.env.preview` / `.env.production`; the Worker refuses to run auth without it.
 
@@ -186,7 +202,7 @@ After init, consider updating:
 
 - [ ] `src/config.ts` — App name and email settings (updates UI, emails, page title)
 - [ ] `README.md` — Project description and name
-- [ ] `package.json` — Description, repository, author
+- [ ] `package.json` — Description, repository, author (keep the `starter` field)
 - [ ] `.env.example` — Update example domains
 
 ## Troubleshooting
