@@ -253,7 +253,7 @@ async function main() {
 
 	console.log("\n✅ Init complete!");
 	console.log("\nNext steps:");
-	console.log(`  1. Run migrations: ${run("db:migrate")}`);
+	console.log("  1. Local migrations run automatically on the first request of the dev server");
 	console.log("  2. Set CLI_API_KEY in .env.local (and in each .env.<env> for remote envs)");
 	console.log(`  3. Start dev server: ${run("dev")}`);
 	console.log("\nOptional:");
@@ -261,7 +261,7 @@ async function main() {
 	console.log("  • Set BETTER_AUTH_SECRET in each .env.<env> (required for preview/production)");
 	console.log("  • Onboard your sending domain in Cloudflare Email Service (see docs/EMAIL.md)");
 	console.log(`  • Create a user: ${run("auth")} create-user -u admin@example.com -p password`);
-	console.log(`  • Seed data: add .sql files to seeds/ and run: ${run("db:seed")} -- --env local --file <name>.sql`);
+	console.log(`  • Seed data: add an idempotent seed in src/worker/db/seeds/ and run: ${run("db:seed")} -- --env local --file <name>`);
 }
 
 main().catch((err) => {

@@ -57,7 +57,7 @@ src/
     ├── index.ts            # Mounts routes with app.route(); exports Durable Objects
     ├── routes/             # One file per feature (cli.ts, profile.ts, ...)
     ├── durable-objects/    # Durable Object classes (example included)
-    ├── db.ts               # createDb(env): the one place a DB connection is built
+    ├── db/                 # createDb(), databaseKind, portable migrations (baseline + incremental), seeds
     ├── middleware/auth.ts  # Better Auth config
     ├── types/database.ts   # Kysely types (AuthDatabase + your tables)
     ├── adapters/           # Swappable service adapters (email)
@@ -68,8 +68,6 @@ src/config.ts               # Global app configuration (app name, etc.)
 bin/                        # CLI entry points (init, auth, db)
 test/                       # Vitest worker integration tests (D1 migrations applied)
 e2e/                        # Playwright smoke tests
-migrations/                 # D1 SQL migrations
-seeds/                      # Idempotent SQL seed files
 ```
 
 ## Key Patterns
@@ -109,14 +107,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 See `docs/SHADCN_COMPONENTS.md` for the full component list.
 
 ### Database Queries (Backend Only)
-Get the connection from the single factory in `src/worker/db.ts`; never construct Kysely in routes:
+Get the connection from the single factory in `src/worker/db`; never construct Kysely in routes:
 ```typescript
 import { createDb } from "../db";
 
 const db = createDb(c.env);
 const users = await db.selectFrom("users").selectAll().execute();
 ```
-Using another database or a provider API alongside D1: see `docs/DATABASES.md`.
+**Write database-portable code** (the app runs on D1/SQLite, PostgreSQL and MySQL): no transactions, no `RETURNING`, case-insensitive search with `lower()`, timestamps/booleans via `dbNow()`/`dbBool()`, idempotent inserts via `ignoreConflict()`, column types from `columnTypes()` in migrations. Full rules, other databases and provider APIs: `docs/DATABASES.md`.
 
 ## Commands
 
@@ -149,7 +147,7 @@ npm run db:time-travel:info -- --env production
 npm run db:time-travel:restore -- --env production --timestamp "2026-04-01 12:00:00"
 
 # Database — seeds
-npm run db:seed -- --env local --file admin-bootstrap.sql
+npm run db:seed -- --env local --file admin-bootstrap
 
 # Auth CLI
 # Requires CLI_API_KEY in .env.<env>; key must also be deployed to the worker
@@ -185,9 +183,9 @@ npm run tail:production        # Stream logs from production
 3. Access D1 via `c.env.DB`
 
 ### Add Database Table
-1. Create migration in `migrations/`
+1. Add `src/worker/db/migrations/incremental/NNNN_name.ts`, register it in `migrations/index.ts`, and mirror the change in `baseline.ts` (append the name to `squashes`)
 2. Add types to `src/worker/types/database.ts`
-3. Run `npm run db:migrate`
+3. `npm test` (a drift test checks baseline == incrementals on every database); local dev migrates automatically
 4. For remote envs, prefer `npm run db:migrate:preview:safe` / `npm run db:migrate:production:safe` (takes a backup first)
 
 ## Configuration
@@ -246,7 +244,7 @@ Services that can reasonably be swapped sit behind an **adapter**: a small inter
 
 To add or replace a provider, follow `docs/EMAIL.md`.
 
-**Data:** D1 is the default and the starter's tooling assumes it, but it is not mandatory. Connections come from `createDb()` in `src/worker/db.ts`; for another SQL database, a second store, or a provider SDK (Supabase, Neon, ...), follow `docs/DATABASES.md`. Prefer keeping auth on D1 and putting domain data elsewhere if a provider is wanted. When a user brings a new service need that has Cloudflare and non-Cloudflare options, introduce an adapter following the same pattern rather than hard-wiring either.
+**Data:** D1 is the default, but the schema, migrations, seeds, auth and tests are portable across D1/SQLite, PostgreSQL and MySQL (all tested). Connections come from `createDb()` in `src/worker/db`; for another SQL database, a second store, or a provider SDK (Supabase, Neon, ...), follow `docs/DATABASES.md`. Only backup/restore/time-travel are D1-specific. Prefer keeping auth on D1 and putting domain data elsewhere if a provider is wanted. When a user brings a new service need that has Cloudflare and non-Cloudflare options, introduce an adapter following the same pattern rather than hard-wiring either.
 
 ## Downstream Projects
 
@@ -261,7 +259,8 @@ Use the bundled shadcn/ui components (`@/components/ui/`) first, or compositions
 ## Don'ts
 
 - Don't access database from frontend
-- Don't build a Kysely instance or name a dialect outside `src/worker/db.ts`
+- Don't build a Kysely instance or name a dialect outside `src/worker/db/`
+- Don't use transactions, `RETURNING`, epoch-integer timestamps or raw dialect SQL (breaks portability across D1/PostgreSQL/MySQL)
 - Don't run separate frontend/backend servers
 - Don't modify shadcn/ui component internals (extend with wrappers)
 - Don't hardcode URLs (use environment-based config)

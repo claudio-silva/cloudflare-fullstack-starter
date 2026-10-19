@@ -1,0 +1,88 @@
+import { betterAuth } from "better-auth";
+import { sql, type Kysely } from "kysely";
+import { describe, expect, it } from "vitest";
+import { dbBool, dbNow, ignoreConflict, toIso, type DatabaseKind } from "../../src/worker/db";
+import { migrateDatabase } from "../../src/worker/db/migrations";
+import type { Database } from "../../src/worker/types/database";
+import { schemaSnapshot } from "./schema-snapshot";
+
+type AnyDb = Kysely<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+
+/**
+ * The same behavioural suite runs against every supported database (D1/SQLite, PostgreSQL, MySQL).
+ * `fresh()` must return a brand-new, empty database each time it is called.
+ */
+export function defineCrossDbSuite(label: string, kind: DatabaseKind, fresh: () => Promise<AnyDb>) {
+	describe(`${label} (${kind})`, () => {
+		it("baseline and incremental migrations produce the same schema", async () => {
+			const a = await fresh();
+			const b = await fresh();
+			expect((await migrateDatabase(a, { kind })).mode).toBe("baseline");
+			expect((await migrateDatabase(b, { kind, forceIncremental: true })).mode).toBe("incremental");
+			expect(await schemaSnapshot(a)).toEqual(await schemaSnapshot(b));
+			expect((await schemaSnapshot(a)).map((t) => t.table)).toEqual(["accounts", "sessions", "users", "verifications"]);
+		});
+
+		it("is idempotent and records the squashed migrations", async () => {
+			const db = await fresh();
+			await migrateDatabase(db, { kind });
+			expect((await migrateDatabase(db, { kind })).applied).toEqual([]);
+			const rows = await db.selectFrom("kysely_migration").select("name").orderBy("name").execute();
+			expect(rows.map((r: { name: string }) => r.name)).toEqual(["0001_initial", "0002_add_role", "0003_account_token_columns"]);
+		});
+
+		it("supports the portable query subset the app uses", async () => {
+			const db = (await fresh()) as Kysely<Database>;
+			await migrateDatabase(db, { kind });
+			const now = dbNow(kind);
+			await db
+				.insertInto("users")
+				.values({ id: "u1", email: "MixedCase@example.com", name: "Mixed", createdAt: now, updatedAt: now, emailVerified: dbBool(true, kind) })
+				.execute();
+
+			const found = await db
+				.selectFrom("users")
+				.selectAll()
+				.where((eb) => eb(sql`lower(${eb.ref("email")})`, "like", "%mixedcase%"))
+				.execute();
+			expect(found).toHaveLength(1);
+			expect(found[0].role).toBe("user");
+			expect(Boolean(found[0].emailVerified)).toBe(true);
+			expect(toIso(found[0].createdAt)).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+			expect(Math.abs(new Date(found[0].createdAt).getTime() - (now instanceof Date ? now.getTime() : Date.parse(now)))).toBeLessThan(2000);
+
+			// Idempotent seed pattern
+			const seed = () =>
+				ignoreConflict(
+					db.insertInto("users").values({ id: "seed-admin", email: "admin@example.com", role: "admin", createdAt: now, updatedAt: now }),
+					kind,
+				).execute();
+			await seed();
+			await seed();
+			const count = await db.selectFrom("users").select(sql<number>`count(*)`.as("n")).where("id", "=", "seed-admin").executeTakeFirstOrThrow();
+			expect(Number(count.n)).toBe(1);
+		});
+
+		it("runs Better Auth sign-up and sign-in", async () => {
+			const db = await fresh();
+			await migrateDatabase(db, { kind });
+			const auth = betterAuth({
+				secret: "cross-db-test-secret-cross-db-test-secret",
+				baseURL: "http://localhost:5173",
+				database: { db, type: kind },
+				user: { modelName: "users" },
+				session: { modelName: "sessions" },
+				account: { modelName: "accounts" },
+				verification: { modelName: "verifications" },
+				emailAndPassword: { enabled: true },
+			});
+			const up = await auth.api.signUpEmail({ body: { email: "ba@example.com", password: "password-123!", name: "BA" } });
+			expect(up.user.email).toBe("ba@example.com");
+			const inn = await auth.api.signInEmail({ body: { email: "ba@example.com", password: "password-123!" } });
+			expect(inn.token).toBeTruthy();
+			const row = await db.selectFrom("users").select(["createdAt", "emailVerified"]).where("email", "=", "ba@example.com").executeTakeFirstOrThrow();
+			expect(toIso(row.createdAt)).toMatch(/^\d{4}-/);
+			expect(Boolean(row.emailVerified)).toBe(false);
+		});
+	});
+}

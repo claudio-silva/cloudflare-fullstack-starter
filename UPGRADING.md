@@ -25,15 +25,15 @@
 
 | Kind | Files | Rule |
 |---|---|---|
-| Starter-owned | `bin/`, `src/cli/`, `src/worker/adapters/`, `src/worker/middleware/`, `src/worker/utils/`, `src/react-app/components/ui/`, `vitest.config.ts`, `playwright.config.ts`, `.github/workflows/ci.yml`, `docs/` | Take upstream changes; re-apply local edits if any |
-| Shared (merge carefully) | `package.json`, `vite.config.ts`, `wrangler.toml`, `src/worker/index.ts`, `src/react-app/App.tsx`, `src/worker/types/*`, `AGENTS.md`, `README.md` | Three-way merge, never overwrite |
+| Starter-owned | `bin/`, `src/cli/`, `src/worker/adapters/`, `src/worker/middleware/`, `src/worker/utils/`, `src/worker/db/index.ts`, `src/worker/db/d1-dialect.ts`, `src/worker/db/migrations/{migrate,columns,types}.ts`, `test/support/`, `src/react-app/components/ui/`, `vitest.config.ts`, `playwright.config.ts`, `.github/workflows/ci.yml`, `docs/` | Take upstream changes; re-apply local edits if any |
+| Shared (merge carefully) | `src/worker/db/migrations/{baseline,index}.ts`, `src/worker/db/migrations/incremental/`, `src/worker/db/seeds/`, `package.json`, `vite.config.ts`, `wrangler.toml`, `src/worker/index.ts`, `src/react-app/App.tsx`, `src/worker/types/*`, `AGENTS.md`, `README.md` | Three-way merge, never overwrite |
 | Project-owned | `src/config.ts` values, `env/*.template` values, `.env.*`, `migrations/` already applied, `seeds/`, all project pages/routes/components | Never overwrite; only add what a log entry requires |
 
 ### Rules for database migrations
 
-- **Never edit or renumber a migration that has been applied anywhere.** Upgrade by *adding* the starter's new migration files.
-- If the project already has its own migration with the same number, rename the *new* starter migration to the next free number (keep the SQL).
-- Apply new migrations to every environment (`db:migrate`, then `db:migrate:preview:safe`, `db:migrate:production:safe`) **before** deploying code that needs them.
+- **Never edit or rename a migration that has been applied anywhere.** Upgrade by *adding* the starter's new migration files.
+- If the project already has its own migration with the same number, give the *new* starter migration the next free number, and keep its `legacyName`/squash mapping consistent in `baseline.ts`.
+- Apply new migrations to every environment (`db:migrate:preview:safe`, then `db:migrate:production:safe`) right after deploying code that needs them; write migrations additively so the previous code keeps working in between.
 
 ### Standard verification (run after every stage)
 
@@ -45,6 +45,45 @@ npm run build
 npm run db:migrate     # local
 npm run test:e2e       # from 2.0.0 on, optional
 ```
+
+---
+
+## 3.0.0 — 2026-10-19
+
+Database layer rewrite: **database-agnostic migrations, seeds, types and tests** (D1/SQLite, PostgreSQL, MySQL). You may upgrade **straight from 1.x or 2.x to 3.0.0**: skip the database stage of 2.0.0 (the SQL migration `0003`) and the whole 2.1.0 entry; this entry supersedes them. Apply the other 2.0.0 stages first if the project predates them.
+
+### Breaking changes
+
+1. **Migrations are TypeScript now**, in `src/worker/db/migrations/` (portable Kysely schema builder), run by the Kysely `Migrator` **inside the Worker** (`POST /api/cli/migrate`). The `migrations/*.sql` directory and `wrangler d1 migrations` are no longer used. New databases run one **baseline**; existing ones run **incremental** migrations. State lives in `kysely_migration`.
+2. **Existing D1 databases are adopted automatically**: if the legacy `d1_migrations` table exists, each migration whose `legacyName` is listed there is marked applied. The legacy table is left untouched. The runner **refuses to proceed** if the legacy table matches no known migration (add `legacyName`s, see below).
+3. **Project-owned SQL migrations must be converted** (see stage 2). Anything the project added under `migrations/` (new tables, columns) has to become a TypeScript incremental migration *and* be mirrored in `baseline.ts`.
+4. `src/worker/db.ts` became the folder `src/worker/db/` (imports of `../db` still resolve). New exports: `databaseKind`, `dbNow()`, `dbBool()`, `toIso()`, `ignoreConflict()`. `databaseKind` feeds Better Auth (`type`) and the migration column types.
+5. **Portable-code rules** (`docs/DATABASES.md`): no transactions, no `RETURNING`, case-insensitive search via `lower()`, timestamps via `dbNow()`, booleans via `dbBool()`, no epoch-integer timestamps, no raw dialect SQL. Project code violating them works on D1 but not elsewhere; fix it if the project may move databases.
+6. **Types:** `createdAt`/`updatedAt`/`expiresAt` are `Timestamp` (`Date | string`), `emailVerified` is `DbBoolean`, `role`/`emailVerified` are `Generated`. The CLI API now returns ISO strings and boolean `emailVerified`. (Old D1 rows can hold epoch numbers written by the previous CLI and ISO strings written by Better Auth; `toIso()` handles both.)
+7. **Seeds are TypeScript**, registered in `src/worker/db/seeds/index.ts` (`seeds/*.sql` and the `seeds/` directory are gone). `db:seed --file` takes a seed name.
+8. **Tooling:** `db:migrate`, `db:migrations:list` and `db:seed` call the Worker (CLI_API_KEY). **Local development migrates automatically** on the first API request, so the Playwright `webServer` no longer runs `db:migrate`. `migrate --safe` takes a D1 backup only when a D1 database is configured. `db:backup`, `db:restore`, `db:time-travel` remain D1-only.
+9. **Tests:** Vitest has two projects (`worker`, `cross-db`); new devDependencies `mysql2`, `pg`, `@types/pg`, `@electric-sql/pglite`; new `docker-compose.test.yml`, scripts `test:db:up|down`, `test:db`; CI runs PostgreSQL and MySQL services. `test/apply-migrations.ts` now uses the runner (no `readD1Migrations`).
+
+### Required actions (in this order)
+
+**Stage 1 — Take the new database layer**
+- Take `src/worker/db/**`, `src/worker/types/database.ts` (keep any project tables you added, in `Database`), `src/worker/routes/cli.ts`, `src/worker/middleware/auth.ts` (`type: databaseKind`), the auto-migrate middleware in `src/worker/index.ts`, `bin/db.ts`, `src/cli/utils/db.ts`, the new `package.json` scripts/devDependencies.
+- In project code: replace `Date.now()` timestamps with `dbNow()`, `emailVerified: 1/0` with `dbBool(...)`, `like` searches with `lower()`, remove transactions/`RETURNING`. Reinstall; fix type fallout.
+
+**Stage 2 — Convert project migrations and seeds**
+- For every project-owned `migrations/NNNN_name.sql`: create `src/worker/db/migrations/incremental/NNNN_name.ts` (factory `(kind) => ({ legacyName: "NNNN_name", up })`, using the schema builder and `columnTypes(kind)`), register it in `migrations/index.ts`. Starter migrations already carry their `legacyName`s; **use the exact SQL file name without `.sql`** for yours (check `select name from d1_migrations`).
+- Mirror every project table/column in `baseline.ts` and append the new migration names to its `squashes`.
+- Convert `seeds/*.sql` to idempotent TypeScript seeds (`ignoreConflict`) and register them.
+- Delete `migrations/` and `seeds/`. Run `npm test`: the drift test must pass (baseline == incrementals).
+
+**Stage 3 — Existing databases**
+- Back up (`db:backup:<env>`), deploy, then `npm run db:migrate:<env>:safe`. Check `npm run db:migrations:list:<env>`: every migration should show as applied and no error about unmatched legacy names. Do preview first, production last.
+
+**Stage 4 — Tests and CI**
+- Take `vitest.config.ts`, `test/`, `docker-compose.test.yml`, the CI changes, and the Playwright change. Run `npm run test:db:up && npm run test:db` once.
+
+### Verify
+Standard verification, plus `npm run test:db` (needs Docker), the local dev server starting on an empty checkout (auto-migrate), and `db:migrations:list` on each remote environment.
 
 ---
 

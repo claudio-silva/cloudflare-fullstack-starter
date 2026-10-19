@@ -1,10 +1,12 @@
 import { Hono } from "hono";
 import type { Next } from "hono";
 import bcrypt from "bcryptjs";
-import type { Kysely } from "kysely";
+import { sql, type Kysely, type Updateable } from "kysely";
 import type { Database } from "../types/database";
 import type { AppBindings, AppContext } from "../types/context";
-import { createDb } from "../db";
+import { createDb, databaseKind, dbBool, dbNow, toIso } from "../db";
+import { migrateDatabase, migrationStatus } from "../db/migrations";
+import { seeds } from "../db/seeds";
 
 async function deleteSessionsForUser(db: Kysely<Database>, userId: string): Promise<void> {
 	await db.deleteFrom("sessions").where("userId", "=", userId).execute();
@@ -52,8 +54,8 @@ cli.get("/users", async (c) => {
 	if (search) {
 		query = query.where((eb) =>
 			eb.or([
-				eb("email", "like", `%${search}%`),
-				eb("name", "like", `%${search}%`),
+				eb(sql`lower(${eb.ref("email")})`, "like", `%${search.toLowerCase()}%`),
+				eb(sql`lower(${eb.ref("name")})`, "like", `%${search.toLowerCase()}%`),
 			]),
 		);
 	}
@@ -65,9 +67,9 @@ cli.get("/users", async (c) => {
 			email: u.email,
 			name: u.name,
 			role: u.role,
-			emailVerified: u.emailVerified,
-			createdAt: u.createdAt,
-			updatedAt: u.updatedAt,
+			emailVerified: Boolean(u.emailVerified),
+			createdAt: toIso(u.createdAt),
+			updatedAt: toIso(u.updatedAt),
 		})),
 	});
 });
@@ -102,17 +104,17 @@ cli.get("/users/:email", async (c) => {
 			name: user.name,
 			role: user.role,
 			image: user.image,
-			emailVerified: user.emailVerified,
-			createdAt: user.createdAt,
-			updatedAt: user.updatedAt,
+			emailVerified: Boolean(user.emailVerified),
+			createdAt: toIso(user.createdAt),
+			updatedAt: toIso(user.updatedAt),
 		},
 		account: account
 			? {
 					accountId: account.accountId,
 					providerId: account.providerId,
 					hasPassword: !!account.password,
-					createdAt: account.createdAt,
-					updatedAt: account.updatedAt,
+					createdAt: toIso(account.createdAt),
+					updatedAt: toIso(account.updatedAt),
 			  }
 			: null,
 		activeSessions: Number(sessionCount?.count || 0),
@@ -142,7 +144,7 @@ cli.post("/users", async (c) => {
 		return c.json({ error: "User already exists" }, 409);
 	}
 
-	const now = Date.now();
+	const now = dbNow();
 	const userId = crypto.randomUUID();
 	const accountId = crypto.randomUUID();
 
@@ -155,7 +157,7 @@ cli.post("/users", async (c) => {
 			email,
 			name: name || null,
 			image: null,
-			emailVerified: 1,
+			emailVerified: dbBool(true),
 			createdAt: now,
 			updatedAt: now,
 			role: (role as UserRole) || "user",
@@ -201,7 +203,7 @@ cli.put("/users/:email/password", async (c) => {
 	const hashedPassword = await bcrypt.hash(password, 10);
 	await db
 		.updateTable("accounts")
-		.set({ password: hashedPassword, updatedAt: Date.now() })
+		.set({ password: hashedPassword, updatedAt: dbNow() })
 		.where("userId", "=", user.id)
 		.where("providerId", "=", "credential")
 		.execute();
@@ -263,13 +265,13 @@ cli.put("/users/:email", async (c) => {
 		const hashed = await bcrypt.hash(updateData.password, 10);
 		await db
 			.updateTable("accounts")
-			.set({ password: hashed, updatedAt: Date.now() })
+			.set({ password: hashed, updatedAt: dbNow() })
 			.where("userId", "=", user.id)
 			.where("providerId", "=", "credential")
 			.execute();
 	}
 
-	const updateFields: Partial<Database["users"]> = { updatedAt: Date.now() };
+	const updateFields: Updateable<Database["users"]> = { updatedAt: dbNow() };
 	if (updateData.name !== undefined) updateFields.name = updateData.name;
 	if (updateData.email) updateFields.email = updateData.email;
 	if (updateData.role) updateFields.role = updateData.role as UserRole;
@@ -312,7 +314,7 @@ cli.put("/users/:email/role", async (c) => {
 			return c.json({ error: "Cannot demote the last admin" }, 400);
 		}
 	}
-	await db.updateTable("users").set({ role, updatedAt: Date.now() }).where("id", "=", user.id).execute();
+	await db.updateTable("users").set({ role, updatedAt: dbNow() }).where("id", "=", user.id).execute();
 	if (role === "user") {
 		await deleteSessionsForUser(db, user.id);
 	}
@@ -335,7 +337,7 @@ cli.put("/users/:email/activate", async (c) => {
 
 	await db
 		.updateTable("users")
-		.set({ emailVerified: activated ? 1 : 0, updatedAt: Date.now() })
+		.set({ emailVerified: dbBool(activated), updatedAt: dbNow() })
 		.where("id", "=", user.id)
 		.execute();
 
@@ -367,4 +369,31 @@ cli.delete("/users", async (c) => {
 	await db.deleteFrom("accounts").execute();
 	const deleted = await db.deleteFrom("users").execute();
 	return c.json({ success: true, message: "Deleted all users", deletedCount: deleted.length || 0 });
+});
+
+// Database administration (same API-key protection as user management).
+cli.post("/migrate", async (c) => {
+	const db = createDb(c.env);
+	try {
+		return c.json(await migrateDatabase(db, { kind: databaseKind }));
+	} catch (error) {
+		console.error("[CLI] Migration failed", error);
+		return c.json({ error: error instanceof Error ? error.message : "Migration failed" }, 500);
+	}
+});
+
+cli.get("/migrations", async (c) => {
+	return c.json({ migrations: await migrationStatus(createDb(c.env), databaseKind) });
+});
+
+cli.get("/seeds", (c) => c.json({ seeds: Object.keys(seeds) }));
+
+cli.post("/seed", async (c) => {
+	const { name } = await c.req.json<{ name?: string }>();
+	const seed = name ? seeds[name] : undefined;
+	if (!name || !seed) {
+		return c.json({ error: `Unknown seed "${name ?? ""}". Available: ${Object.keys(seeds).join(", ") || "(none)"}` }, 404);
+	}
+	await seed(createDb(c.env), { kind: databaseKind });
+	return c.json({ success: true, seed: name });
 });

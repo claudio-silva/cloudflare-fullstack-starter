@@ -1,40 +1,135 @@
-# Databases: D1 by default, other databases when you need them
+# Databases
 
-Cloudflare D1 is the default: it runs at the edge next to the Worker, needs no credentials, and all the starter tooling (`db:*` scripts, migrations, backups, time-travel, seeds, the auth CLI, tests) is built around it. It is not mandatory. This guide says what is portable, what is not, and which of three paths to take when a project needs something else.
+The starter is **database-agnostic by design**: schema creation, migrations, seeds, auth and the application queries run unchanged on **Cloudflare D1 (SQLite, the default)**, **PostgreSQL** and **MySQL**. The same behavioural test suite runs against D1, PGlite, a real PostgreSQL 17 server and a real MySQL 8.4 server. The core stays on Cloudflare Workers; the database is your choice.
 
-## The seam
+Because D1 is the default, anything D1-specific is called out below (backup, restore, time-travel).
 
-Application code gets its connection from one function, `createDb(env)` in `src/worker/db.ts`. Routes, middleware and Better Auth never build a Kysely instance or name a dialect, so changing or adding a database happens there. Table types live in `src/worker/types/database.ts` (`AuthDatabase` for Better Auth tables, `Database` for everything Kysely sees).
+## The seam: `src/worker/db/index.ts`
 
-## What is portable and what is not
-
-| Layer | Portability |
+| Export | Purpose |
 |---|---|
-| **Kysely query code** (`selectFrom`, `where`, ...) | Mostly portable. Kysely ships dialects for SQLite, PostgreSQL, MySQL and MSSQL, and the starter's own queries use no raw SQL. Portability ends at raw `sql` snippets, dialect functions, and column types (booleans, timestamps, JSON). |
-| **Schema / migrations** (`migrations/*.sql`) | **Not portable.** They are SQLite DDL (integer timestamps, `INSERT OR ...`, a trigger) run by `wrangler d1 migrations`. Another database needs its own migration tool and rewritten DDL. |
-| **Starter tooling** (`bin/db.ts`, backups, time-travel, test pool `applyD1Migrations`) | **D1-specific.** Replace or drop it for a non-D1 database. |
-| **Connectivity** | Workers cannot open a plain TCP pool like a Node server. Use a driver built for it (an HTTP/WebSocket driver offered by the provider) or a Cloudflare Hyperdrive binding in front of Postgres/MySQL. |
+| `databaseKind` | `"sqlite" \| "postgres" \| "mysql"`. Drives column types, the Better Auth mode and value encoding. |
+| `createDb(env)` | The only place a connection is built. Routes, middleware and auth never name a dialect. |
+| `dbNow()` / `dbBool()` | Write timestamps and booleans in the form the driver expects (SQLite: ISO string, 0/1; others: `Date`, boolean). |
+| `toIso()` | Normalise a driver timestamp to an ISO string for API output. |
+| `ignoreConflict()` | Portable "insert if absent" (`ON CONFLICT DO NOTHING` / MySQL `INSERT IGNORE`). |
 
-On SQLite vs PostgreSQL vs MySQL: SQLite SQL is somewhat closer to PostgreSQL (standard-style `ON CONFLICT`, `RETURNING`, double-quoted identifiers, CTEs, window functions) than to MySQL (backtick quoting, `ON DUPLICATE KEY`, different `LIMIT` and upsert forms). That helps queries, but the schema still needs a real translation either way: SQLite's loose typing, integer-as-boolean/timestamp columns, limited `ALTER TABLE`, and no native uuid/enum/array/JSON types do not map one-to-one. Plan a deliberate migration, not a find-and-replace.
+Table types are in `src/worker/types/database.ts` (`AuthDatabase` for Better Auth tables; add yours to `Database`).
 
-## Three paths
+## The portable subset (rules for application code)
+
+1. **Column types** come from `columnTypes(kind)` (`src/worker/db/migrations/columns.ts`): ids/emails/tokens `varchar(255)` (MySQL cannot index unbounded text), flags `boolean`, instants real datetimes (`timestamptz`, MySQL `datetime(3)`). **Never epoch integers**: Better Auth sends `Date`/boolean on PostgreSQL and MySQL.
+2. **No interactive transactions.** D1 does not support them (`db.transaction()` throws). Make each operation a single statement or an idempotent sequence.
+3. **No `RETURNING` clauses** (MySQL has none). Insert, then select.
+4. **Case-insensitive search** with `lower(col) like lower(?)` (`LIKE` is case-insensitive on SQLite/MySQL, case-sensitive on PostgreSQL).
+5. **Timestamps/booleans** via `dbNow()`/`dbBool()`; read with `toIso()`/`Boolean()`.
+6. **Upserts/idempotent inserts** via `ignoreConflict()`.
+7. **No raw dialect SQL** in routes. If you truly need it, branch on `databaseKind`.
+8. **Schema changes** only through the Kysely schema builder (no `ALTER COLUMN`/adding constraints to existing tables; SQLite cannot do them. Rebuild the table instead).
+
+## Migrations: baseline + incremental
+
+```
+src/worker/db/migrations/
+  baseline.ts              # whole schema in its final form (new databases)
+  incremental/0001_...ts   # progressive history (existing databases)
+  index.ts                 # createMigrations(kind), createBaseline(kind)
+  migrate.ts               # the runner
+```
+
+| Database state | What the runner does |
+|---|---|
+| **New** (nothing applied) | Runs the **baseline once**, records the squashed migration names as applied. Fast, no history replay. |
+| **Existing** | Runs only the pending **incremental** migrations (Kysely `Migrator`; state in `kysely_migration`). |
+| **Legacy D1** (tracked by the old `wrangler d1 migrations`) | **Adopts** it: marks matching migrations as applied (via each migration's `legacyName`), then runs the rest. |
+
+A test (`test/support/cross-db-suite.ts`) proves baseline and incremental give the **same schema** on every database, so they cannot drift silently.
+
+### Adding a migration
+1. Create `incremental/0004_<name>.ts` exporting a factory `(kind) => ({ up })` (copy `0003_...`), using `columnTypes(kind)`. Register it in `migrations/index.ts`. Never edit or rename an applied one.
+2. Apply the same change to `baseline.ts` and append the new name to its `squashes`.
+3. Update the table types in `src/worker/types/database.ts`.
+4. `npm test` (the drift test fails if baseline and incrementals disagree).
+
+### Where migrations run
+Inside the Worker, through `POST /api/cli/migrate` (protected by `CLI_API_KEY`; same mechanism as the user CLI):
+
+```bash
+npm run db:migrate                    # local (dev server must be running) 
+npm run db:migrate:preview:safe       # D1 backup first, then migrate
+npm run db:migrate:production:safe
+npm run db:migrations:list[:preview|:production]
+```
+
+**Local development migrates automatically** on the first API request, so `npm run dev` on a fresh checkout just works. Preview/production are migrated explicitly (deploy first, then migrate).
+
+## Seeds
+
+Seeds are idempotent TypeScript functions registered in `src/worker/db/seeds/index.ts`; they are not tracked and run only on demand: `npm run db:seed -- --env local --file <name>`. Use `ignoreConflict()` so they work on every database:
+
+```ts
+// src/worker/db/seeds/admin-bootstrap.ts
+import { dbNow, ignoreConflict } from "..";
+import type { Seed } from ".";
+
+export const adminBootstrap: Seed = async (db, { kind }) => {
+	const now = dbNow(kind);
+	await ignoreConflict(
+		db.insertInto("users").values({ id: "seed-admin", email: "admin@example.com", role: "admin", createdAt: now, updatedAt: now }),
+		kind,
+	).execute();
+};
+// register: export const seeds = { "admin-bootstrap": adminBootstrap };
+```
+
+(Users that must sign in need a password: create them with `npm run auth create-user`.)
+
+## Choosing a setup
 
 ### Path 1: D1 only (default)
-Nothing to do. Add tables with migrations, types in `database.ts`, queries with `createDb(c.env)`.
+Nothing to do.
 
-### Path 2: D1 for auth + another store for domain data (recommended when the project wants a provider)
-Keep auth, sessions, the auth CLI and all tooling on D1, untouched. The application's own data lives elsewhere:
+### Path 2: D1 for auth + another store for domain data (usually best when a provider is wanted)
+Keep auth, sessions, the CLI and D1 tooling untouched; put application data elsewhere. Every authenticated request reads the session, which D1 serves at the edge; an external database adds a network round trip to each request.
 
-- **Kysely over SQL:** if the provider offers a SQL path (Postgres via a Hyperdrive binding or the provider's serverless driver), add a second connection factory next to `createDb` (for example `createAppDb(env)`) with its own Kysely dialect and its own table types. Keep the two schemas separate; there are no cross-database joins.
-- **Provider API/SDK:** if the project prefers the provider's own client (a REST/JS SDK, row-level-security APIs, realtime), do not force it behind Kysely. Wrap it in a small data-access module per feature (for example `src/worker/data/items.ts` exposing `listItems(env, userId)`), use the provider's secret from `.env.<env>`, and let routes call those functions. Swapping providers later then touches only `data/`.
+- **Kysely over SQL:** add a second factory beside `createDb` (for example `createAppDb(env)`) with its own dialect and its own table types. No cross-database joins.
+- **Provider API/SDK** (Supabase, Neon, ...): don't force it behind Kysely. Wrap it in one data-access module per feature (`src/worker/data/items.ts` exposing `listItems(env, userId)`), keep the provider secret in `.env.<env>`, and have routes call those functions.
 
-Why this is the safe default: every authenticated request reads the session. D1 serves it at the edge in the same data center; an external database adds a network round trip to every request, and the starter's auth/CLI/test tooling keeps working unchanged.
+### Path 3: Everything on PostgreSQL or MySQL
+Set `databaseKind` and rewrite `createDb` (illustrative; verify driver/Hyperdrive details in Cloudflare's docs):
 
-### Path 3: Move auth to another database too
-Only when the project must have a single external database. It is real work: new Kysely dialect in `createDb`, Better Auth schema recreated in that database (its `database` option takes the Kysely instance, so no Better Auth rewrite), new migration tooling and DDL, replace the D1-specific scripts (`db:*`) and the test setup, and accept the per-request latency. Do it deliberately, on a branch, and update `UPGRADING.md`-style notes for the project because starter upgrades will touch these files.
+```ts
+// PostgreSQL through a Hyperdrive binding
+import { Kysely, PostgresDialect } from "kysely";
+import pg from "pg";
+export const databaseKind: DatabaseKind = "postgres";
+export function createDb(env: AppEnv) {
+	return new Kysely<Database>({
+		dialect: new PostgresDialect({ pool: new pg.Pool({ connectionString: env.HYPERDRIVE.connectionString, max: 1 }) }),
+	});
+}
+```
+
+For MySQL use `MysqlDialect` with `mysql2` (pass `timezone: "Z"`, and `disableEval: true` when running in Workers). Then:
+
+- Add the Hyperdrive/connection binding to `wrangler.toml` and `AppEnv`, and the driver to `package.json`.
+- Migrations, seeds, auth and tests need **no changes**.
+- D1-only tools stop applying: `db:backup`, `db:restore`, `db:time-travel` (use your provider's backups/point-in-time recovery; `migrate --safe` skips the D1 export).
+- The starter tests exercise real PostgreSQL and MySQL servers through Node drivers; they do not go through Hyperdrive from a Worker, so smoke-test that connection yourself.
+
+## Testing across databases
+
+```bash
+npm test                 # D1 (workerd) + PGlite (embedded PostgreSQL)
+npm run test:db:up       # start PostgreSQL 17 and MySQL 8.4 (Docker)
+npm run test:db          # everything, including the real servers
+npm run test:db:down
+```
+
+Env vars `TEST_POSTGRES_URL` / `TEST_MYSQL_URL` select the servers (see `docker-compose.test.yml`); CI starts both as services. Add a new database-touching feature to `test/support/cross-db-suite.ts` and it is checked on every database.
 
 ## Choosing (agents)
 
-1. Ask what the project's data layer really needs (relational SQL? provider features such as realtime or RLS? an existing production database?).
-2. Prefer Path 1; if a provider is wanted or already in use, propose Path 2 and explain the latency/consistency trade-offs; only offer Path 3 when a single external database is a hard requirement.
-3. Whatever the path, route all connections through factory functions beside `createDb`, never inline in routes.
+1. Ask what the data layer really needs (relational SQL? provider features such as realtime or RLS? an existing production database?).
+2. Prefer Path 1; if a provider is wanted or already in use, propose Path 2 and explain the latency trade-off; offer Path 3 only when a single external database is a hard requirement.
+3. Whatever the path, keep every connection in factory functions beside `createDb` and respect the portable subset.

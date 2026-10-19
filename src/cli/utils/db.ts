@@ -22,16 +22,16 @@ type CliUserSummary = {
 	name: string | null;
 	role?: string;
 	emailVerified: number | boolean;
-	createdAt: number;
-	updatedAt: number;
+	createdAt: string | null;
+	updatedAt: string | null;
 };
 
 type CliAccountDetails = {
 	accountId: string;
 	providerId: string;
 	hasPassword: boolean;
-	createdAt: number;
-	updatedAt: number;
+	createdAt: string | null;
+	updatedAt: string | null;
 };
 
 type CliUserDetails = CliUserSummary & {
@@ -58,7 +58,14 @@ type CliDatabaseClient = {
 	getUser: (email: string) => Promise<CliUserDetails>;
 	listUsers: (params?: { search?: string; limit?: number }) => Promise<CliUserSummary[]>;
 	setRole: (email: string, role: "user" | "admin") => Promise<BasicResponse>;
+	migrate: () => Promise<MigrateResponse>;
+	migrations: () => Promise<MigrationStatus[]>;
+	listSeeds: () => Promise<string[]>;
+	runSeed: (name: string) => Promise<BasicResponse>;
 };
+
+type MigrateResponse = { mode: "baseline" | "adopted-legacy" | "incremental"; applied: string[] };
+export type MigrationStatus = { name: string; applied: boolean; executedAt: string | null };
 
 function loadEnvFile(environment: Environment) {
 	const fileName = `.env.${environment}`;
@@ -180,6 +187,11 @@ export async function connectToDatabase(environment: Environment): Promise<CliDa
 			);
 			return response.users;
 		},
+		migrate: () => makeApiRequest<MigrateResponse>("POST", "/api/cli/migrate", {}, environment),
+		migrations: async () =>
+			(await makeApiRequest<{ migrations: MigrationStatus[] }>("GET", "/api/cli/migrations", undefined, environment)).migrations,
+		listSeeds: async () => (await makeApiRequest<{ seeds: string[] }>("GET", "/api/cli/seeds", undefined, environment)).seeds,
+		runSeed: (name) => makeApiRequest<BasicResponse>("POST", "/api/cli/seed", { name }, environment),
 		setRole: (email, role) =>
 			makeApiRequest<BasicResponse>(
 				"PUT",

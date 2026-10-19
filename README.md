@@ -26,7 +26,7 @@ This starter removes that overhead **entirely**. Create a project from the templ
 | **API routes on workers** | Hono's elegant routing for backend endpoints |
 | **Hot Module Replacement** (HMR) | Rapid development with instant updates |
 | **TypeScript + ESLint** | Full type safety across frontend, backend, and database queries |
-| **Database Ready** | [Cloudflare D1](https://developers.cloudflare.com/d1/) with migrations, backup/restore, time-travel, and seeding — all from the CLI, for every environment |
+| **Database Ready (and database-agnostic)** | [Cloudflare D1](https://developers.cloudflare.com/d1/) by default, with portable Kysely migrations (baseline for new installs + incremental for upgrades), seeds, and D1 backup/restore/time-travel from the CLI. The same schema, migrations, auth and tests run on PostgreSQL and MySQL too ([docs/DATABASES.md](docs/DATABASES.md)) |
 | **Multi-Environment** | Local, Preview, and Production environments with separate databases, configurations and secrets |
 | **Secrets Management** | Secrets are automatically synced from `.env.<env>` files to Cloudflare (optional), no need to manually set them in the dashboard (but you still can) |
 | **Complete Auth Flow** | Sign up, email verification, login, logout, profile management, powered by [Better Auth](https://www.better-auth.com/) |
@@ -151,17 +151,13 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 # paste the output as: BETTER_AUTH_SECRET=<value>   (in .env.preview / .env.production)
 ```
 
-### 6. Run migrations and start development
-
-```bash
-npm run db:migrate
-```
-
-### 7. Start development
+### 6. Start development
 
 ```bash
 npm run dev
 ```
+
+The local database is created and migrated automatically on the first API request; there is no separate migration step for local development.
 
 Open http://localhost:5173 — you'll see the login page. Sign up to create your first account.
 
@@ -220,13 +216,13 @@ If wrangler is logged in, you can do it from the command line:
 - CLI user management (create, list, view, edit, delete, activate) for local and remote environments, with positional env shorthand (`npm run auth list-users production`)
 
 ### Database Features
-- D1 migrations applied per-environment via `npm run db:migrate:*`
+- Portable migrations (TypeScript, Kysely) applied per-environment via `npm run db:migrate:*`; new databases get a single baseline, existing ones the pending incremental migrations; local dev migrates automatically
 - **Safe migrate** — automatically takes a pre-migration backup before applying schema changes (`--safe`)
 - **Backup** — export any environment's D1 database to a timestamped `.sql` file in `.wrangler/backups/` with one command
 - **Restore** — restore from any backup file; for local databases, the current SQLite file is auto-backed-up before overwrite
 - **Backup management** — list and clean up old backups per-environment, with `--dry-run` and `--all` options
 - **Time Travel** — inspect and restore to any historical state of a remote D1 database using Cloudflare's built-in time-travel (point-in-time restore by timestamp or bookmark)
-- **Seeds** — run idempotent SQL files from `seeds/` against any environment, separately from migrations
+- **Seeds** — run idempotent TypeScript seeds (`src/worker/db/seeds/`) against any environment, separately from migrations
 
 ### UI Features
 - Minimalistic app shell, so that you are free to create your own design and branding
@@ -256,14 +252,13 @@ If wrangler is logged in, you can do it from the command line:
 │       ├── middleware/      # Auth middleware
 │       ├── routes/          # One module per feature, mounted with app.route()
 │       ├── durable-objects/ # Durable Object example
+│       ├── db/              # createDb(), portable migrations (baseline + incremental), seeds
 │       ├── utils/           # Email sender and templates
 │       └── index.ts         # Mounts routes
 ├── src/cli/                 # CLI commands (auth user management, db utilities)
 ├── bin/                     # CLI entry points (init, auth, db)
 ├── test/                    # Vitest worker integration tests
 ├── e2e/                     # Playwright smoke tests
-├── migrations/              # D1 SQL migrations
-├── seeds/                   # Idempotent SQL seed files (see seeds/README.md)
 ├── wrangler.toml            # Cloudflare config
 └── AGENTS.md                # Instructions for AI coding agents
 ```
@@ -331,18 +326,18 @@ The `.env.<env>` file is loaded automatically when a remote environment is targe
 ### Database
 
 ```bash
-# Migrations
+# Migrations (run inside the Worker; for local the dev server must be running)
 npm run db:migrate
 npm run db:migrate:preview
 npm run db:migrate:production
 
-# List pending migration files (uses logical database_name from wrangler.toml)
+# List applied/pending migrations
 npm run db:migrations:list
 npm run db:migrations:list:preview
 npm run db:migrations:list:production
 npm run db:migrations:list:all
 
-# Safe migrate: takes a backup before applying (recommended for remote envs)
+# Safe migrate: takes a D1 backup before applying (recommended for remote envs)
 npm run db:migrate:preview:safe
 npm run db:migrate:production:safe
 
@@ -374,16 +369,16 @@ npm run db:time-travel:info -- --env preview --timestamp "2026-04-01 12:00:00"
 npm run db:time-travel:restore -- --env production --timestamp "2026-04-01 12:00:00"
 npm run db:time-travel:restore -- --env production --bookmark <bookmark-id>
 
-# Seeds — run idempotent SQL files from the seeds/ directory
-npm run db:seed                                                    # auto-picks if only one .sql in seeds/
-npm run db:seed -- --env local --file admin-bootstrap.sql
-npm run db:seed -- --env preview --file admin-bootstrap.sql
-npm run db:seed -- --env production --file admin-bootstrap.sql
+# Seeds — run idempotent TypeScript seeds registered in src/worker/db/seeds
+npm run db:seed                                                    # auto-picks if only one is registered
+npm run db:seed -- --env local --file admin-bootstrap
+npm run db:seed -- --env preview --file admin-bootstrap
+npm run db:seed -- --env production --file admin-bootstrap
 ```
 
 > **Tip:** You can pass extra options after `--` in any `npm run db:*` shorthand, e.g. `npm run db:backup -- --archive-dir ./tmp`.
 
-See [`seeds/README.md`](seeds/README.md) for the seed convention and idempotency requirements.
+See [docs/DATABASES.md](docs/DATABASES.md) for migrations, seeds, the portable-SQL rules and how to use PostgreSQL or MySQL.
 
 ## Environment Setup
 

@@ -15,8 +15,8 @@ export default defineConfig({
 	},
 	projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
 	webServer: {
-		// Apply local migrations, then start the dev server (reuses a running one locally).
-		command: "npm run db:migrate && npm run dev -- --port 5173 --strictPort",
+		// The dev server applies pending local migrations on its first API request.
+		command: "npm run dev -- --port 5173 --strictPort",
 		url: "http://localhost:5173/api/",
 		reuseExistingServer: !process.env.CI,
 		timeout: 120_000,

@@ -1,0 +1,27 @@
+# Real database servers for the cross-database test suite (optional locally; CI uses services).
+#   npm run test:db:up      start PostgreSQL 17 and MySQL 8.4
+#   npm run test:db        run all tests against them
+#   npm run test:db:down    stop and remove them
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: starter_test
+    ports: ["35432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: test
+      MYSQL_DATABASE: starter_test
+    ports: ["33306:3306"]
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -ptest --silent"]
+      interval: 3s
+      timeout: 3s
+      retries: 40

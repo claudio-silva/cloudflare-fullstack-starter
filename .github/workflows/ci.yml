@@ -10,6 +10,29 @@ jobs:
   build-and-lint:
     runs-on: ubuntu-latest
 
+    # Real database servers for the cross-database test suite (docs/DATABASES.md).
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: starter_test
+        ports: ["35432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: test
+          MYSQL_DATABASE: starter_test
+        ports: ["33306:3306"]
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -ptest --silent" --health-interval 5s --health-timeout 5s --health-retries 30
+
+    env:
+      TEST_POSTGRES_URL: postgres://postgres:test@localhost:35432/starter_test
+      TEST_MYSQL_URL: mysql://root:test@localhost:33306/starter_test
+
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -29,7 +52,7 @@ jobs:
       - name: Type check
         run: npx tsc --noEmit
 
-      - name: Test
+      - name: Test (D1, PGlite, PostgreSQL, MySQL)
         run: npm test
 
       - name: Build

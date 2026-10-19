@@ -10,7 +10,7 @@ Inventory the project and write the findings down:
 |---|---|
 | Front end: React + Vite? Next.js? Vue? Plain HTML? | The starter is React 19 + Vite. React/Vite ports directly. Other frameworks mean rewriting the UI (confirm with the user) or choosing a different approach. |
 | Back end: Express/Fastify/Koa/Nest? Serverless functions? | Handlers port to Hono routes (`src/worker/routes/*.ts`). Long-running processes, background threads and local file state do not fit Workers. |
-| Database: Postgres/MySQL/Mongo/SQLite? ORM? Provider SDK (Supabase, Neon...)? | Not a blocker. Read `docs/DATABASES.md` and pick a path with the user: port to D1; keep auth on D1 and the domain data in the existing database/provider (usually best); or move auth to the other database too. Schema translation between SQLite, PostgreSQL and MySQL is real work, not find-and-replace. |
+| Database: Postgres/MySQL/Mongo/SQLite? ORM? Provider SDK (Supabase, Neon...)? | Not a blocker; the starter's schema, migrations, auth and tests run on D1, PostgreSQL and MySQL. Read `docs/DATABASES.md` and pick a path with the user: D1 (port the schema); the same app directly on PostgreSQL/MySQL (Path 3); or keep auth on D1 and the domain data in the existing database/provider (Path 2, usually best). Mongo/other non-SQL stores go through a data-access module (Path 2). Translating an existing schema to the portable column types is real work, not find-and-replace. |
 | Auth: own sessions, Passport, Auth0, Clerk...? | Starter ships Better Auth (email/password, Google). Decide: migrate users (password hashes may not be portable) or keep the existing provider. |
 | File storage / uploads | R2 (or keep existing storage behind an adapter). |
 | Scheduled jobs / queues / websockets | Cron triggers, Queues, Durable Objects. |
@@ -35,7 +35,7 @@ First confirm the user accepts the starter's stack (React 19 + Vite + Tailwind +
 
 For each feature, in dependency order (schema, auth, API, UI):
 
-- **Schema:** add numbered SQL files in `migrations/` (never edit applied ones) and update `src/worker/types/database.ts`.
+- **Schema:** add an incremental migration in `src/worker/db/migrations/incremental/` (never edit applied ones), mirror it in `baseline.ts`, and update `src/worker/types/database.ts`. Follow the portable-SQL rules in `docs/DATABASES.md`.
 - **API:** one module per feature in `src/worker/routes/`, mounted in `src/worker/index.ts`; protect with `authMiddleware`.
 - **UI:** pages in `src/react-app/pages/`, routes in `App.tsx`. Use the bundled shadcn/ui components first.
 - **Services:** put swappable services behind adapters.
@@ -44,7 +44,7 @@ For each feature, in dependency order (schema, auth, API, UI):
 
 ## 5. Data migration
 
-Export from the old database, transform to D1-compatible SQL, import with `npm run db:seed` (idempotent seeds) or a one-off script. Rehearse locally, then on preview, then production (`db:backup:production` first).
+Export from the old database and import through a one-off script or an idempotent TypeScript seed (`npm run db:seed`, see `docs/DATABASES.md`). Rehearse locally, then on preview, then production (`db:backup:production` first).
 
 ## 6. Finish
 

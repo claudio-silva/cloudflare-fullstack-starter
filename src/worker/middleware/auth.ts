@@ -1,6 +1,6 @@
 import { betterAuth } from "better-auth";
 import bcrypt from "bcryptjs";
-import { createDb } from "../db";
+import { createDb, databaseKind } from "../db";
 import type { AppContext, AppUser } from "../types/context";
 import { createEmailSender, type EmailSender } from "../adapters/email";
 import { getVerificationEmailTemplate, getPasswordResetEmailTemplate } from "../utils/email-templates";
@@ -73,7 +73,7 @@ export function createAuth(c: AppContext) {
 		secret,
 		database: {
 			db,
-			type: "sqlite",
+			type: databaseKind,
 		},
 		user: { modelName: "users" },
 		session: {

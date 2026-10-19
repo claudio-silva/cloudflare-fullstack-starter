@@ -169,6 +169,6 @@ The scripts do not assume npm or the repository root: they resolve files relativ
 Minimal adaptation when the starter lives at `app/` in a pnpm workspace:
 
 - Run scripts from the package: `pnpm --filter ./app dev`, or `pnpm -C app db:migrate`.
-- The `.env.*` files, `wrangler.toml`, `migrations/` and `seeds/` all live inside `app/`.
+- The `.env.*` files, `wrangler.toml`, `src/worker/db/` (migrations and seeds) all live inside `app/`.
 - `package-lock.json` is irrelevant there; delete it and use the workspace `pnpm-lock.yaml`. Allow build scripts for `esbuild`, `workerd` and `sharp` in `pnpm-workspace.yaml` (`onlyBuiltDependencies`).
 - Keep project-specific changes to `src/config.ts`, `wrangler.toml` vars and the env templates so later `git subtree pull`s stay cheap; add features as new files under `src/worker/routes/`.

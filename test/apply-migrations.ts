@@ -1,4 +1,5 @@
-import { applyD1Migrations } from "cloudflare:test";
 import { env } from "cloudflare:workers";
+import { createDb, databaseKind } from "../src/worker/db";
+import { migrateDatabase } from "../src/worker/db/migrations";
 
-await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
+await migrateDatabase(createDb(env), { kind: databaseKind });

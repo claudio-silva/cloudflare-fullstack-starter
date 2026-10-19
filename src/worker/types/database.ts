@@ -1,3 +1,14 @@
+import type { Generated } from "kysely";
+
+/**
+ * An instant as returned by the driver: ISO string on SQLite/D1, `Date` on PostgreSQL/MySQL.
+ * Write instants with `dbNow()` and serialise them with `toIso()` (both in src/worker/db).
+ */
+export type Timestamp = Date | string;
+
+/** Boolean as returned by the driver: 0/1 on SQLite and MySQL, boolean on PostgreSQL. */
+export type DbBoolean = boolean | number;
+
 /**
  * Tables owned by Better Auth (and the auth CLI). Treat as starter-owned.
  */
@@ -7,11 +18,11 @@ export interface AuthDatabase {
     email: string;
     name: string | null;
     image: string | null;
-    emailVerified: number;
-    createdAt: number;
-    updatedAt: number;
+    emailVerified: Generated<DbBoolean>;
+    createdAt: Timestamp;
+    updatedAt: Timestamp;
     /** Built-in roles: 'user' | 'admin'. Developers may add more. Default: 'user'. */
-    role: string;
+    role: Generated<string>;
   };
   accounts: {
     accountId: string;
@@ -22,31 +33,31 @@ export interface AuthDatabase {
     providerAccountId: string | null;
     refreshToken: string | null;
     accessToken: string | null;
-    accessTokenExpiresAt: number | null;
+    accessTokenExpiresAt: Timestamp | null;
     idToken: string | null;
-    refreshTokenExpiresAt: number | null;
+    refreshTokenExpiresAt: Timestamp | null;
     scope: string | null;
     password: string | null;
-    createdAt: number;
-    updatedAt: number;
+    createdAt: Timestamp;
+    updatedAt: Timestamp;
   };
   sessions: {
     id: string;
     userId: string;
     token: string;
-    expiresAt: number;
+    expiresAt: Timestamp;
     ipAddress: string | null;
     userAgent: string | null;
-    createdAt: number;
-    updatedAt: number;
+    createdAt: Timestamp;
+    updatedAt: Timestamp;
   };
   verifications: {
     id: string;
     identifier: string;
     value: string;
-    expiresAt: number;
-    createdAt: number;
-    updatedAt: number;
+    expiresAt: Timestamp;
+    createdAt: Timestamp;
+    updatedAt: Timestamp;
   };
 }
 

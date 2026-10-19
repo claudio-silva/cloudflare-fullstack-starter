@@ -12,6 +12,7 @@ import {
 } from "node:fs";
 import { basename, resolve } from "node:path";
 import { createInterface } from "node:readline";
+import { connectToDatabase } from "../src/cli/utils/db";
 
 type DbEnvironment = "local" | "preview" | "production";
 
@@ -405,54 +406,75 @@ Examples:
 
 program.addCommand(backupsCommand);
 
+function describeApiFailure(env: DbEnvironment, error: unknown): never {
+	const message = error instanceof Error ? error.message : String(error);
+	const hint =
+		env === "local"
+			? "Is the dev server running (npm run dev)? Local migrations also run automatically on the first API request."
+			: "Is the Worker deployed with this schema version, and CLI_API_KEY set in .env." + env + "?";
+	console.error(`Database command failed: ${message}\n${hint}`);
+	process.exit(1);
+}
+
 program.addCommand(
 	new Command("migrate")
-		.description("Apply pending migrations for a D1 environment.")
+		.description("Apply pending migrations through the running Worker (portable Kysely migrations).")
 		.addOption(
 			new Option("-e, --env <environment>", "Target environment.")
 				.choices(allowedEnvironments)
 				.default("local"),
 		)
-		.option("--safe", "Take a backup before running migrations.")
+		.option("--safe", "Take a D1 backup before running migrations (D1 only; use your provider's backups otherwise).")
 		.option("-a, --archive-dir <path>", "Directory used to store migration backup.")
 		.addHelpText(
 			"after",
 			`
+Migrations run inside the Worker (POST /api/cli/migrate, protected by CLI_API_KEY).
+A new database gets the baseline in one step; an existing one gets the pending
+incremental migrations. Local dev also migrates automatically on the first API request.
+
 Examples:
-  db migrate --env local
+  db migrate --env local        (dev server must be running)
   db migrate --env preview --safe
   db migrate --env production --safe
 `,
 		)
-		.action((options: { env: DbEnvironment; safe?: boolean; archiveDir?: string }) => {
+		.action(async (options: { env: DbEnvironment; safe?: boolean; archiveDir?: string }) => {
 			const env = options.env;
 			if (options.safe) {
-				const output = resolveOutputPath(env, options.archiveDir);
-				runWrangler([
-					"d1",
-					"export",
-					getDatabaseName(env),
-					...getEnvFlags(env),
-					...getRemoteFlags(env),
-					"--output",
-					output,
-					"--skip-confirmation",
-				]);
+				let databaseName: string | null = null;
+				try {
+					databaseName = getDatabaseName(env);
+				} catch {
+					console.warn("No D1 database configured in wrangler.toml; skipping the D1 backup. Use your database provider's backups.");
+				}
+				if (databaseName) {
+					runWrangler([
+						"d1",
+						"export",
+						databaseName,
+						...getEnvFlags(env),
+						...getRemoteFlags(env),
+						"--output",
+						resolveOutputPath(env, options.archiveDir),
+						"--skip-confirmation",
+					]);
+				}
 			}
-			runWrangler([
-				"d1",
-				"migrations",
-				"apply",
-				getDatabaseName(env),
-				...getEnvFlags(env),
-				...getRemoteFlags(env),
-			]);
+			try {
+				const client = await connectToDatabase(env);
+				const result = await client.migrate();
+				console.log(`Migration mode: ${result.mode}`);
+				console.log(result.applied.length ? `Applied: ${result.applied.join(", ")}` : "Nothing to apply.");
+			} catch (error) {
+				describeApiFailure(env, error);
+			}
 		}),
 );
 
 program.addCommand(
 	new Command("migrations-list")
-		.description("List pending D1 migration files for an environment (wrangler d1 migrations list).")
+		.description("Show applied and pending migrations for an environment.")
 		.addOption(
 			new Option("-e, --env <environment>", "Target environment.")
 				.choices(allowedEnvironments)
@@ -463,20 +485,18 @@ program.addCommand(
 			`
 Examples:
   db migrations-list --env local
-  db migrations-list --env preview
   db migrations-list --env production
 `,
 		)
-		.action((options: { env: DbEnvironment }) => {
-			const env = options.env;
-			runWrangler([
-				"d1",
-				"migrations",
-				"list",
-				getDatabaseName(env),
-				...getEnvFlags(env),
-				...getRemoteFlags(env),
-			]);
+		.action(async (options: { env: DbEnvironment }) => {
+			try {
+				const client = await connectToDatabase(options.env);
+				for (const m of await client.migrations()) {
+					console.log(`${m.applied ? "applied " : "pending "}  ${m.name}${m.executedAt ? `  (${m.executedAt})` : ""}`);
+				}
+			} catch (error) {
+				describeApiFailure(options.env, error);
+			}
 		}),
 );
 
@@ -585,70 +605,42 @@ Examples:
 
 program.addCommand(
 	new Command("seed")
-		.description("Execute a SQL seed file against a D1 environment.")
+		.description("Run a registered seed (idempotent TypeScript, src/worker/db/seeds) through the Worker.")
 		.addOption(
 			new Option("-e, --env <environment>", "Target environment.")
 				.choices(allowedEnvironments)
 				.default("local"),
 		)
-		.option("-f, --file <name>", "Seed file name (relative to --dir). If omitted and only one .sql exists, it is used automatically.")
-		.option("-d, --dir <path>", "Directory containing seed files (default: seeds/).", "seeds")
+		.option("-f, --file <name>", "Seed name as registered in src/worker/db/seeds/index.ts. If only one exists it is used automatically.")
 		.addHelpText(
 			"after",
 			`
-Note: Seeds are NOT tracked in d1_migrations and must be idempotent. They
-run using "wrangler d1 execute" against the target environment.
+Seeds are NOT tracked and must be idempotent. They are portable across databases
+because they use the Kysely query builder.
 
 Examples:
   db seed --env local
-  db seed --env local --file admin-bootstrap.sql
-  db seed --env preview --file admin-bootstrap.sql
-  db seed --env production --file admin-bootstrap.sql
-  db seed --dir ./custom-seeds --file my-seed.sql
+  db seed --env preview --file admin-bootstrap
 `,
 		)
-		.action((options: { env: DbEnvironment; file?: string; dir: string }) => {
-			const env = options.env;
-			const seedDir = resolve(process.cwd(), options.dir);
-
-			if (!existsSync(seedDir)) {
-				throw new Error(`Seed directory not found: ${seedDir}. Create the directory and add .sql seed files.`);
-			}
-
-			const sqlFiles = readdirSync(seedDir)
-				.filter((name) => name.endsWith(".sql"))
-				.sort();
-
-			if (sqlFiles.length === 0) {
-				throw new Error(`No .sql files found in ${seedDir}.`);
-			}
-
-			let seedFile: string;
-			if (options.file) {
-				seedFile = resolve(seedDir, options.file);
-				if (!existsSync(seedFile)) {
-					throw new Error(`Seed file not found: ${seedFile}`);
+		.action(async (options: { env: DbEnvironment; file?: string }) => {
+			try {
+				const client = await connectToDatabase(options.env);
+				const available = await client.listSeeds();
+				if (available.length === 0) {
+					throw new Error("No seeds are registered. Add one in src/worker/db/seeds/ and register it in index.ts.");
 				}
-			} else if (sqlFiles.length === 1) {
-				seedFile = resolve(seedDir, sqlFiles[0]);
-				console.log(`Using seed file: ${sqlFiles[0]}`);
-			} else {
-				console.error("Multiple seed files found. Specify one with --file:");
-				for (const file of sqlFiles) {
-					console.error(`  ${file}`);
+				const name = options.file?.replace(/\.(ts|sql)$/, "") ?? (available.length === 1 ? available[0] : undefined);
+				if (!name) {
+					console.error("Multiple seeds found. Specify one with --file:");
+					for (const seedName of available) console.error(`  ${seedName}`);
+					process.exit(1);
 				}
-				process.exit(1);
+				await client.runSeed(name);
+				console.log(`Seed '${name}' applied.`);
+			} catch (error) {
+				describeApiFailure(options.env, error);
 			}
-
-			runWrangler([
-				"d1",
-				"execute",
-				getDatabaseName(env),
-				...getEnvFlags(env),
-				...getRemoteFlags(env),
-				"--file",
-				seedFile,
-			]);
 		}),
 );
 

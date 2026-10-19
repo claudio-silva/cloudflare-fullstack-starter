@@ -90,22 +90,22 @@ npm install
 
 ## Run Migrations
 
-After `init`, apply the local database migrations:
+Local development needs no migrate step: the dev server creates and migrates the local database on its first API request. To migrate explicitly (local with the dev server running, or preview/production after deploying):
 
 ```bash
 npm run db:migrate
 ```
 
-This creates the local D1 SQLite database and applies all migrations in `migrations/`.
+New databases get the baseline in one step; existing ones the pending incremental migrations (`src/worker/db/migrations/`). See `docs/DATABASES.md`.
 
 ## Operational scripts (database)
 
 | Script | Purpose |
 |--------|---------|
-| `npm run db:migrate` | Apply migrations locally |
+| `npm run db:migrate` | Apply migrations (through the running Worker) |
 | `npm run db:migrate:preview` / `db:migrate:production` | Apply migrations remotely |
 | `npm run db:migrate:safe` / `:preview:safe` / `:production:safe` | Backup first, then migrate |
-| `npm run db:migrations:list` | List pending migration files (local) |
+| `npm run db:migrations:list` | Show applied/pending migrations (local) |
 | `npm run db:migrations:list:preview` / `:production` | Same against remote D1 (requires `wrangler` login) |
 | `npm run db:migrations:list:all` | Runs all three in sequence |
 | `npm run db:backup` / `:preview` / `:production` | Export D1 to `.sql` |

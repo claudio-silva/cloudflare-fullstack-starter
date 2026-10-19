@@ -5,7 +5,7 @@ description: Use when the user wants to build, convert or deploy a web app on Cl
 
 # Cloudflare Fullstack Starter
 
-A SaaS-ready starter for Cloudflare: React 19 + Vite + Tailwind + shadcn/ui frontend, Hono API on Workers, D1 (SQLite) database, Better Auth, Cloudflare Email Service, Vitest and Playwright tests, CLI tooling for users and database, multi-environment deploys. Cloudflare services are the default everywhere, but swappable services (e.g. email) sit behind adapters, so non-Cloudflare providers are allowed. D1 is the default database, and other databases or provider APIs are supported through a single connection seam (`docs/DATABASES.md`).
+A SaaS-ready starter for Cloudflare: React 19 + Vite + Tailwind + shadcn/ui frontend, Hono API on Workers, D1 (SQLite) database, Better Auth, Cloudflare Email Service, Vitest and Playwright tests, CLI tooling for users and database, multi-environment deploys. Cloudflare services are the default everywhere, but swappable services (e.g. email) sit behind adapters, so non-Cloudflare providers are allowed. D1 is the default database; schema, migrations, seeds, auth and tests are portable across D1/SQLite, PostgreSQL and MySQL, and provider APIs are supported through a single connection seam (`docs/DATABASES.md`).
 
 Repository: https://github.com/claudio-silva/cloudflare-fullstack-starter
 
@@ -45,4 +45,5 @@ If the project looks starter-based but has **no** `starter.version`, it is an un
 4. **Upgrade in stages**, following the release log order, verifying (`lint`, `tsc`, tests, build, local migrate) after each. Never skip a stage or edit an applied migration.
 5. **Cloudflare-first, not Cloudflare-only.** Prefer Cloudflare services; if the user already uses another provider or prefers one, keep it behind an adapter (see `docs/EMAIL.md` for the pattern).
 6. **Use the project's own tooling:** Node version from `.nvmrc`, the starter's `npm run` scripts (pnpm works too), `npm run init` for naming. After installing, follow the installed project's `AGENTS.md` for development conventions.
-7. **Report faithfully:** what was done, what was verified, and what remains manual (Cloudflare account steps, secrets, remote migrations, domain onboarding).
+7. **Database work follows `docs/DATABASES.md`:** write portable SQL (no transactions, no `RETURNING`, `dbNow()`/`dbBool()`), add schema changes as an incremental migration *and* in the baseline, and when upgrading a project that has its own SQL migrations convert them as described in `UPGRADING.md` (3.0.0, stage 2) before touching remote databases.
+8. **Report faithfully:** what was done, what was verified, and what remains manual (Cloudflare account steps, secrets, remote migrations, domain onboarding).

@@ -1,34 +1,48 @@
 import path from "node:path";
 import { defineConfig } from "vitest/config";
-import { cloudflareTest, readD1Migrations } from "@cloudflare/vitest-plugin";
+import { cloudflareTest } from "@cloudflare/vitest-plugin";
 
-// Worker integration tests run inside workerd with the real wrangler.toml
-// bindings (D1, Durable Objects) and the project migrations applied.
+const alias = { "@": path.resolve(__dirname, "./src/react-app") };
+
+// Two projects:
+//  - worker:   runs inside workerd with the real wrangler.toml bindings (D1, Durable Objects)
+//  - cross-db: runs in Node against PostgreSQL (PGlite always; real servers when TEST_*_URL is set)
+//              and MySQL, using the same behavioural suite as the D1 run.
 // Kept separate from vite.config.ts so tests don't load the dev/build plugin.
-export default defineConfig(async () => {
-	const migrations = await readD1Migrations(path.resolve(__dirname, "migrations"));
-
-	return {
-		plugins: [
-			cloudflareTest({
-				wrangler: { configPath: "./wrangler.toml" },
-				// wrangler.toml marks EMAIL as remote=true for local dev; tests must stay offline.
-				remoteBindings: false,
-				miniflare: {
-					bindings: {
-						TEST_MIGRATIONS: migrations,
-						ENVIRONMENT: "test",
-						CLI_API_KEY: "test-cli-key",
-					},
+export default defineConfig({
+	test: {
+		projects: [
+			{
+				plugins: [
+					cloudflareTest({
+						wrangler: { configPath: "./wrangler.toml" },
+						// wrangler.toml marks EMAIL as remote=true for local dev; tests must stay offline.
+						remoteBindings: false,
+						miniflare: {
+							// Extra empty D1 databases for isolated migration tests.
+							d1Databases: ["DB2", "DB3"],
+							bindings: { ENVIRONMENT: "test", CLI_API_KEY: "test-cli-key" },
+						},
+					}),
+				],
+				resolve: { alias },
+				test: {
+					name: "worker",
+					include: ["test/**/*.test.ts"],
+					exclude: ["test/cross-db/**"],
+					setupFiles: ["./test/apply-migrations.ts"],
 				},
-			}),
+			},
+			{
+				resolve: { alias },
+				test: {
+					name: "cross-db",
+					include: ["test/cross-db/**/*.test.ts"],
+					environment: "node",
+					testTimeout: 60_000,
+					hookTimeout: 60_000,
+				},
+			},
 		],
-		resolve: {
-			alias: { "@": path.resolve(__dirname, "./src/react-app") },
-		},
-		test: {
-			include: ["test/**/*.test.ts"],
-			setupFiles: ["./test/apply-migrations.ts"],
-		},
-	};
+	},
 });
