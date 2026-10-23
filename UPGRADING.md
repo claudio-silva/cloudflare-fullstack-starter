@@ -58,6 +58,8 @@ Node 24 LTS, a generic `wrangler.toml` environment merge, and removal of decorat
 2. **`vite.config.ts` merges `[env.*]` generically.** The hand-written per-key parsers are gone, replaced by a real TOML parse (`smol-toml`, new devDependency) that copies **every** key under `[env.preview]` / `[env.production]` onto the generated flat config. Adding a binding to `wrangler.toml` no longer requires mirroring it in `vite.config.ts`. A build-time `[wrangler-env]` warning fires when a non-inheritable key is set only at the top level.
 3. **The `ExampleCounter` Durable Object is removed**, with its route (`/api/counter`), binding `EXAMPLE_COUNTER`, the `[[durable_objects.bindings]]` and `[[migrations]]` blocks in `wrangler.toml`, and its test. The starter now ships no Durable Object.
 4. **The `KV_RATE` scaffolding is removed.** It was parsed by `vite.config.ts` but never declared in `wrangler.toml` nor used anywhere in `src/`.
+5. **New `deploy.config.ts`** at the repository root (committed), holding the deploy mode, deployment branches, maintenance mechanism and failure-report address. `tsconfig.cli.json` includes it.
+6. **New `npm run maintenance`** (`bin/maintenance.ts`): zone-level maintenance mode, `redirect` (any zone plan) or `snippet` (Pro or above). Defaults to `none`, so nothing changes until you configure it.
 
 ### Required actions
 
@@ -65,7 +67,8 @@ Node 24 LTS, a generic `wrangler.toml` environment merge, and removal of decorat
 - Take the starter-owned change in `docs/`; merge `vite.config.ts`, `package.json` (`engines`, `@types/node`, new `smol-toml` devDependency), `AGENTS.md`, `README.md`.
 - **If you use Durable Objects, keep yours.** Only remove `ExampleCounter` if you never renamed it. Removing a deployed DO class needs a new `[[migrations]]` tag with `deleted_classes`; dropping the block outright is only safe before the first deploy.
 - **If you declare DO bindings at the top level only**, move them under each `[env.*]`: the new warning will tell you. They worked before by inheritance from the flat config, which is not how `wrangler` itself behaves.
-- Verify: `npx tsc -b`, `npm run lint`, `npm test`, `npm run build:production`, then check `dist/<name>/wrangler.json` has your production `name`, `vars` and bindings.
+- Optional, to use maintenance mode: set `maintenance.mechanism`, `zoneId` and `redirectTo` in `deploy.config.ts`, and issue an API token with **zone** rule permissions (the Workers-scoped token from `bin/init` is not enough).
+- Verify: `npx tsc -b`, `npm run lint`, `npm test`, `npm run build:production`, then check `dist/<name>/wrangler.json` has your production `name`, `vars` and bindings. `npm run maintenance -- status --env production` should report the configured mechanism.
 
 ---
 

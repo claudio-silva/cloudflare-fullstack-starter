@@ -39,6 +39,8 @@
 		"check": "tsc -b && vite build && wrangler deploy --dry-run",
 		"sync-secrets": "tsx bin/sync-secrets.ts",
 		"sync-build-vars": "tsx bin/sync-build-vars.ts",
+		"maintenance": "tsx bin/maintenance.ts",
+		"maintenance:status": "tsx bin/maintenance.ts status --env production",
 		"deploy:preview": "tsx bin/sync-secrets.ts preview && tsx bin/sync-build-vars.ts preview && npm run build:preview && wrangler deploy && tsx bin/db.ts migrate --env preview --safe --wait-for-deploy",
 		"deploy:production": "bin/deploy-production",
 		"release:production": "bin/deploy-production --release-only",

@@ -19,6 +19,43 @@ The new code is live for a short while before the schema changes (and stays live
 
 If a migration fails, the deploy command exits non-zero, the new code stays live, and you fix the migration and run `npm run db:migrate:<env>:safe`. To undo a bad one on D1, restore the Time Travel bookmark printed before the migration (`npm run db -- time-travel restore --env <env> --bookmark <id>`); restoring discards every write made since, so only do it with the app quiet.
 
+## Deployment configuration (`deploy.config.ts`)
+
+`deploy.config.ts` at the repository root holds the shape of the pipeline, and is **committed on purpose**. How a project reaches production is a decision of the project, not of whoever happens to be deploying: if one developer had `manual` and another `workers-builds`, the same command would do two different things. Secrets stay in `.env.*`. Every value can still be overridden per environment with a `DEPLOY_*` key in `.env.<environment>`.
+
+| Key | Meaning |
+|---|---|
+| `mode` | `manual` (no CI, deploy from your machine — the default), `workers-builds` (Cloudflare Workers Builds, GitHub or GitLab.com), `external-ci` (any other CI, including self-hosted GitLab) |
+| `branches` | Branch each environment deploys from |
+| `maintenance` | See below |
+| `notifyEmail` | Address that receives a report when a deploy fails |
+
+## Taking the app out of service
+
+```bash
+npm run maintenance -- status --env production
+npm run maintenance -- on     --env production
+npm run maintenance -- off    --env production
+```
+
+Deploys do this on their own for a `breaking` migration. You run it by hand for an incident.
+
+Both mechanisms live at the **zone** level, outside the Worker, and that is the point: an in-app flag needs the Worker healthy enough to read it and render a page, which is exactly what you cannot count on during an incident. It also costs nothing per request, since there is no storage read in the hot path.
+
+| `maintenance.mechanism` | Zone plan | Response |
+|---|---|---|
+| `redirect` | **any, including Free** | 302 to `maintenance.redirectTo`, a page you host outside this Worker |
+| `snippet` | **Pro or above** | a real 503 with `Retry-After`, served by a Snippet |
+| `none` | — | disabled; required for `*.workers.dev`, which is not part of a zone |
+
+Snippets are the semantically correct answer — a 503 tells crawlers and monitoring the outage is temporary, which a 302 does not — but they are not available on Free zones. A WAF block rule cannot stand in: its custom response is limited to status codes 400–499. Note that the **Workers** plan is a different subscription from the **zone** plan; Workers Paid does not grant Snippets.
+
+`maintenance.bypassPaths` (default `/api/cli/`) stays reachable while the app is down, so migrations and failure reports still work inside a maintenance window. Removing it means a window you cannot deploy inside of.
+
+The rule is created once and then toggled, and rules you own in the same ruleset are left untouched: ours is recognised by its description. `hostname` defaults to the first route declared under `[env.<name>]` in `wrangler.toml`, so there is one source of truth.
+
+The API token needs **zone**-level rule permissions (*Zone → Config: Edit* for redirects; Snippets additionally need snippet write access). This is a different token from the Workers-scoped one `bin/init` creates — with that one, every call fails with `Authentication error`.
+
 ## Versions and releases
 
 The release version is the `version` in `package.json` on `main`. It is baked into the build (`vite.config.ts` → `src/shared/app-version.ts`), served by `GET /api/` as `version` and `commit`, and available to React and the Worker:

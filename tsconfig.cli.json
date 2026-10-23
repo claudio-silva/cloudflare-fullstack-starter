@@ -4,5 +4,5 @@
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.cli.tsbuildinfo",
     "types": ["node"]
   },
-  "include": ["bin", "src/cli"]
+  "include": ["bin", "src/cli", "deploy.config.ts"]
 }
