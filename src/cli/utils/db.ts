@@ -1,4 +1,5 @@
 import { readFileSync, existsSync } from "node:fs";
+import type { MigrationCompatibility, JournalEntry, SchemaSnapshot } from "../../shared/migration-types";
 import { resolve } from "node:path";
 
 export type Environment = "local" | "preview" | "production";
@@ -58,8 +59,11 @@ export type CliDatabaseClient = {
 	getUser: (email: string) => Promise<CliUserDetails>;
 	listUsers: (params?: { search?: string; limit?: number }) => Promise<CliUserSummary[]>;
 	setRole: (email: string, role: "user" | "admin") => Promise<BasicResponse>;
-	migrate: () => Promise<MigrateResponse>;
+	migrate: (only?: MigrationCompatibility[]) => Promise<MigrateResponse>;
 	migrations: () => Promise<MigrationStatus[]>;
+	pendingMigrations: () => Promise<PendingMigration[]>;
+	migrationJournal: (limit?: number) => Promise<JournalEntry[]>;
+	schema: () => Promise<SchemaSnapshot>;
 	listSeeds: () => Promise<string[]>;
 	runSeed: (name: string) => Promise<BasicResponse>;
 	backupInfo: () => Promise<BackupInfo>;
@@ -78,7 +82,14 @@ export type BackupInfo = {
 };
 
 type MigrateResponse = { mode: "baseline" | "adopted-legacy" | "incremental"; applied: string[] };
-export type MigrationStatus = { name: string; applied: boolean; executedAt: string | null };
+export type MigrationStatus = {
+	name: string;
+	applied: boolean;
+	executedAt: string | null;
+	compatibility: MigrationCompatibility;
+	safeSince: string | null;
+};
+export type PendingMigration = { name: string; compatibility: MigrationCompatibility; safeSince?: string };
 
 function loadEnvFile(environment: Environment) {
 	const fileName = `.env.${environment}`;
@@ -200,9 +211,15 @@ export async function connectToDatabase(environment: Environment): Promise<CliDa
 			);
 			return response.users;
 		},
-		migrate: () => makeApiRequest<MigrateResponse>("POST", "/api/cli/migrate", {}, environment),
+		migrate: (only) => makeApiRequest<MigrateResponse>("POST", "/api/cli/migrate", only ? { only } : {}, environment),
 		migrations: async () =>
 			(await makeApiRequest<{ migrations: MigrationStatus[] }>("GET", "/api/cli/migrations", undefined, environment)).migrations,
+		pendingMigrations: async () =>
+			(await makeApiRequest<{ pending: PendingMigration[] }>("GET", "/api/cli/migrations/pending", undefined, environment)).pending,
+		migrationJournal: async (limit = 20) =>
+			(await makeApiRequest<{ entries: JournalEntry[] }>("GET", `/api/cli/migrations/journal?limit=${limit}`, undefined, environment)).entries,
+		schema: async () =>
+			(await makeApiRequest<{ schema: SchemaSnapshot }>("GET", "/api/cli/schema", undefined, environment)).schema,
 		listSeeds: async () => (await makeApiRequest<{ seeds: string[] }>("GET", "/api/cli/seeds", undefined, environment)).seeds,
 		runSeed: (name) => makeApiRequest<BasicResponse>("POST", "/api/cli/seed", { name }, environment),
 		backupInfo: () => makeApiRequest<BackupInfo>("GET", "/api/cli/backup/info", undefined, environment),

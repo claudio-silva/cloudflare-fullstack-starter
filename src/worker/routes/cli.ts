@@ -6,7 +6,10 @@ import type { Database } from "../types/database";
 import type { AppBindings, AppContext } from "../types/context";
 import { createDb, databaseKind, dbBool, dbNow, toIso } from "../db";
 import { appliedMigrations, clearTable, describeSchema, exportRows, finishTable, importRows, restoreChunkRows, type EncodedRow } from "../db/backup";
-import { migrateDatabase, migrationStatus } from "../db/migrations";
+import { migrateDatabase, migrationStatus, pendingMigrations } from "../db/migrations";
+import { readJournal } from "../db/migrations/journal";
+import { schemaSnapshot } from "../db/schema-snapshot";
+import type { MigrationCompatibility } from "../db/migrations/types";
 import { seeds } from "../db/seeds";
 
 async function deleteSessionsForUser(db: Kysely<Database>, userId: string): Promise<void> {
@@ -375,8 +378,12 @@ cli.delete("/users", async (c) => {
 // Database administration (same API-key protection as user management).
 cli.post("/migrate", async (c) => {
 	const db = createDb(c.env);
+	// `only` runs one phase of the expand/contract split: the deploy applies
+	// `expand` before replacing the code and `contract` after it.
+	type MigrateBody = { only?: MigrationCompatibility[] };
+	const body: MigrateBody = await c.req.json<MigrateBody>().catch(() => ({}) as MigrateBody);
 	try {
-		return c.json(await migrateDatabase(db, { kind: databaseKind }));
+		return c.json(await migrateDatabase(db, { kind: databaseKind, only: body.only }));
 	} catch (error) {
 		console.error("[CLI] Migration failed", error);
 		return c.json({ error: error instanceof Error ? error.message : "Migration failed" }, 500);
@@ -385,6 +392,22 @@ cli.post("/migrate", async (c) => {
 
 cli.get("/migrations", async (c) => {
 	return c.json({ migrations: await migrationStatus(createDb(c.env), databaseKind) });
+});
+
+/** Pending migrations with their compatibility, so a deploy can order itself. */
+cli.get("/migrations/pending", async (c) => {
+	return c.json({ pending: await pendingMigrations(createDb(c.env), databaseKind) });
+});
+
+/** What each migration run did — the record a failed run leaves behind. */
+cli.get("/migrations/journal", async (c) => {
+	const limit = Number(c.req.query("limit") ?? 20);
+	return c.json({ entries: await readJournal(createDb(c.env), limit) });
+});
+
+/** Portable schema description, compared against the committed snapshot. */
+cli.get("/schema", async (c) => {
+	return c.json({ schema: await schemaSnapshot(createDb(c.env)) });
 });
 
 cli.get("/seeds", (c) => c.json({ seeds: Object.keys(seeds) }));

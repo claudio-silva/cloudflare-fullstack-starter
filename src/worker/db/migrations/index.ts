@@ -19,4 +19,4 @@ export function createMigrations(kind: DatabaseKind): Record<string, MigrationDe
 }
 
 export { createBaseline };
-export { migrateDatabase, migrationStatus } from "./migrate";
+export { migrateDatabase, migrationStatus, pendingMigrations } from "./migrate";
