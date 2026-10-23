@@ -59,6 +59,7 @@ Versioned releases, build-variable sync for Cloudflare Workers Builds, and **dat
 3. **`db migrate` is idempotent:** it lists pending migrations first and does nothing (no backup, no write) when none are pending. `--safe` now also prints the D1 Time Travel bookmark on remote D1, and skips the backup file in CI (ephemeral disk). New flag `--wait-for-deploy`.
 4. **New build-time constants** `__APP_VERSION__` / `__APP_COMMIT__` (Vite `define`), exposed as `APP_VERSION` / `APP_COMMIT` from `src/shared/app-version.ts`, and as `version` / `commit` in `GET /api/`. `tsconfig.app.json` and `tsconfig.worker.json` now include `src/shared`; `tsconfig.node.json` includes `bin/lib/build-info.ts`.
 5. `bin/sync-secrets.ts` no longer syncs `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` to the Worker.
+6. The loose `deploy` script (`wrangler deploy`) is removed: it deployed whatever was in `dist/` with no environment, secrets, version or migrations. Use `deploy:preview` / `deploy:production`. Remove it from your `package.json` too if you merged this release.
 
 ### Required actions
 
