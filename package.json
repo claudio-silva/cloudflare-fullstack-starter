@@ -4,7 +4,7 @@
   "starter": {
     "name": "cloudflare-fullstack-starter",
     "repo": "https://github.com/claudio-silva/cloudflare-fullstack-starter",
-    "version": "3.1.0"
+    "version": "3.2.0"
   },
   "version": "1.0.0",
   "type": "module",
@@ -39,8 +39,10 @@
     "check": "tsc -b && vite build && wrangler deploy --dry-run",
     "sync-secrets": "tsx bin/sync-secrets.ts",
     "deploy": "wrangler deploy",
-    "deploy:preview": "tsx bin/sync-secrets.ts preview && npm run build:preview && wrangler deploy",
-    "deploy:production": "tsx bin/sync-secrets.ts production && npm run build:production && wrangler deploy",
+    "sync-build-vars": "tsx bin/sync-build-vars.ts",
+    "deploy:preview": "tsx bin/sync-secrets.ts preview && tsx bin/sync-build-vars.ts preview && npm run build:preview && wrangler deploy && tsx bin/db.ts migrate --env preview --safe --wait-for-deploy",
+    "deploy:production": "bin/deploy-production",
+    "release:production": "bin/deploy-production --release-only",
     "tail:preview": "wrangler tail --env preview",
     "tail:production": "wrangler tail --env production",
     "cf-typegen": "wrangler types --env-file .env.example",

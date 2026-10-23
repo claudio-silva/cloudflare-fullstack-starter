@@ -4,7 +4,8 @@ import { existsSync, readFileSync, readdirSync, statSync, unlinkSync } from "nod
 import { basename, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { applyRestore, prepareRestore, readBackup, writeBackup } from "../src/cli/utils/backup";
-import { connectToDatabase } from "../src/cli/utils/db";
+import { connectToDatabase, getApiBaseUrl, type CliDatabaseClient } from "../src/cli/utils/db";
+import { resolveBuildInfo } from "./lib/build-info";
 
 type DbEnvironment = "local" | "preview" | "production";
 
@@ -305,6 +306,61 @@ function describeApiFailure(env: DbEnvironment, error: unknown): never {
 	process.exit(1);
 }
 
+const sleep = (ms: number) => new Promise<void>((done) => setTimeout(done, ms));
+
+/** Workers Builds (WORKERS_CI) and other CI runners have an ephemeral disk. */
+const isCi = () => Boolean(process.env.WORKERS_CI || process.env.CI);
+
+/**
+ * Block until the deployed Worker reports the version and commit of this checkout (`GET /api/`).
+ * `wrangler deploy` can return a moment before every request is served by the new code, and an
+ * old Worker would happily answer "nothing to apply" to a migration it does not know about.
+ */
+async function waitForDeploy(env: DbEnvironment, timeoutMs = 120_000): Promise<void> {
+	const expected = resolveBuildInfo();
+	const baseUrl = getApiBaseUrl(env);
+	const deadline = Date.now() + timeoutMs;
+	let seen = "no response";
+	while (Date.now() < deadline) {
+		try {
+			const body = (await (await fetch(`${baseUrl}/api/`)).json()) as { version?: string; commit?: string };
+			seen = `${body.version ?? "?"} (${body.commit ?? "?"})`;
+			if (body.version === expected.version && body.commit === expected.commit) {
+				console.log(`✓ ${baseUrl} serves ${seen}`);
+				return;
+			}
+		} catch {
+			seen = "no response";
+		}
+		await sleep(3_000);
+	}
+	throw new Error(
+		`${baseUrl} still serves ${seen} after ${timeoutMs / 1000}s; expected ${expected.version} (${expected.commit}). Is the deploy finished?`,
+	);
+}
+
+/** Recovery point before migrating: D1 Time Travel bookmark (remote) and/or a full backup file. */
+async function takeSafetyNet(client: CliDatabaseClient, env: DbEnvironment, archiveDir?: string): Promise<void> {
+	const remote = env !== "local";
+	const ci = isCi();
+	if (remote && (await client.backupInfo()).kind === "sqlite") {
+		console.log(`Time Travel bookmark before migrating ${env} (restore: npm run db -- time-travel restore --env ${env} --bookmark <id>):`);
+		try {
+			runWrangler(["d1", "time-travel", "info", getDatabaseName(env), "--env", env]);
+		} catch {
+			console.warn("  (could not read the bookmark: the token needs D1 access; continuing)");
+		}
+	}
+	if (remote && ci) {
+		// A file written to a CI disk is gone when the build ends; do not pretend it is a backup.
+		console.log("CI run: skipping the backup file (ephemeral disk).");
+		return;
+	}
+	const file = backupFilePath(env, resolveArchiveDir(archiveDir), "-before-migrate");
+	console.log(`Backing up ${env} before migrating: ${file}`);
+	await writeBackup(client, env, file);
+}
+
 program.addCommand(
 	new Command("migrate")
 		.description("Apply pending migrations through the running Worker (portable Kysely migrations).")
@@ -313,30 +369,38 @@ program.addCommand(
 				.choices(allowedEnvironments)
 				.default("local"),
 		)
-		.option("--safe", "Back up the whole database before running migrations (works with every supported database).")
+		.option("--safe", "Take a recovery point first (Time Travel bookmark on D1, plus a full backup file outside CI).")
+		.option("--wait-for-deploy", "Remote only: wait until the Worker serves this checkout's version and commit before migrating.")
 		.option("-a, --archive-dir <path>", "Directory used to store migration backup.")
 		.addHelpText(
 			"after",
 			`
-Migrations run inside the Worker (POST /api/cli/migrate, protected by CLI_API_KEY).
-A new database gets the baseline in one step; an existing one gets the pending
-incremental migrations. Local dev also migrates automatically on the first API request.
+Migrations run inside the Worker (POST /api/cli/migrate, protected by CLI_API_KEY), so the Worker
+must already be deployed with the code that contains them: deploy first, then migrate.
+Deploy commands run this for you. Nothing pending → no backup, no write. Local dev also
+migrates automatically on the first API request.
+
+Because the new code serves requests before the schema changes, write migrations additively
+(add columns/tables; drop or rename in a later release) so the old and new code both work.
 
 Examples:
   db migrate --env local        (dev server must be running)
   db migrate --env preview --safe
-  db migrate --env production --safe
+  db migrate --env production --safe --wait-for-deploy
 `,
 		)
-		.action(async (options: { env: DbEnvironment; safe?: boolean; archiveDir?: string }) => {
+		.action(async (options: { env: DbEnvironment; safe?: boolean; waitForDeploy?: boolean; archiveDir?: string }) => {
 			const env = options.env;
 			try {
 				const client = await connectToDatabase(env);
-				if (options.safe) {
-					const file = backupFilePath(env, resolveArchiveDir(options.archiveDir), "-before-migrate");
-					console.log(`Backing up ${env} before migrating: ${file}`);
-					await writeBackup(client, env, file);
+				if (options.waitForDeploy && env !== "local") await waitForDeploy(env);
+				const pending = (await client.migrations()).filter((m) => !m.applied);
+				if (pending.length === 0) {
+					console.log(`✓ No pending migrations for ${env}.`);
+					return;
 				}
+				console.log(`Pending on ${env}: ${pending.map((m) => m.name).join(", ")}`);
+				if (options.safe) await takeSafetyNet(client, env, options.archiveDir);
 				const result = await client.migrate();
 				console.log(`Migration mode: ${result.mode}`);
 				console.log(result.applied.length ? `Applied: ${result.applied.join(", ")}` : "Nothing to apply.");

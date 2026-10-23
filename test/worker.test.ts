@@ -11,6 +11,12 @@ describe("worker API", () => {
 		expect(await res.json()).toMatchObject({ status: "healthy", environment: "test" });
 	});
 
+	it("reports the release version and commit", async () => {
+		const body = (await (await call("/api/")).json()) as { version?: string; commit?: string };
+		expect(body.version).toMatch(/^\d+\.\d+\.\d+/);
+		expect(typeof body.commit).toBe("string");
+	});
+
 	it("rejects CLI calls without the API key", async () => {
 		expect((await call("/api/cli/users")).status).toBe(401);
 	});

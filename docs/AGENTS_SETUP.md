@@ -96,7 +96,7 @@ Local development needs no migrate step: the dev server creates and migrates the
 npm run db:migrate
 ```
 
-New databases get the baseline in one step; existing ones the pending incremental migrations (`src/worker/db/migrations/`). See `docs/DATABASES.md`.
+New databases get the baseline in one step; existing ones the pending incremental migrations (`src/worker/db/migrations/`). See `docs/DATABASES.md`. `deploy:preview` and `deploy:production` run them for you after every deploy (`docs/DEPLOYMENT.md`).
 
 ## Operational scripts (database)
 
@@ -109,7 +109,8 @@ New databases get the baseline in one step; existing ones the pending incrementa
 | `npm run db:migrations:list:preview` / `:production` | Same against remote D1 (requires `wrangler` login) |
 | `npm run db:migrations:list:all` | Runs all three in sequence |
 | `npm run db:backup` / `:preview` / `:production` | Back up the whole database to `.backup.jsonl` (any supported DB) |
-| `npm run deploy:preview` / `deploy:production` | Sync secrets, bake env, deploy |
+| `npm run deploy:preview` / `deploy:production` | Sync secrets and build variables, bake env, deploy, migrate (production also tags a release) |
+| `npm run sync-build-vars -- <env>` | Push `VITE_*` / `CLI_API_URL*` (and `CLI_API_KEY` as a secret) to Workers Builds |
 
 ## Set Up `CLI_API_KEY`
 
@@ -131,7 +132,8 @@ Use this when moving from local dev to real Cloudflare resources. Paths are rela
 2. **D1** — Create preview and production databases in the dashboard (or CLI). Paste `database_id` into `wrangler.toml`; keep `database_name` following the convention above.
 3. **Optional bindings** — Add `[[env.*.kv_namespaces]]`, `[[env.*.r2_buckets]]`, and `[env.*.triggers]` / `crons` in `wrangler.toml` when you need them. Anything under `[env.preview|production]` that must reach the deployed Worker must also be **baked** in `vite.config.ts` (see bridge doc); omitted keys are silently dropped from the flat `dist/<name>/wrangler.json`.
 4. **Secrets** — List required keys in `.env.example`, then copy to `.env.preview` / `.env.production` (gitignored). Never commit real secrets.
-5. **Order** — First deploy needs migrations applied per environment (`npm run db:migrate:preview`, etc.) once `database_id` values are real.
+5. **Order** — Once the `database_id` values are real, the first `npm run deploy:preview` / `deploy:production` deploys the Worker and then applies the migrations by itself (they run through the deployed Worker, so `CLI_API_KEY` and `CLI_API_URL_<ENV>` must be set in the `.env.*` file).
+6. **Workers Builds (optional)** — To build and deploy on `git push`, see `docs/DEPLOYMENT.md`; it needs a user API token in `.env.setup.local` for `npm run sync-build-vars`.
 
 ## CI and clone hygiene
 

@@ -23,6 +23,9 @@ const HASH_DIR = ".wrangler/secrets";
 const NON_SECRET_KEYS = new Set([
 	"ENVIRONMENT",
 	"AUTH_EMAILS_LOCAL_ENABLED",
+	// Deploy-tooling credentials (bin/sync-build-vars.ts): must never reach the Worker.
+	"CLOUDFLARE_API_TOKEN",
+	"CLOUDFLARE_ACCOUNT_ID",
 ]);
 // Cloudflare aggressively rate-limits `wrangler secret put`. A short pause
 // between successive puts noticeably reduces 429s on bursts of >5 secrets.

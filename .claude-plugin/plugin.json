@@ -1,7 +1,7 @@
 {
   "name": "cloudflare-fullstack-starter",
   "description": "Skill that lets coding agents install, convert projects to, and upgrade the Cloudflare Fullstack Starter (React + Vite + Hono + D1 + Better Auth).",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "author": { "name": "Cláudio Silva" },
   "repository": "https://github.com/claudio-silva/cloudflare-fullstack-starter",
   "license": "MIT"

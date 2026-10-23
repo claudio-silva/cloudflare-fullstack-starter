@@ -5,6 +5,7 @@ import { cli } from "./routes/cli";
 import { profile } from "./routes/profile";
 import { exampleCounter } from "./routes/example-counter";
 import { config } from "../config";
+import { APP_COMMIT, APP_VERSION } from "../shared/app-version";
 import { createDb, databaseKind } from "./db";
 import { migrateDatabase } from "./db/migrations";
 
@@ -30,7 +31,7 @@ app.use("/api/*", async (c, next) => {
 // Health check
 app.get("/api/", (c) => {
 	const environment = c.env.ENVIRONMENT || "local";
-	return c.json({ name: config.appName, environment, status: "healthy" });
+	return c.json({ name: config.appName, environment, status: "healthy", version: APP_VERSION, commit: APP_COMMIT });
 });
 
 // Auth routes

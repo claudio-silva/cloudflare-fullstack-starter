@@ -60,13 +60,16 @@ For preview and production builds, the mutating customizer also re-injects, when
 
 ```
 npm run deploy:preview
-  = sync secrets  +  build:preview  +  wrangler deploy
+  = sync secrets  +  sync build vars  +  build:preview  +  wrangler deploy  +  migrate
 ```
 
 Each deploy script:
-1. Syncs secrets from `.env.<env>` to Cloudflare's secrets store (see below).
-2. Runs the environment-specific Vite build, baking the correct config into `wrangler.json`.
+1. Syncs secrets from `.env.<env>` to Cloudflare's secrets store (see below), and the non-secret build variables to Workers Builds.
+2. Runs the environment-specific Vite build, baking the correct config into `wrangler.json` (and the release version/commit via `define`).
 3. Runs `wrangler deploy` — no `--env` flag needed, because the build output already targets the right environment.
+4. Applies pending database migrations through the deployed Worker.
+
+`deploy:production` wraps these in `bin/deploy-production`, which also cuts the `vX.Y.Z` release. See [DEPLOYMENT.md](DEPLOYMENT.md).
 
 This makes the deployment target explicit and unambiguous. There's no way to accidentally deploy with the wrong config.
 

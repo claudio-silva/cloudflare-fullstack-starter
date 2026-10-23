@@ -412,10 +412,14 @@ The default Cloudflare Email Service adapter uses the `EMAIL` binding in `wrangl
 - **Add or update a secret** — edit the relevant `.env.<env>` file and redeploy. The deploy script compares a hash of the file and only syncs what has changed; you never need to use `wrangler secret put` manually.
 - **Add a Cloudflare binding** (D1, KV, R2, …) — add it to `wrangler.toml`; it is picked up automatically at build time.
 
-Each deploy command (`deploy:preview`, `deploy:production`) runs three steps in sequence:
+Each deploy command (`deploy:preview`, `deploy:production`) runs these steps in sequence:
 1. Syncs secrets from `.env.<env>` to Cloudflare (skipped if nothing changed)
-2. Builds the app with the correct environment config baked in
-3. Deploys to Cloudflare — no manual `--env` flags or dashboard visits needed
+2. Pushes the non-secret build variables (`VITE_*`, …) to Workers Builds, when it is set up
+3. Builds the app with the correct environment config baked in
+4. Deploys to Cloudflare — no manual `--env` flags or dashboard visits needed
+5. Runs the database migrations, if any are pending
+
+`deploy:production` also cuts a versioned release (`vX.Y.Z` git tag). Details, Workers Builds setup and how to write migrations for this order: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ### How Environment Variables Work
 
@@ -441,11 +445,11 @@ npm run check        # Type check + build + deploy dry-run
 ## Deploy
 
 ```bash
-npm run deploy:production    # Sync secrets + build + deploy to production
-npm run deploy:preview       # Sync secrets + build + deploy to preview
+npm run deploy:production    # Versioned release (patch; --minor/--major): secrets + build + deploy + tag + migrate
+npm run deploy:preview       # Secrets + build + deploy + migrate on preview
 ```
 
-Each command handles secrets, the environment-specific build, and deployment in one step. See [docs/VITE_CLOUDFLARE_BRIDGE.md](docs/VITE_CLOUDFLARE_BRIDGE.md) for how environment config is handled under the hood.
+Each command handles secrets, the environment-specific build, deployment and database migrations in one step. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) (versions, migrations, Workers Builds) and [docs/VITE_CLOUDFLARE_BRIDGE.md](docs/VITE_CLOUDFLARE_BRIDGE.md) for how environment config is handled under the hood.
 
 ## Customization
 
@@ -510,6 +514,7 @@ For long-term retention or external analysis, you can forward logs via Cloudflar
 ## Additional Resources
 
 ### Template Internals
+- [Deployment, versions and migrations](docs/DEPLOYMENT.md) — what each deploy does, git-tag releases, migrations on every deploy, Workers Builds
 - [Vite ↔ Cloudflare Bridge](docs/VITE_CLOUDFLARE_BRIDGE.md) — how the project bridges Vite's dev conventions with Cloudflare's deployment model (env config baking, secrets sync, cross-platform build scripts)
 
 ### External Resources

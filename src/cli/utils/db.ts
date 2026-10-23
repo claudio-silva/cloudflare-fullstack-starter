@@ -116,7 +116,7 @@ function loadEnvFile(environment: Environment) {
 	}
 }
 
-function getApiBaseUrl(environment: Environment): string {
+export function getApiBaseUrl(environment: Environment): string {
 	switch (environment) {
 		case "local":
 			return process.env.CLI_API_URL || "http://localhost:5173";

@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import { cloudflare, type WorkerConfig } from "@cloudflare/vite-plugin";
 import path from "path";
 import fs from "node:fs";
+import { resolveBuildInfo } from "./bin/lib/build-info";
 
 function extractEnvRoutes(
 	content: string,
@@ -168,6 +169,7 @@ function parseWranglerToml(filePath: string) {
 }
 
 export default defineConfig(({ mode }) => {
+	const buildInfo = resolveBuildInfo(__dirname);
 	const {
 		baseName,
 		previewDb,
@@ -266,6 +268,11 @@ export default defineConfig(({ mode }) => {
 			alias: {
 				"@": path.resolve(__dirname, "./src/react-app"),
 			},
+		},
+		// Release version (package.json) and commit, read by src/shared/app-version.ts.
+		define: {
+			__APP_VERSION__: JSON.stringify(buildInfo.version),
+			__APP_COMMIT__: JSON.stringify(buildInfo.commit),
 		},
 		// Avoid ELOOP when `.claude/AGENTS.md` is a broken self-symlink (Cursor/Claude hook).
 		server: {

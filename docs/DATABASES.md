@@ -68,7 +68,7 @@ npm run db:migrate:production:safe
 npm run db:migrations:list[:preview|:production]
 ```
 
-**Local development migrates automatically** on the first API request, so `npm run dev` on a fresh checkout just works. Preview/production are migrated explicitly (deploy first, then migrate).
+**Local development migrates automatically** on the first API request, so `npm run dev` on a fresh checkout just works. Preview/production are migrated by the deploy commands (`deploy:preview`, `deploy:production`) right after `wrangler deploy`, or explicitly with `db:migrate:<env>:safe`. Because the new code is live before the schema changes, keep migrations additive (see [DEPLOYMENT.md](DEPLOYMENT.md)).
 
 ## Seeds
 

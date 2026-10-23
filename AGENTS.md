@@ -163,7 +163,8 @@ npm run auth show-user
 
 # Build & Deploy
 npm run build                  # Build for production
-npm run deploy:production      # Deploy to Cloudflare (auto-syncs secrets)
+npm run deploy:production      # Versioned release: secrets + build vars + build + deploy + tag + migrate (patch; --minor/--major)
+npm run deploy:preview         # Same steps on preview, without versioning
 
 # Logs (deployed environments only)
 npm run tail:preview           # Stream logs from preview
@@ -211,7 +212,7 @@ Update `src/config.ts` to customize app name, email settings, etc.
 
 **How env files work:**
 - `.env.local` — Loaded during local development (`npm run dev`)
-- `.env.preview` / `.env.production` — Synced to Cloudflare before deploy
+- `.env.preview` / `.env.production` — Synced to Cloudflare before deploy (secrets to the Worker; `VITE_*` and `CLI_API_URL*` to Workers Builds as build variables)
 
 **Variable access by context:**
 ```typescript
@@ -226,6 +227,10 @@ const environment = c.env.ENVIRONMENT;  // from wrangler.toml
 **Deploying secrets:**
 - `npm run deploy:preview` / `npm run deploy:production` automatically syncs secrets from `.env.<env>` files
 - Only changed secrets are synced (tracked via hash file)
+
+**Deploys, versions and migrations** (details: `docs/DEPLOYMENT.md`):
+- Both deploy commands run pending DB migrations after `wrangler deploy` (through the Worker), so write migrations **additive and backward-compatible**: the new code serves traffic before the schema changes.
+- The release version is `version` in `package.json` (git tag `vX.Y.Z` on `main`), exposed as `APP_VERSION` / `APP_COMMIT` (`src/shared/app-version.ts`) and in `GET /api/`.
 
 **CLI auth (`CLI_API_KEY`):**
 - The auth CLI authenticates to `/api/cli/*` using a shared `CLI_API_KEY` secret sent as `x-api-key`.
@@ -263,6 +268,7 @@ Use the bundled shadcn/ui components (`@/components/ui/`) first, or compositions
 - Don't run separate frontend/backend servers
 - Don't modify shadcn/ui component internals (extend with wrappers)
 - Don't hardcode URLs (use environment-based config)
+- Don't deploy to production without the user's explicit approval, and never with raw `wrangler deploy`: use `npm run deploy:production` (`bin/deploy-production`)
 - Don't call a service SDK/API directly from feature code when an adapter exists (go through `src/worker/adapters/`)
 
 ## Project-Specific Notes

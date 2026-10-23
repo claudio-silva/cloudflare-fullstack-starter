@@ -25,7 +25,7 @@
 
 | Kind | Files | Rule |
 |---|---|---|
-| Starter-owned | `bin/`, `src/cli/`, `src/worker/adapters/`, `src/worker/middleware/`, `src/worker/utils/`, `src/worker/db/index.ts`, `src/worker/db/d1-dialect.ts`, `src/worker/db/backup.ts`, `src/worker/db/migrations/{migrate,columns,types}.ts`, `test/support/`, `src/react-app/components/ui/`, `vitest.config.ts`, `playwright.config.ts`, `.github/workflows/ci.yml`, `docs/` | Take upstream changes; re-apply local edits if any |
+| Starter-owned | `bin/`, `src/cli/`, `src/shared/app-version.ts`, `src/shared/build-globals.d.ts`, `src/worker/adapters/`, `src/worker/middleware/`, `src/worker/utils/`, `src/worker/db/index.ts`, `src/worker/db/d1-dialect.ts`, `src/worker/db/backup.ts`, `src/worker/db/migrations/{migrate,columns,types}.ts`, `test/support/`, `src/react-app/components/ui/`, `vitest.config.ts`, `playwright.config.ts`, `.github/workflows/ci.yml`, `docs/` | Take upstream changes; re-apply local edits if any |
 | Shared (merge carefully) | `src/worker/db/migrations/{baseline,index}.ts`, `src/worker/db/migrations/incremental/`, `src/worker/db/seeds/`, `package.json`, `vite.config.ts`, `wrangler.toml`, `src/worker/index.ts`, `src/react-app/App.tsx`, `src/worker/types/*`, `AGENTS.md`, `README.md` | Three-way merge, never overwrite |
 | Project-owned | `src/config.ts` values, `env/*.template` values, `.env.*`, `migrations/` already applied, `seeds/`, all project pages/routes/components | Never overwrite; only add what a log entry requires |
 
@@ -45,6 +45,29 @@ npm run build
 npm run db:migrate     # local
 npm run test:e2e       # from 2.0.0 on, optional
 ```
+
+---
+
+## 3.2.0 — 2026-10-23
+
+Versioned releases, build-variable sync for Cloudflare Workers Builds, and **database migrations on every deploy**. **No schema change.** The deploy commands behave differently, so read the breaking changes.
+
+### Breaking changes
+
+1. **`npm run deploy:production` is now `bin/deploy-production`.** It must run from a clean `main` that equals `origin/main`, bumps `package.json` (patch by default; `--minor`, `--major`, `--version vX.Y.Z`), commits `Release vX.Y.Z`, deploys, then pushes `main` and an annotated `vX.Y.Z` tag. `--dry-run` shows the plan; `--release-only` only bumps/tags/pushes. **Never run it without the owner's approval.** `npm run release:production` is the `--release-only` shortcut.
+2. **Migrations run on every deploy** (`deploy:preview`, `deploy:production`), after `wrangler deploy`, through the deployed Worker (`db migrate --safe --wait-for-deploy`). The new code is therefore live before the schema changes: write migrations additive and backward-compatible. A migration failure makes the deploy command exit non-zero with the new code still live.
+3. **`db migrate` is idempotent:** it lists pending migrations first and does nothing (no backup, no write) when none are pending. `--safe` now also prints the D1 Time Travel bookmark on remote D1, and skips the backup file in CI (ephemeral disk). New flag `--wait-for-deploy`.
+4. **New build-time constants** `__APP_VERSION__` / `__APP_COMMIT__` (Vite `define`), exposed as `APP_VERSION` / `APP_COMMIT` from `src/shared/app-version.ts`, and as `version` / `commit` in `GET /api/`. `tsconfig.app.json` and `tsconfig.worker.json` now include `src/shared`; `tsconfig.node.json` includes `bin/lib/build-info.ts`.
+5. `bin/sync-secrets.ts` no longer syncs `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` to the Worker.
+
+### Required actions
+
+- Take the starter-owned changes in `bin/` (new: `deploy-production`, `sync-build-vars.ts`, `lib/build-info.ts`), `src/cli/utils/db.ts`, `src/shared/`, `docs/` (new: `DEPLOYMENT.md`); merge `package.json` (scripts `deploy:preview`, `deploy:production`, `release:production`, `sync-build-vars`), `vite.config.ts` (the `resolveBuildInfo` import and the `define` block), `src/worker/index.ts` (`/api/` returns `version` and `commit`), `tsconfig*.json`, `AGENTS.md`.
+- Make sure `bin/deploy-production` is executable (`chmod +x`).
+- Set a real, additive-only migration discipline (see `docs/DEPLOYMENT.md`).
+- Optional, for Workers Builds: create a user API token (*Workers Builds Configuration: Edit*, *Workers Scripts: Read*), put `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` in `.env.setup.local`, and follow `docs/DEPLOYMENT.md`.
+- Existing git tags `vX.Y.Z` unrelated to `package.json` `version` make the first run refuse (the version must match the tag on `HEAD`, and the next version is derived from the latest tag): align `package.json` or the tags first.
+- Verify: `npx tsc -b`, `npm test`, `npm run build`, `bin/deploy-production --dry-run`, `npm run sync-build-vars -- production --dry-run`.
 
 ---
 

@@ -1,0 +1,73 @@
+# Deployment, versions and migrations
+
+How a change gets from your machine to Cloudflare: what each deploy command does, how releases are versioned, how database migrations run on every deploy, and how to move the same flow to **Cloudflare Workers Builds** (build + deploy on `git push`). For the Vite ↔ wrangler config baking see [VITE_CLOUDFLARE_BRIDGE.md](VITE_CLOUDFLARE_BRIDGE.md).
+
+## What a deploy does
+
+| Command | Steps |
+|---|---|
+| `npm run deploy:preview` | sync secrets → sync build variables → build (`--mode preview`) → `wrangler deploy` → **migrate** |
+| `npm run deploy:production` | `bin/deploy-production`: version bump + commit → sync secrets → sync build variables → build (`--mode production`) → `wrangler deploy` → tag + push → **migrate** |
+
+Both always run the database migrations (when there are any), in every environment. Raw `wrangler deploy` is never used for preview/production: the build output already targets the right environment, and the scripts keep secrets, version and migrations in step.
+
+**Migrations run after the deploy**, because they execute inside the deployed Worker (`POST /api/cli/migrate`, protected by `CLI_API_KEY`), which is what makes them work on D1, PostgreSQL and MySQL alike. `db migrate --wait-for-deploy` first polls `GET /api/` until the Worker reports this checkout's version and commit, so a still-propagating old Worker can never answer "nothing to apply" to a migration it does not know. With `--safe` it records a recovery point first (a D1 Time Travel bookmark, plus a full backup file outside CI), and it does nothing, and writes nothing, when no migration is pending.
+
+### Writing migrations for this order
+
+The new code is live for a short while before the schema changes (and stays live if a migration fails). So every migration must be **additive and backward-compatible**: add tables/columns (nullable or with defaults), deploy, and only drop or rename in a *later* release once no running code reads the old shape. Never edit a migration that has been applied anywhere.
+
+If a migration fails, the deploy command exits non-zero, the new code stays live, and you fix the migration and run `npm run db:migrate:<env>:safe`. To undo a bad one on D1, restore the Time Travel bookmark printed before the migration (`npm run db -- time-travel restore --env <env> --bookmark <id>`); restoring discards every write made since, so only do it with the app quiet.
+
+## Versions and releases
+
+The release version is the `version` in `package.json` on `main`. It is baked into the build (`vite.config.ts` → `src/shared/app-version.ts`), served by `GET /api/` as `version` and `commit`, and available to React and the Worker:
+
+```ts
+import { APP_VERSION, APP_COMMIT } from "../../shared/app-version"; // adjust the path
+```
+
+`npm run deploy:production` (`bin/deploy-production`) cuts a release from a clean, pushed `main`:
+
+1. Picks the next version from the latest `vX.Y.Z` git tag: **patch** by default, `--minor` / `--major`, or an exact `--version vX.Y.Z`. The first release is `v1.0.0`.
+2. Commits the bump (`Release vX.Y.Z`), deploys, and only then pushes `main` and the annotated tag. A failed build or deploy leaves no commit or tag behind.
+3. If `HEAD` already carries a tag, that version is simply redeployed.
+
+A project begins its own tag line: create it from the template without the starter's git history (as `docs/AGENTS_SETUP.md` does), because the starter repo's own `vX.Y.Z` tags are *template* releases and would otherwise seed the first version. `--dry-run` shows the plan, `--yes` skips the prompt, `--release-only` bumps, tags and pushes without deploying (for Workers Builds, below). **Never run it against production without the owner's approval.**
+
+The version comes from the committed `package.json`, not from git tags, so any builder (this script or Workers Builds) produces the same value; the tag only marks the commit that carries it.
+
+## Build variables
+
+Local builds read `.env.<env>`; a CI build has no such file. `npm run sync-build-vars -- <env>` (also run by the deploy commands) pushes to the Worker's Workers Builds triggers, so CI builds see the same values:
+
+| Pushed as | Keys |
+|---|---|
+| Plain build variable | every `VITE_*` (public by definition: it ends up in the client bundle) and `CLI_API_URL*` |
+| Secret build variable (write-only) | `CLI_API_KEY`, which CI needs to run migrations through the Worker |
+
+Whoever holds the `.env.*` files is the source of truth: their values overwrite the cloud ones; keys missing from the file are left untouched. Everyone else just uses what was pushed. Runtime secrets still go through `bin/sync-secrets.ts` (it skips `VITE_*`).
+
+It needs a **user API token** (not an account token) with *Workers Builds Configuration: Edit* and *Workers Scripts: Read*, plus the account id, in the process environment or in `.env.setup.local` (gitignored):
+
+```bash
+CLOUDFLARE_API_TOKEN=...
+CLOUDFLARE_ACCOUNT_ID=...
+```
+
+Without a token, without a deployed Worker, or before the repository is connected in the dashboard, it prints a notice and exits 0.
+
+## Workers Builds (CI/CD) compatibility
+
+Everything above works unchanged when Cloudflare builds and deploys on `git push`. Per Worker (`<name>-preview`, `<name>-production`): dashboard → Workers & Pages → the Worker → Settings → Builds → connect the repository, then:
+
+| Setting | Value |
+|---|---|
+| Production branch | `main` (production Worker) / your preview branch (preview Worker) |
+| Build command | `npm ci && npm run build:production` (`build:preview` for the preview Worker) |
+| Deploy command | `npx wrangler deploy && npm run db:migrate:production:safe -- --wait-for-deploy` (preview: the `preview` variants) |
+
+- **Version**: tag on `main` with `bin/deploy-production --release-only`, then let CI deploy that commit. Workers Builds exposes `WORKERS_CI_COMMIT_SHA`, which the build uses for `commit`.
+- **Secrets** (runtime) stay in Cloudflare; **build variables** are the ones above, pushed by `sync-build-vars`. Nobody needs the `.env.*` files just to deploy.
+- **Migrations**: the step above needs `CLI_API_KEY` and `CLI_API_URL_<ENV>` in the build, which `sync-build-vars` provides. The CI disk is ephemeral, so `--safe` records only the Time Travel bookmark there (it needs a token with D1 access; without one it warns and continues).
+- Concurrent builds can race on migrations; keep one production branch and let builds finish.
