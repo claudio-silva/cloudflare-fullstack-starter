@@ -48,11 +48,13 @@ npm run build:production  →  wrangler.json contains production D1 database ID 
 npm run build             →  wrangler.json contains base/local config (for dev or CI validation)
 ```
 
-The customizer reads the D1 database names and IDs directly from `wrangler.toml` at build time, so there is a **single source of truth** for your configuration. After `npm run init` renames your project and updates `wrangler.toml`, everything else adapts automatically — you don't need to update `vite.config.ts` manually.
+`wrangler.toml` stays the **single source of truth**: the customizer parses it at build time with a real TOML parser and copies **every key** under `[env.preview]` / `[env.production]` onto the flat config. After `npm run init` renames your project, everything adapts automatically — you never edit `vite.config.ts`.
 
-For preview and production builds, the mutating customizer also re-injects, when present in `wrangler.toml`: **`[env.*.vars]`**, **`routes`**, **`[[env.*.kv_namespaces]]`** (including `KV_RATE` when configured), **`[[env.*.r2_buckets]]`**, and **`[env.*.triggers]` / `crons`**, plus **`send_email`** (only if declared; remove it from `wrangler.toml` when you use a non-Cloudflare email adapter). If you add a new per-env top-level table under `[env.preview]` or `[env.production]`, mirror it in `vite.config.ts` or it will be missing from the flat deploy config.
+The merge is deliberately generic. **Adding a new binding to `wrangler.toml` needs no change here**: declare `[[env.production.r2_buckets]]`, `[env.production.triggers]`, `[[env.production.queues]]` or anything else and it reaches the deploy on its own. Earlier revisions hand-parsed one key at a time, so any binding nobody had thought of was dropped from the deploy without a word — that is exactly how the cron-trigger gap was found.
 
-**Durable Objects** need no mirroring: declare `[[durable_objects.bindings]]` and `[[migrations]]` only at the **top level** of `wrangler.toml`. The generated flat `wrangler.json` is built from the top level and the customizer leaves those fields untouched, so they apply to every environment (verified with `wrangler deploy --dry-run`). Do **not** duplicate them under `[env.*]`.
+`name` is the one computed key: `[env.<name>].name` when you set it, otherwise `<top-level name>-<env>`.
+
+**Non-inheritable keys.** `wrangler` does not inherit bindings (`vars`, `d1_databases`, `kv_namespaces`, `r2_buckets`, `durable_objects`, `send_email`, …) from the top level into `[env.*]`. If one is defined only at the top level, the build prints a `[wrangler-env]` warning — that is the case where a deploy would quietly point production at `database_id = "local"`.
 
 **Important implementation detail:** the plugin's `config` option accepts either a partial config object or a mutating function `(cfg) => void`. The object/merge form *appends* to arrays like `d1_databases`, resulting in duplicate entries. The mutating function form *replaces* values in-place and is what this project uses to ensure correctness.
 
@@ -155,13 +157,16 @@ You never need to use `wrangler secret put` manually, manage Cloudflare dashboar
 
 ## Durable Objects
 
-`src/worker/durable-objects/ExampleCounter.ts` and `src/worker/routes/example-counter.ts` are a working example. Three pieces must line up:
+The starter ships **no** Durable Object. It used to carry an `ExampleCounter` demo class, which was removed in 3.3.0: a decorative binding every project had to understand and delete is a worse default than none. Add one when your app actually needs coordination or per-entity state.
 
-1. **Binding** in `wrangler.toml` (top level): `[[durable_objects.bindings]]` with `name` and `class_name`.
-2. **Migration** in `wrangler.toml` (top level): `[[migrations]]` with a unique `tag` and `new_sqlite_classes = ["YourClass"]`. Add a new tag (never edit an old one) for renames or deletes (`renamed_classes`, `deleted_classes`).
+Four pieces must line up:
+
+1. **Binding**: `[[durable_objects.bindings]]` with `name` and `class_name`. Put it under each `[env.*]` you deploy to (bindings are not inherited from the top level).
+2. **Migration**: `[[migrations]]` with a unique `tag` and `new_sqlite_classes = ["YourClass"]`. Add a new tag for renames or deletes (`renamed_classes`, `deleted_classes`) — never edit a tag that has already been deployed.
 3. **Export** the class from the Worker entry (`src/worker/index.ts`).
+4. **Type**: add the binding to `AppEnv` in `src/worker/types/env.ts`, then run `npm run cf-typegen`.
 
-Add the binding type to `AppEnv` in `src/worker/types/env.ts`, then run `npm run cf-typegen`. Tests run Durable Objects locally in the Vitest pool (see `test/worker.test.ts`).
+SQLite-backed Durable Objects are available on the Workers Free plan. Tests run them locally in the Vitest pool.
 
 ---
 

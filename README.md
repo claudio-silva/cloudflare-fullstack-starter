@@ -115,7 +115,7 @@ cd my-app
 
 ### 2. Install dependencies
 
-Requires **Node.js 26** (`.nvmrc`; with nvm run `nvm install && nvm use`).
+Requires **Node.js 24.22.1 or later** (`.nvmrc`; with nvm run `nvm install && nvm use`). 24.22.1 is the current LTS and the first release on that line carrying the October 2026 security fixes.
 
 ```bash
 npm install

@@ -54,9 +54,8 @@ src/
 │   └── lib/
 │       └── auth/client.ts  # Better Auth React client
 └── worker/                 # Hono backend
-    ├── index.ts            # Mounts routes with app.route(); exports Durable Objects
+    ├── index.ts            # Mounts routes with app.route(); exports Durable Objects (none by default)
     ├── routes/             # One file per feature (cli.ts, profile.ts, ...)
-    ├── durable-objects/    # Durable Object classes (example included)
     ├── db/                 # createDb(), databaseKind, portable migrations (baseline + incremental), seeds
     ├── middleware/auth.ts  # Better Auth config
     ├── types/database.ts   # Kysely types (AuthDatabase + your tables)
@@ -255,7 +254,7 @@ To add or replace a provider, follow `docs/EMAIL.md`.
 
 `package.json` has a `starter` field (`starter.version`) recording which starter release the project is based on. Keep it, and update it only as part of an upgrade (see `UPGRADING.md`).
 
-Projects built on this starter should edit few starter files so later upstream pulls stay cheap. Put project-specific values in `src/config.ts`, `wrangler.toml` vars/bindings and the `env/*.template` files, and add features as new files (routes, pages) rather than rewriting starter ones. Durable Objects need a top-level binding plus a migration tag; see `docs/VITE_CLOUDFLARE_BRIDGE.md`. Scripts are package-manager agnostic (npm default, pnpm works).
+Projects built on this starter should edit few starter files so later upstream pulls stay cheap. Put project-specific values in `src/config.ts`, `wrangler.toml` vars/bindings and the `env/*.template` files, and add features as new files (routes, pages) rather than rewriting starter ones. `vite.config.ts` copies every key under `[env.*]` from `wrangler.toml` into the deploy config generically, so new bindings need no change there; see `docs/VITE_CLOUDFLARE_BRIDGE.md`. Scripts are package-manager agnostic (npm default, pnpm works).
 
 ## UI Components
 

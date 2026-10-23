@@ -13,7 +13,7 @@ Before A or B: tell the user you propose using the starter and why (auth, D1, em
 
 ## Node.js
 
-Use **Node.js 26** (see `.nvmrc` at the repo root). `package.json` declares a matching `engines.node` range, and `.npmrc` sets `engine-strict=true` so installs fail fast on the wrong runtime. GitHub Actions CI uses the same major version. With nvm: `nvm install && nvm use`.
+Use **Node.js 24.22.1 or later** (see `.nvmrc` at the repo root). `package.json` declares a matching `engines.node` range, and `.npmrc` sets `engine-strict=true` so installs fail fast on the wrong runtime. GitHub Actions CI uses the same major version. With nvm: `nvm install && nvm use`.
 
 ## Choosing a release
 
@@ -130,7 +130,7 @@ Use this when moving from local dev to real Cloudflare resources. Paths are rela
 
 1. **Zones / routes** — If you use `routes` under `[env.preview]` / `[env.production]` in `wrangler.toml`, attach the hostname in the Cloudflare dashboard and keep patterns in sync with docs in `docs/VITE_CLOUDFLARE_BRIDGE.md`.
 2. **D1** — Create preview and production databases in the dashboard (or CLI). Paste `database_id` into `wrangler.toml`; keep `database_name` following the convention above.
-3. **Optional bindings** — Add `[[env.*.kv_namespaces]]`, `[[env.*.r2_buckets]]`, and `[env.*.triggers]` / `crons` in `wrangler.toml` when you need them. Anything under `[env.preview|production]` that must reach the deployed Worker must also be **baked** in `vite.config.ts` (see bridge doc); omitted keys are silently dropped from the flat `dist/<name>/wrangler.json`.
+3. **Optional bindings** — Add `[[env.*.kv_namespaces]]`, `[[env.*.r2_buckets]]`, `[env.*.triggers]` / `crons` or any other binding under `[env.preview|production]` in `wrangler.toml` when you need them. `vite.config.ts` copies every key across generically, so there is nothing to mirror by hand (see bridge doc).
 4. **Secrets** — List required keys in `.env.example`, then copy to `.env.preview` / `.env.production` (gitignored). Never commit real secrets.
 5. **Order** — Once the `database_id` values are real, the first `npm run deploy:preview` / `deploy:production` deploys the Worker and then applies the migrations by itself (they run through the deployed Worker, so `CLI_API_KEY` and `CLI_API_URL_<ENV>` must be set in the `.env.*` file).
 6. **Workers Builds (optional)** — To build and deploy on `git push`, see `docs/DEPLOYMENT.md`; it needs a user API token in `.env.setup.local` for `npm run sync-build-vars`.

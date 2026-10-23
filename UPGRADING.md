@@ -48,6 +48,27 @@ npm run test:e2e       # from 2.0.0 on, optional
 
 ---
 
+## 3.3.0 — 2026-10-24
+
+Node 24 LTS, a generic `wrangler.toml` environment merge, and removal of decorative scaffolding. **No schema change.**
+
+### Breaking changes
+
+1. **Node.js 24.22.1 or later** (`.nvmrc` `24.22.1`, `engines.node: ">=24.22.1"`, `@types/node` `^24`). 24.22.1 is the current LTS and the first release on that line with the October 2026 security fixes (patched lines: 22.23.4 / 24.22.1 / 26.12.1). The previous requirement was Node 26, which is not an LTS line.
+2. **`vite.config.ts` merges `[env.*]` generically.** The hand-written per-key parsers are gone, replaced by a real TOML parse (`smol-toml`, new devDependency) that copies **every** key under `[env.preview]` / `[env.production]` onto the generated flat config. Adding a binding to `wrangler.toml` no longer requires mirroring it in `vite.config.ts`. A build-time `[wrangler-env]` warning fires when a non-inheritable key is set only at the top level.
+3. **The `ExampleCounter` Durable Object is removed**, with its route (`/api/counter`), binding `EXAMPLE_COUNTER`, the `[[durable_objects.bindings]]` and `[[migrations]]` blocks in `wrangler.toml`, and its test. The starter now ships no Durable Object.
+4. **The `KV_RATE` scaffolding is removed.** It was parsed by `vite.config.ts` but never declared in `wrangler.toml` nor used anywhere in `src/`.
+
+### Required actions
+
+- Switch to Node 24.22.1 (`nvm install 24.22.1`), update `.nvmrc`, `engines`, and any Dockerfile/CI Node version. Reinstall dependencies.
+- Take the starter-owned change in `docs/`; merge `vite.config.ts`, `package.json` (`engines`, `@types/node`, new `smol-toml` devDependency), `AGENTS.md`, `README.md`.
+- **If you use Durable Objects, keep yours.** Only remove `ExampleCounter` if you never renamed it. Removing a deployed DO class needs a new `[[migrations]]` tag with `deleted_classes`; dropping the block outright is only safe before the first deploy.
+- **If you declare DO bindings at the top level only**, move them under each `[env.*]`: the new warning will tell you. They worked before by inheritance from the flat config, which is not how `wrangler` itself behaves.
+- Verify: `npx tsc -b`, `npm run lint`, `npm test`, `npm run build:production`, then check `dist/<name>/wrangler.json` has your production `name`, `vars` and bindings.
+
+---
+
 ## 3.2.0 — 2026-10-23
 
 Versioned releases, build-variable sync for Cloudflare Workers Builds, and **database migrations on every deploy**. **No schema change.** The deploy commands behave differently, so read the breaking changes.

@@ -22,17 +22,6 @@ name = "EMAIL"
 allowed_sender_addresses = ["noreply@example.com"]
 remote = true
 
-# Durable Objects: declare ONLY at top level. The Vite plugin builds a flat
-# wrangler.json from the top level, so these apply to every environment.
-# See docs/VITE_CLOUDFLARE_BRIDGE.md.
-[[durable_objects.bindings]]
-name = "EXAMPLE_COUNTER"
-class_name = "ExampleCounter"
-
-[[migrations]]
-tag = "v1"
-new_sqlite_classes = ["ExampleCounter"]
-
 [[d1_databases]]
 binding = "DB"
 database_name = "cloudflare-fullstack-starter"

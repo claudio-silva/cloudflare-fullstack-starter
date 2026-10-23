@@ -71,11 +71,4 @@ describe("worker API", () => {
 		const restored = (await (await call("/api/cli/backup/rows?table=users", { headers })).json()) as { rows: unknown[] };
 		expect(restored.rows).toEqual(dump.users);
 	});
-
-	it("keeps counter state in the Durable Object", async () => {
-		const first = await call("/api/counter/demo/increment", { method: "POST" });
-		expect(await first.json()).toEqual({ count: 1 });
-		const second = await call("/api/counter/demo/increment", { method: "POST" });
-		expect(await second.json()).toEqual({ count: 2 });
-	});
 });

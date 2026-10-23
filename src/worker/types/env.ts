@@ -9,8 +9,6 @@ export type AppEnv = {
 	AUTH_EMAILS_LOCAL_ENABLED?: string;
 	// Cloudflare Email Service binding (`[[send_email]]` in wrangler.toml).
 	EMAIL?: SendEmail;
-	// Durable Object example (see src/worker/durable-objects).
-	EXAMPLE_COUNTER: DurableObjectNamespace<import("../durable-objects/ExampleCounter").ExampleCounter>;
 	// Better Auth signing/encryption secret. Required in preview/production.
 	// Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 	BETTER_AUTH_SECRET?: string;

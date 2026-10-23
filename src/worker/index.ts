@@ -3,7 +3,6 @@ import type { AppBindings } from "./types/context";
 import { handleAuthRequest } from "./middleware/auth";
 import { cli } from "./routes/cli";
 import { profile } from "./routes/profile";
-import { exampleCounter } from "./routes/example-counter";
 import { config } from "../config";
 import { APP_COMMIT, APP_VERSION } from "../shared/app-version";
 import { createDb, databaseKind } from "./db";
@@ -39,9 +38,7 @@ app.all("/api/auth/*", (c) => handleAuthRequest(c));
 
 app.route("/api/cli", cli);
 app.route("/api", profile);
-app.route("/api/counter", exampleCounter);
 
 // Durable Object classes must be exported from the Worker entry.
-export { ExampleCounter } from "./durable-objects/ExampleCounter";
 
 export default app;
