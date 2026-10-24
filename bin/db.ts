@@ -437,6 +437,50 @@ Examples:
 );
 
 program.addCommand(
+	new Command("logins")
+		.description("Recent sign-in attempts and how many distinct accounts have signed in.")
+		.addOption(
+			new Option("-e, --env <environment>", "Target environment.").choices(allowedEnvironments).default("local"),
+		)
+		.option("-n, --limit <count>", "How many attempts to list.", "25")
+		.option("--failed", "Show only failed attempts.")
+		.addHelpText(
+			"after",
+			`
+Reads the login_events table, which records successful and failed sign-ins. The sessions table
+cannot answer this: it holds only sessions that still exist, so it forgets expired logins and
+never saw the failures.
+
+IP addresses are personal data and are pruned on a schedule (AUTH_LOG_RETENTION_DAYS, default 90).
+
+Examples:
+  db logins --env production
+  db logins --env production --failed -n 100
+`,
+		)
+		.action(async (options: { env: DbEnvironment; limit: string; failed?: boolean }) => {
+			try {
+				const client = await connectToDatabase(options.env);
+				const { events, totals } = await client.loginEvents(Number(options.limit));
+				const shown = options.failed ? events.filter((e) => !e.success) : events;
+				console.log(`${totals.attempts} attempt(s) recorded, ${totals.distinctUsers} distinct account(s).`);
+				if (shown.length === 0) {
+					console.log(options.failed ? "No failed attempts." : "No attempts recorded.");
+					return;
+				}
+				console.log("");
+				for (const e of shown) {
+					const mark = e.success ? "✓" : "✗";
+					const where = [e.ip, e.country].filter(Boolean).join(" ");
+					console.log(`${mark} ${e.created_at ?? "?"}  ${e.email || "(no address)"}  ${where}`);
+				}
+			} catch (error) {
+				describeApiFailure(options.env, error);
+			}
+		}),
+);
+
+program.addCommand(
 	new Command("new-migration")
 		.description("Scaffold an incremental migration and register it.")
 		.argument("<name>", "Snake-case name, e.g. add_user_locale")

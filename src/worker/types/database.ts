@@ -62,8 +62,25 @@ export interface AuthDatabase {
 }
 
 /**
+ * Sign-in attempts. Starter-owned; see `src/worker/db/migrations/incremental/0004_login_events.ts`.
+ */
+export interface AuthLogDatabase {
+  login_events: {
+    id: string;
+    /** Null when the attempt used an address with no account. */
+    user_id: string | null;
+    email: string;
+    success: DbBoolean;
+    /** Personal data: pruned by the scheduled handler. */
+    ip: string | null;
+    user_agent: string | null;
+    country: string | null;
+    created_at: Timestamp;
+  };
+}
+
+/**
  * Full schema seen by Kysely. Add your application tables here (or in an
  * `AppDatabase` interface that this one extends), keeping auth tables as is.
  */
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export interface Database extends AuthDatabase {}
+export interface Database extends AuthDatabase, AuthLogDatabase {}

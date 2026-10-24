@@ -11,7 +11,7 @@ import type { Baseline } from "./types";
 export function createBaseline(kind: DatabaseKind): Baseline {
 	const t = columnTypes(kind);
 	return {
-		squashes: ["0001_initial", "0002_add_role", "0003_account_token_columns"],
+		squashes: ["0001_initial", "0002_add_role", "0003_account_token_columns", "0004_login_events"],
 		async up(db: Kysely<unknown>) {
 			await db.schema
 				.createTable("users")
@@ -70,7 +70,22 @@ export function createBaseline(kind: DatabaseKind): Baseline {
 				.addColumn("updatedAt", t.timestamp, (c) => c.notNull())
 				.execute();
 
+			// Sign-in attempts, successful and failed. See 0004_login_events.
+			await db.schema
+				.createTable("login_events")
+				.addColumn("id", t.id, (c) => c.primaryKey())
+				.addColumn("user_id", t.id)
+				.addColumn("email", t.short, (c) => c.notNull())
+				.addColumn("success", t.boolean, (c) => c.notNull())
+				.addColumn("ip", t.short)
+				.addColumn("user_agent", t.text)
+				.addColumn("country", "varchar(2)")
+				.addColumn("created_at", t.timestamp, (c) => c.notNull())
+				.execute();
+
 			await db.schema.createIndex("idx_sessions_user").on("sessions").column("userId").execute();
+			await db.schema.createIndex("idx_login_events_created_at").on("login_events").column("created_at").execute();
+			await db.schema.createIndex("idx_login_events_email").on("login_events").column("email").execute();
 			await db.schema.createIndex("idx_verifications_identifier").on("verifications").column("identifier").execute();
 			await db.schema.createIndex("idx_users_role").on("users").column("role").execute();
 		},

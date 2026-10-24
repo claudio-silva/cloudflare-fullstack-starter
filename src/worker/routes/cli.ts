@@ -435,6 +435,36 @@ cli.post("/deploy-report", async (c) => {
 	}
 });
 
+/**
+ * Recent sign-in attempts, and a rolling count. Answers "how many people are
+ * actually using this" without a dashboard, and shows a password being guessed
+ * at before anyone notices another way.
+ */
+cli.get("/login-events", async (c) => {
+	const db = createDb(c.env);
+	const limit = Math.min(Number(c.req.query("limit") ?? 50), 500);
+	const rows = await db
+		.selectFrom("login_events")
+		.selectAll()
+		.orderBy("created_at", "desc")
+		.limit(limit)
+		.execute();
+	const totals = await db
+		.selectFrom("login_events")
+		.select((eb) => [
+			eb.fn.countAll().as("attempts"),
+			eb.fn.count("user_id").distinct().as("distinct_users"),
+		])
+		.executeTakeFirst();
+	return c.json({
+		events: rows.map((r) => ({ ...r, success: Boolean(r.success), created_at: toIso(r.created_at) })),
+		totals: {
+			attempts: Number(totals?.attempts ?? 0),
+			distinctUsers: Number(totals?.distinct_users ?? 0),
+		},
+	});
+});
+
 /** Portable schema description, compared against the committed snapshot. */
 cli.get("/schema", async (c) => {
 	return c.json({ schema: await schemaSnapshot(createDb(c.env)) });

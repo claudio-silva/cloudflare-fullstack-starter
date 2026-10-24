@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
-import app from "../src/worker/index";
+import { app } from "../src/worker/index";
 
 const call = (path: string, init?: RequestInit) => app.request(path, init, env);
 
@@ -46,7 +46,7 @@ describe("worker API", () => {
 		type Info = { kind: string; migrations: string[]; tables: Array<{ name: string; restoreChunkRows: number }> };
 		const info = (await (await call("/api/cli/backup/info", { headers })).json()) as Info;
 		expect(info.kind).toBe("sqlite");
-		expect(info.migrations).toEqual(["0001_initial", "0002_add_role", "0003_account_token_columns"]);
+		expect(info.migrations).toEqual(["0001_initial", "0002_add_role", "0003_account_token_columns", "0004_login_events"]);
 		const names = info.tables.map((t) => t.name);
 		expect(names.indexOf("users")).toBeLessThan(names.indexOf("accounts"));
 		expect(names).not.toContain("kysely_migration");
@@ -70,5 +70,25 @@ describe("worker API", () => {
 		}
 		const restored = (await (await call("/api/cli/backup/rows?table=users", { headers })).json()) as { rows: unknown[] };
 		expect(restored.rows).toEqual(dump.users);
+	});
+});
+
+describe("sign-in log", () => {
+	it("records a failed sign-in with its outcome, and keeps serving the response", async () => {
+		const email = `nobody-${Date.now()}@example.com`;
+		const res = await call("/api/auth/sign-in/email", {
+			method: "POST",
+			headers: { "Content-Type": "application/json", "CF-Connecting-IP": "203.0.113.7" },
+			body: JSON.stringify({ email, password: "wrong-password" }),
+		});
+		expect(res.status).toBeGreaterThanOrEqual(400);
+
+		const rows = (await (
+			await call(`/api/cli/login-events?limit=50`, { headers: { "x-api-key": env.CLI_API_KEY as string } })
+		).json()) as { events: Array<{ email: string; success: boolean | number; ip: string | null }> };
+		const ours = rows.events.find((e) => e.email === email);
+		expect(ours).toBeDefined();
+		expect(Boolean(ours?.success)).toBe(false);
+		expect(ours?.ip).toBe("203.0.113.7");
 	});
 });

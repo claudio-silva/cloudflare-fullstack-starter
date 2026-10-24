@@ -6,6 +6,8 @@ import { profile } from "./routes/profile";
 import { config } from "../config";
 import { APP_COMMIT, APP_VERSION } from "../shared/app-version";
 import { createDb, databaseKind } from "./db";
+import { isSignInPath, recordLoginAttempt } from "./lib/login-log";
+import { scheduled } from "./scheduled";
 import { migrateDatabase } from "./db/migrations";
 
 // Growth pattern: add one file per feature under ./routes and mount it here
@@ -33,12 +35,38 @@ app.get("/api/", (c) => {
 	return c.json({ name: config.appName, environment, status: "healthy", version: APP_VERSION, commit: APP_COMMIT });
 });
 
-// Auth routes
-app.all("/api/auth/*", (c) => handleAuthRequest(c));
+// Auth routes. Sign-in attempts are recorded after the fact, through
+// waitUntil: an audit record is never a reason to make a user wait, nor to
+// turn a successful sign-in into an error because an insert failed.
+app.all("/api/auth/*", async (c) => {
+	const response = await handleAuthRequest(c);
+	if (isSignInPath(c.req.path) && c.req.method === "POST") {
+		const write = recordLoginAttempt(c, response.status < 400).catch((error: unknown) =>
+			console.error("[auth] could not record the sign-in attempt", error),
+		);
+		// `executionCtx` is absent outside a real Worker invocation (tests,
+		// some runtimes). Dropping the record there would make the log quietly
+		// incomplete, so fall back to awaiting it.
+		try {
+			c.executionCtx.waitUntil(write);
+		} catch {
+			await write;
+		}
+	}
+	return response;
+});
 
 app.route("/api/cli", cli);
 app.route("/api", profile);
 
 // Durable Object classes must be exported from the Worker entry.
 
-export default app;
+/** The Hono app, for tests and anything that wants `app.request()`. */
+export { app };
+
+// The Worker entry is an object now, not the Hono app itself, because it also
+// has to carry the cron handler.
+export default {
+	fetch: app.fetch,
+	scheduled,
+};

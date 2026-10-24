@@ -66,7 +66,9 @@ Node 24 LTS, a generic `wrangler.toml` environment merge, and removal of decorat
 10. **Production deploys require a tag.** In `workers-builds` / `external-ci` mode a push to the deployment branch with no `vX.Y.Z` tag deploys nothing.
 11. **New `migration_journal` table**, created automatically as bookkeeping (not a migration), plus `npm run db -- journal`. New CLI endpoints `/api/cli/migrations/pending`, `/api/cli/migrations/journal`, `/api/cli/schema`, `/api/cli/deploy-report`.
 12. **`config.email.deployReportsTo`** in `src/config.ts`: where a failed deploy reports itself. Empty disables it.
-13. **Fixed:** `getApiBaseUrl` now loads `.env.<environment>` itself. Callers that had not gone through `connectToDatabase` first silently used the placeholder URL from `src/config.ts`.
+13. **New `login_events` table and a cron that prunes it.** Migration `0004_login_events` (additive). `POST /api/auth/sign-in/*` now records every attempt, successful or failed, with IP, user agent and country. New `npm run db -- logins`, new CLI endpoint `/api/cli/login-events`, new `[env.*.triggers] crons` in `wrangler.toml` and a `scheduled` handler in `src/worker/scheduled.ts`. Retention is `AUTH_LOG_RETENTION_DAYS` (default 90) — IPs are personal data.
+14. **The Worker entry is now an object, not the Hono app.** `export default { fetch, scheduled }`; the app is also exported as the named `app` for tests. Anything doing `import app from "./worker"` and calling `app.request()` must switch to `import { app }`.
+15. **Fixed:** `getApiBaseUrl` now loads `.env.<environment>` itself. Callers that had not gone through `connectToDatabase` first silently used the placeholder URL from `src/config.ts`.
 
 ### Required actions
 
@@ -78,6 +80,8 @@ Node 24 LTS, a generic `wrangler.toml` environment merge, and removal of decorat
 - Take the starter-owned changes in `bin/` (new: `deploy-pipeline.ts`, `deploy-production.ts`, `maintenance.ts`, `lib/deploy-config.ts`; deleted: `deploy-production`), `src/worker/db/migrations/`, `src/worker/db/schema-snapshot.ts`, `src/shared/migration-types.ts`, `src/cli/utils/db.ts`; merge `package.json` scripts, `src/config.ts`, `src/worker/routes/cli.ts`, `tsconfig.cli.json`.
 - Set `deployConfig.mode`. It defaults to `manual`, which behaves like 3.2.0 except for the migration ordering.
 - Read the expand/contract section of `docs/DEPLOYMENT.md` before writing the next migration that drops anything.
+- If you already have a `scheduled` handler or cron triggers, merge rather than replace them; if you do not want the sign-in log, drop the migration, the handler and the `[env.*.triggers]` blocks together.
+- Mention the sign-in log in your privacy notice: it stores IP addresses.
 - Verify: `npx tsc -b`, `npm run lint`, `npm test`, `npm run build:production`, then check `dist/<name>/wrangler.json` has your production `name`, `vars` and bindings. `npm run maintenance -- status --env production` should report the configured mechanism.
 
 ---

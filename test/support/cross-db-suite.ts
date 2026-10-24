@@ -22,7 +22,7 @@ export function defineCrossDbSuite(label: string, kind: DatabaseKind, fresh: () 
 			expect((await migrateDatabase(a, { kind })).mode).toBe("baseline");
 			expect((await migrateDatabase(b, { kind, forceIncremental: true })).mode).toBe("incremental");
 			expect(await schemaSnapshot(a)).toEqual(await schemaSnapshot(b));
-			expect((await schemaSnapshot(a)).map((t) => t.table)).toEqual(["accounts", "sessions", "users", "verifications"]);
+			expect((await schemaSnapshot(a)).map((t) => t.table)).toEqual(["accounts", "login_events", "sessions", "users", "verifications"]);
 		});
 
 		it("is idempotent and records the squashed migrations", async () => {
@@ -30,7 +30,7 @@ export function defineCrossDbSuite(label: string, kind: DatabaseKind, fresh: () 
 			await migrateDatabase(db, { kind });
 			expect((await migrateDatabase(db, { kind })).applied).toEqual([]);
 			const rows = await db.selectFrom("kysely_migration").select("name").orderBy("name").execute();
-			expect(rows.map((r: { name: string }) => r.name)).toEqual(["0001_initial", "0002_add_role", "0003_account_token_columns"]);
+			expect(rows.map((r: { name: string }) => r.name)).toEqual(["0001_initial", "0002_add_role", "0003_account_token_columns", "0004_login_events"]);
 		});
 
 		it("supports the portable query subset the app uses", async () => {

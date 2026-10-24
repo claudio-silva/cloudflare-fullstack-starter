@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { sql, type Kysely, type ColumnDataType, type Expression } from "kysely";
+import { sql, type Kysely, type ColumnDataType, type ColumnDefinitionBuilder, type Expression } from "kysely";
 import type { DatabaseKind } from "../index";
 
 /**
@@ -87,7 +87,7 @@ export async function ensureColumn(
 	table: string,
 	column: string,
 	type: ColumnType,
-	build?: (col: any) => any,
+	build?: (col: ColumnDefinitionBuilder) => ColumnDefinitionBuilder,
 ): Promise<boolean> {
 	if (await columnExists(db, kind, table, column)) return false;
 	await db.schema
@@ -113,12 +113,15 @@ export async function ensureIndex(
 	return true;
 }
 
+/** The builder `db.schema.createTable(name)` hands back, so callbacks stay typed. */
+type CreateTable = ReturnType<Kysely<any>["schema"]["createTable"]>;
+
 /** Run `build` to create the table unless it already exists. */
 export async function ensureTable(
 	db: Kysely<any>,
 	kind: DatabaseKind,
 	table: string,
-	build: (b: any) => any,
+	build: (b: CreateTable) => CreateTable,
 ): Promise<boolean> {
 	if (await tableExists(db, kind, table)) return false;
 	await build(db.schema.createTable(table)).execute();

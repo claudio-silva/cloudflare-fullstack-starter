@@ -55,6 +55,7 @@
 		"db:backups:clean:preview": "tsx bin/db.ts backups clean --env preview",
 		"db:backups:clean:production": "tsx bin/db.ts backups clean --env production",
 		"db:migrate": "tsx bin/db.ts migrate --env local",
+		"db:logins": "tsx bin/db.ts logins --env local",
 		"db:migrate:preview": "tsx bin/db.ts migrate --env preview",
 		"db:migrate:production": "tsx bin/db.ts migrate --env production",
 		"db:migrate:safe": "tsx bin/db.ts migrate --env local --safe",

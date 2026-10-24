@@ -64,6 +64,7 @@ export type CliDatabaseClient = {
 	pendingMigrations: () => Promise<PendingMigration[]>;
 	migrationJournal: (limit?: number) => Promise<JournalEntry[]>;
 	schema: () => Promise<SchemaSnapshot>;
+	loginEvents: (limit?: number) => Promise<LoginEventsResponse>;
 	listSeeds: () => Promise<string[]>;
 	runSeed: (name: string) => Promise<BasicResponse>;
 	backupInfo: () => Promise<BackupInfo>;
@@ -90,6 +91,15 @@ export type MigrationStatus = {
 	safeSince: string | null;
 };
 export type PendingMigration = { name: string; compatibility: MigrationCompatibility; safeSince?: string };
+export type LoginEvent = {
+	email: string;
+	success: boolean;
+	ip: string | null;
+	country: string | null;
+	user_agent: string | null;
+	created_at: string | null;
+};
+export type LoginEventsResponse = { events: LoginEvent[]; totals: { attempts: number; distinctUsers: number } };
 
 function loadEnvFile(environment: Environment) {
 	const fileName = `.env.${environment}`;
@@ -229,6 +239,8 @@ export async function connectToDatabase(environment: Environment): Promise<CliDa
 			(await makeApiRequest<{ entries: JournalEntry[] }>("GET", `/api/cli/migrations/journal?limit=${limit}`, undefined, environment)).entries,
 		schema: async () =>
 			(await makeApiRequest<{ schema: SchemaSnapshot }>("GET", "/api/cli/schema", undefined, environment)).schema,
+		loginEvents: (limit = 50) =>
+			makeApiRequest<LoginEventsResponse>("GET", `/api/cli/login-events?limit=${limit}`, undefined, environment),
 		listSeeds: async () => (await makeApiRequest<{ seeds: string[] }>("GET", "/api/cli/seeds", undefined, environment)).seeds,
 		runSeed: (name) => makeApiRequest<BasicResponse>("POST", "/api/cli/seed", { name }, environment),
 		backupInfo: () => makeApiRequest<BackupInfo>("GET", "/api/cli/backup/info", undefined, environment),

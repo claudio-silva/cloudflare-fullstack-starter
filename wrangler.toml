@@ -31,6 +31,11 @@ database_id = "local"
 [env.preview.vars]
 ENVIRONMENT = "preview"
 
+# Prunes login_events (see src/worker/scheduled.ts). Remove the block if you
+# drop the scheduled handler; a trigger with no handler just logs an error.
+[env.preview.triggers]
+crons = ["30 3 * * *"]
+
 [[env.preview.d1_databases]]
 binding = "DB"
 database_name = "cloudflare-fullstack-starter-preview"
@@ -43,6 +48,9 @@ allowed_sender_addresses = ["noreply@example.com"]
 [env.production]
 [env.production.vars]
 ENVIRONMENT = "production"
+
+[env.production.triggers]
+crons = ["30 3 * * *"]
 
 [[env.production.d1_databases]]
 binding = "DB"

@@ -51,7 +51,7 @@ export function defineCliBackupSuite(label: string, kind: DatabaseKind, fresh: (
 
 			const { header, counts } = await readBackup(file);
 			expect(counts).toEqual({ users: 1, z_parent: 1200 });
-			expect(header.migrations).toEqual(["0001_initial", "0002_add_role", "0003_account_token_columns"]);
+			expect(header.migrations).toEqual(["0001_initial", "0002_add_role", "0003_account_token_columns", "0004_login_events"]);
 
 			// Damage the live data, then restore (1200 rows are paged: more than one page, more than one restore chunk).
 			await db.deleteFrom("a_child").execute();

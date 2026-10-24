@@ -3,6 +3,7 @@ import { initial } from "./incremental/0001_initial";
 import { addRole } from "./incremental/0002_add_role";
 import { accountTokenColumns } from "./incremental/0003_account_token_columns";
 import { createBaseline } from "./baseline";
+import { loginEvents } from "./incremental/0004_login_events";
 import type { MigrationDef } from "./types";
 
 /**
@@ -15,6 +16,7 @@ export function createMigrations(kind: DatabaseKind): Record<string, MigrationDe
 		"0001_initial": initial(kind),
 		"0002_add_role": addRole(kind),
 		"0003_account_token_columns": accountTokenColumns(kind),
+		"0004_login_events": loginEvents(kind),
 	};
 }
 

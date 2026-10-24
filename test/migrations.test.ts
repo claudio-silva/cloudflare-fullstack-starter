@@ -33,7 +33,8 @@ describe("D1 specifics", () => {
 
 		const result = await migrateDatabase(db, { kind: "sqlite" });
 		expect(result.mode).toBe("adopted-legacy");
-		expect(result.applied).toEqual(["0003_account_token_columns"]);
+		// Everything the legacy tracker did not know about, not just the next one.
+		expect(result.applied).toEqual(["0003_account_token_columns", "0004_login_events"]);
 	});
 
 	it("refuses to guess when a legacy tracker matches no known migration", async () => {
