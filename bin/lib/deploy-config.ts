@@ -26,6 +26,7 @@ export type ResolvedDeployConfig = {
 		hostname: string;
 		redirectTo: string;
 		bypassPaths: readonly string[];
+		bypassExactPaths: readonly string[];
 	};
 };
 
@@ -78,6 +79,7 @@ export function loadDeployConfig(env: DeployEnv, rootDir = process.cwd()): Resol
 			hostname,
 			redirectTo: pick("DEPLOY_MAINTENANCE_REDIRECT_TO") || deployConfig.maintenance.redirectTo,
 			bypassPaths: deployConfig.maintenance.bypassPaths,
+			bypassExactPaths: deployConfig.maintenance.bypassExactPaths,
 		},
 	};
 }

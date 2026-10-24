@@ -77,6 +77,19 @@ export const deployConfig = {
 		 * means a maintenance window you cannot deploy inside of.
 		 */
 		bypassPaths: ["/api/cli/"],
+
+		/**
+		 * Exact paths that stay reachable, as opposed to prefixes. The health
+		 * endpoint has to be here: `deploy-production` polls it to confirm the
+		 * released version is live, and a window that redirects it makes every
+		 * deploy inside one time out. It cannot go in `bypassPaths` — "/api/"
+		 * as a prefix would expose the whole API.
+		 *
+		 * The trade-off: a monitor polling /api/ still sees "healthy" during a
+		 * window. It is reporting the Worker, not the app, and anything hitting
+		 * the app itself gets the redirect.
+		 */
+		bypassExactPaths: ["/api/"],
 	},
 
 	/**

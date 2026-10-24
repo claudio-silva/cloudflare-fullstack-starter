@@ -57,10 +57,17 @@ async function cf<T>(token: string, method: string, path: string, body?: unknown
 }
 
 /** Matches the hostname, minus the paths that must stay reachable. */
-function buildExpression(hostname: string, bypassPaths: readonly string[]): string {
+function buildExpression(
+	hostname: string,
+	bypassPaths: readonly string[],
+	bypassExactPaths: readonly string[],
+): string {
 	const clauses = [`http.host eq "${hostname}"`];
 	for (const path of bypassPaths) {
 		clauses.push(`not starts_with(http.request.uri.path, "${path}")`);
+	}
+	for (const path of bypassExactPaths) {
+		clauses.push(`http.request.uri.path ne "${path}"`);
 	}
 	return `(${clauses.join(" and ")})`;
 }
@@ -236,7 +243,7 @@ async function main(): Promise<void> {
 	}
 	const dryRun = args.includes("--dry-run");
 	const cfg = loadDeployConfig(env);
-	const { mechanism, zoneId, hostname, redirectTo, bypassPaths } = cfg.maintenance;
+	const { mechanism, zoneId, hostname, redirectTo, bypassPaths, bypassExactPaths } = cfg.maintenance;
 
 	if (mechanism === "none") {
 		console.log(`ℹ Maintenance mode is disabled for ${env} (mechanism "none"). Nothing to do.`);
@@ -272,7 +279,7 @@ async function main(): Promise<void> {
 	}
 
 	const enabled = action === "on";
-	const expression = buildExpression(hostname, bypassPaths);
+	const expression = buildExpression(hostname, bypassPaths, bypassExactPaths);
 	if (mechanism === "redirect") {
 		await applyRedirect(token, zoneId, expression, redirectTo, enabled, dryRun);
 	} else {
@@ -280,7 +287,7 @@ async function main(): Promise<void> {
 	}
 	console.log(
 		enabled
-			? `● Maintenance ON for ${hostname} (${mechanism}). Bypass: ${bypassPaths.join(", ")}`
+			? `● Maintenance ON for ${hostname} (${mechanism}). Bypass: ${[...bypassPaths, ...bypassExactPaths].join(", ")}`
 			: `○ Maintenance OFF for ${hostname} (${mechanism}).`,
 	);
 }
