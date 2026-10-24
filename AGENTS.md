@@ -188,13 +188,13 @@ npm run tail:production        # Stream logs from production
 3. `npm test` (a drift test checks baseline == incrementals on every database); local dev migrates automatically
 4. For remote envs, prefer `npm run db:migrate:preview:safe` / `npm run db:migrate:production:safe` (takes a backup first)
 
-#### Sign-in log
+### Sign-in log
 
 `login_events` records every sign-in attempt, successful or failed, with IP, user agent and country. `sessions` cannot answer "who has used this app": it holds only sessions that still exist. Read it with `npm run db -- logins --env <env>`.
 
 IPs are personal data, so the cron in `src/worker/scheduled.ts` prunes the table after `AUTH_LOG_RETENTION_DAYS` (default 90) and your privacy notice has to mention it.
 
-## Writing migrations
+### Writing migrations
 
 Scaffold with `npm run db -- new-migration <snake_case_name>`; never hand-write the file or forget to register it.
 
