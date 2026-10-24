@@ -41,9 +41,9 @@
 		"sync-build-vars": "tsx bin/sync-build-vars.ts",
 		"maintenance": "tsx bin/maintenance.ts",
 		"maintenance:status": "tsx bin/maintenance.ts status --env production",
-		"deploy:preview": "tsx bin/sync-secrets.ts preview && tsx bin/sync-build-vars.ts preview && npm run build:preview && wrangler deploy && tsx bin/db.ts migrate --env preview --safe --wait-for-deploy",
-		"deploy:production": "bin/deploy-production",
-		"release:production": "bin/deploy-production --release-only",
+		"deploy:preview": "tsx bin/deploy-pipeline.ts --env preview",
+		"deploy:production": "tsx bin/deploy-production.ts",
+		"release:production": "tsx bin/deploy-production.ts --release-only",
 		"tail:preview": "wrangler tail --env preview",
 		"tail:production": "wrangler tail --env production",
 		"cf-typegen": "wrangler types --env-file .env.example",
@@ -79,7 +79,8 @@
 		"db:seed:preview": "tsx bin/db.ts seed --env preview",
 		"db:seed:production": "tsx bin/db.ts seed --env production",
 		"init": "tsx bin/init.ts",
-		"auth": "tsx bin/auth.ts"
+		"auth": "tsx bin/auth.ts",
+		"deploy:ci": "tsx bin/deploy-pipeline.ts --skip-build"
 	},
 	"bin": {
 		"init": "./bin/init",

@@ -11,6 +11,8 @@ import { readJournal } from "../db/migrations/journal";
 import { schemaSnapshot } from "../db/schema-snapshot";
 import type { MigrationCompatibility } from "../db/migrations/types";
 import { seeds } from "../db/seeds";
+import { createEmailSender } from "../adapters/email";
+import { config } from "../../config";
 
 async function deleteSessionsForUser(db: Kysely<Database>, userId: string): Promise<void> {
 	await db.deleteFrom("sessions").where("userId", "=", userId).execute();
@@ -403,6 +405,34 @@ cli.get("/migrations/pending", async (c) => {
 cli.get("/migrations/journal", async (c) => {
 	const limit = Number(c.req.query("limit") ?? 20);
 	return c.json({ entries: await readJournal(createDb(c.env), limit) });
+});
+
+/**
+ * Report a failed deploy by email. Reachable during a maintenance window
+ * because `/api/cli/` is in `maintenance.bypassPaths`.
+ */
+cli.post("/deploy-report", async (c) => {
+	const to = config.email.deployReportsTo;
+	if (!to) return c.json({ sent: false, reason: "config.email.deployReportsTo is empty" });
+	const { environment, version, stage, error } = await c.req.json<{
+		environment?: string;
+		version?: string;
+		stage?: string;
+		error?: string;
+	}>();
+	const subject = `[${config.appName}] deploy to ${environment ?? "?"} failed at ${stage ?? "?"}`;
+	const html =
+		`<p>The deploy of <strong>${version ?? "?"}</strong> to <strong>${environment ?? "?"}</strong> ` +
+		`failed during <strong>${stage ?? "?"}</strong>.</p><pre>${(error ?? "").slice(0, 4000)}</pre>` +
+		`<p>If a maintenance window was opened it is still open, on purpose. ` +
+		`Check <code>npm run db -- journal --env ${environment ?? "production"}</code> before deciding how to recover.</p>`;
+	try {
+		await createEmailSender(c.env).sendEmail({ to, subject, html });
+		return c.json({ sent: true });
+	} catch (error) {
+		console.error("[CLI] Deploy report failed to send", error);
+		return c.json({ sent: false, reason: error instanceof Error ? error.message : "send failed" });
+	}
 });
 
 /** Portable schema description, compared against the committed snapshot. */

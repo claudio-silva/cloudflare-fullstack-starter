@@ -6,6 +6,7 @@ import { createInterface } from "node:readline";
 import { applyRestore, prepareRestore, readBackup, writeBackup } from "../src/cli/utils/backup";
 import { connectToDatabase, getApiBaseUrl, type CliDatabaseClient } from "../src/cli/utils/db";
 import { resolveBuildInfo } from "./lib/build-info";
+import type { MigrationCompatibility } from "../src/shared/migration-types";
 
 type DbEnvironment = "local" | "preview" | "production";
 
@@ -371,6 +372,13 @@ program.addCommand(
 		)
 		.option("--safe", "Take a recovery point first (Time Travel bookmark on D1, plus a full backup file outside CI).")
 		.option("--wait-for-deploy", "Remote only: wait until the Worker serves this checkout's version and commit before migrating.")
+		.addOption(
+			new Option("--only <phase>", "Apply only migrations of this kind (expand/contract split).").choices([
+				"expand",
+				"contract",
+				"breaking",
+			]),
+		)
 		.option("-a, --archive-dir <path>", "Directory used to store migration backup.")
 		.addHelpText(
 			"after",
@@ -380,32 +388,93 @@ must already be deployed with the code that contains them: deploy first, then mi
 Deploy commands run this for you. Nothing pending → no backup, no write. Local dev also
 migrates automatically on the first API request.
 
-Because the new code serves requests before the schema changes, write migrations additively
-(add columns/tables; drop or rename in a later release) so the old and new code both work.
+Every migration declares how it relates to the version running beside it, and that decides
+when it runs (see docs/DEPLOYMENT.md):
+  expand    additive, runs BEFORE the deploy   (the default)
+  contract  removes what a past release dropped, runs AFTER the deploy
+  breaking  needs a maintenance window
 
 Examples:
   db migrate --env local        (dev server must be running)
   db migrate --env preview --safe
-  db migrate --env production --safe --wait-for-deploy
+  db migrate --env production --safe --wait-for-deploy --only expand
 `,
 		)
-		.action(async (options: { env: DbEnvironment; safe?: boolean; waitForDeploy?: boolean; archiveDir?: string }) => {
+		.action(
+			async (options: {
+				env: DbEnvironment;
+				safe?: boolean;
+				waitForDeploy?: boolean;
+				only?: MigrationCompatibility;
+				archiveDir?: string;
+			}) => {
 			const env = options.env;
 			try {
 				const client = await connectToDatabase(env);
 				if (options.waitForDeploy && env !== "local") await waitForDeploy(env);
-				const pending = (await client.migrations()).filter((m) => !m.applied);
+				const all = (await client.migrations()).filter((m) => !m.applied);
+				const pending = options.only ? all.filter((m) => m.compatibility === options.only) : all;
 				if (pending.length === 0) {
-					console.log(`✓ No pending migrations for ${env}.`);
+					console.log(
+						options.only
+							? `✓ No pending ${options.only} migrations for ${env}.`
+							: `✓ No pending migrations for ${env}.`,
+					);
 					return;
 				}
-				console.log(`Pending on ${env}: ${pending.map((m) => m.name).join(", ")}`);
+				console.log(
+					`Pending on ${env}: ${pending.map((m) => `${m.name} (${m.compatibility})`).join(", ")}`,
+				);
 				if (options.safe) await takeSafetyNet(client, env, options.archiveDir);
-				const result = await client.migrate();
+				const result = await client.migrate(options.only ? [options.only] : undefined);
 				console.log(`Migration mode: ${result.mode}`);
 				console.log(result.applied.length ? `Applied: ${result.applied.join(", ")}` : "Nothing to apply.");
 			} catch (error) {
 				describeApiFailure(env, error);
+			}
+		},
+		),
+);
+
+program.addCommand(
+	new Command("journal")
+		.description("Show what each migration run did — the record a failed run leaves behind.")
+		.addOption(
+			new Option("-e, --env <environment>", "Target environment.").choices(allowedEnvironments).default("local"),
+		)
+		.option("-n, --limit <count>", "How many entries to show.", "20")
+		.addHelpText(
+			"after",
+			`
+On MySQL and SQLite a failed migration is not rolled back, so this is how you find out how far
+it got: "statements 4 of 6" means the first three applied and the fourth threw. On PostgreSQL
+rolled_back is true and nothing was applied.
+
+Examples:
+  db journal --env production
+`,
+		)
+		.action(async (options: { env: DbEnvironment; limit: string }) => {
+			try {
+				const client = await connectToDatabase(options.env);
+				const entries = await client.migrationJournal(Number(options.limit));
+				if (entries.length === 0) {
+					console.log(`No migration runs recorded for ${options.env}.`);
+					return;
+				}
+				for (const e of entries) {
+					const mark = e.status === "success" ? "✓" : "✗";
+					console.log(`${mark} ${e.finished_at}  ${e.migration_name} (${e.compatibility})`);
+					if (e.status === "failed") {
+						console.log(
+							`    statements ${e.statements_completed} of ${e.statements_attempted} completed` +
+								(e.rolled_back ? ", rolled back (nothing applied)" : ", NOT rolled back"),
+						);
+						if (e.error) console.log(`    ${e.error}`);
+					}
+				}
+			} catch (error) {
+				describeApiFailure(options.env, error);
 			}
 		}),
 );

@@ -41,6 +41,11 @@ export const config = {
 		// provider: for "cloudflare", a domain onboarded in Cloudflare and listed
 		// in wrangler.toml `allowed_sender_addresses`; for other adapters, whatever the provider requires.
 		fromAddress: "noreply@example.com",
+		// Where a failed deploy reports itself. Deliberately configured here and
+		// not taken from the request: otherwise anyone holding CLI_API_KEY could
+		// make the app send mail to an address of their choosing. Empty disables
+		// the report (CI still fails loudly on its own).
+		deployReportsTo: "",
 	},
 } as const;
 

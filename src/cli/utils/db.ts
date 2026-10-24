@@ -127,7 +127,16 @@ function loadEnvFile(environment: Environment) {
 	}
 }
 
+/**
+ * Base URL of the deployed Worker for an environment.
+ *
+ * Loads `.env.<environment>` itself rather than trusting a caller to have done
+ * it: `connectToDatabase` used to be the only thing that did, so any other
+ * caller silently fell through to the placeholder URL in `src/config.ts` and
+ * polled a host that was never going to answer.
+ */
 export function getApiBaseUrl(environment: Environment): string {
+	loadEnvFile(environment);
 	switch (environment) {
 		case "local":
 			return process.env.CLI_API_URL || "http://localhost:5173";
