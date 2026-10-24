@@ -1,6 +1,6 @@
 import { Command, Option } from "commander";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, statSync, unlinkSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { applyRestore, prepareRestore, readBackup, writeBackup } from "../src/cli/utils/backup";
@@ -434,6 +434,79 @@ Examples:
 			}
 		},
 		),
+);
+
+program.addCommand(
+	new Command("new-migration")
+		.description("Scaffold an incremental migration and register it.")
+		.argument("<name>", "Snake-case name, e.g. add_user_locale")
+		.addOption(
+			new Option("-c, --compatibility <kind>", "How it relates to the running version.")
+				.choices(["expand", "contract", "breaking"])
+				.default("expand"),
+		)
+		.option("--safe-since <version>", "For contract only: the release that stopped using what this removes.")
+		.addHelpText(
+			"after",
+			`
+The classification decides when the migration runs, so the scaffold asks for it up front rather
+than leaving it to be remembered later (see docs/DEPLOYMENT.md):
+  expand    additive, runs BEFORE the deploy   (the default, and what most migrations are)
+  contract  removes what a past release dropped, runs AFTER the deploy, needs --safe-since
+  breaking  needs a maintenance window
+
+Examples:
+  db new-migration add_user_locale
+  db new-migration drop_legacy_name --compatibility contract --safe-since 1.5.0
+`,
+		)
+		.action((name: string, options: { compatibility: MigrationCompatibility; safeSince?: string }) => {
+			if (!/^[a-z][a-z0-9_]*$/.test(name)) {
+				console.error(`Migration names are snake-case: got "${name}".`);
+				process.exit(1);
+			}
+			if (options.compatibility === "contract" && !options.safeSince) {
+				console.error(
+					"A contract migration needs --safe-since: the release that stopped using what it removes.\n" +
+						"Without it the migration can land before that release ships, which takes the app down.",
+				);
+				process.exit(1);
+			}
+			const dir = resolve(process.cwd(), "src/worker/db/migrations/incremental");
+			const existing = readdirSync(dir).filter((f) => /^\d{4}_.*\.ts$/.test(f));
+			const next = String(existing.length + 1).padStart(4, "0");
+			const fileName = `${next}_${name}.ts`;
+			const camel = name.replace(/_([a-z0-9])/g, (_, c: string) => c.toUpperCase());
+			const safeSince = options.safeSince ? `\n\t\tsafeSince: "${options.safeSince}",` : "";
+			const body = `import type { Kysely } from "kysely";
+import { columnTypes } from "../columns";
+import { ensureColumn } from "../ensure";
+import type { MigrationFactory } from "../types";
+
+export const ${camel}: MigrationFactory = (kind) => {
+\tconst t = columnTypes(kind);
+\treturn {
+\t\tcompatibility: "${options.compatibility}",${safeSince}
+\t\tasync up(db: Kysely<unknown>) {
+\t\t\t// Keep every statement idempotent: MySQL and SQLite do not roll back a
+\t\t\t// failed migration, so re-running it is how you recover.
+\t\t\tawait ensureColumn(db, kind, "users", "example", t.short);
+\t\t},
+\t};
+};
+`;
+			writeFileSync(resolve(dir, fileName), body);
+			const indexPath = resolve(process.cwd(), "src/worker/db/migrations/index.ts");
+			let index = readFileSync(indexPath, "utf-8");
+			index = index.replace(
+				/(import type \{ MigrationDef \} from "\.\/types";)/,
+				`import { ${camel} } from "./incremental/${fileName.replace(/\.ts$/, "")}";\n$1`,
+			);
+			index = index.replace(/(\n\t\};\n\}\n)/, `\n\t\t"${next}_${name}": ${camel}(kind),$1`);
+			writeFileSync(indexPath, index);
+			console.log(`Created src/worker/db/migrations/incremental/${fileName} (${options.compatibility})`);
+			console.log("Registered it in src/worker/db/migrations/index.ts. Mirror the change in baseline.ts.");
+		}),
 );
 
 program.addCommand(

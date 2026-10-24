@@ -183,10 +183,31 @@ npm run tail:production        # Stream logs from production
 3. Access D1 via `c.env.DB`
 
 ### Add Database Table
-1. Add `src/worker/db/migrations/incremental/NNNN_name.ts`, register it in `migrations/index.ts`, and mirror the change in `baseline.ts` (append the name to `squashes`)
+1. `npm run db -- new-migration <snake_case_name>` scaffolds the file and registers it in `migrations/index.ts`; mirror the change in `baseline.ts` (append the name to `squashes`)
 2. Add types to `src/worker/types/database.ts`
 3. `npm test` (a drift test checks baseline == incrementals on every database); local dev migrates automatically
 4. For remote envs, prefer `npm run db:migrate:preview:safe` / `npm run db:migrate:production:safe` (takes a backup first)
+
+### Writing migrations
+
+Scaffold with `npm run db -- new-migration <snake_case_name>`; never hand-write the file or forget to register it.
+
+Every migration declares **`compatibility`**, and that decides when the deploy runs it:
+
+| Value | Use for | Runs |
+|---|---|---|
+| `expand` (default) | new tables, nullable columns, columns with a default, indexes | before the deploy |
+| `contract` | removing what an earlier release stopped using | after the deploy; **requires `safeSince`** |
+| `breaking` | anything that cannot work with the running version | inside a maintenance window |
+
+Rules, in order of how much damage breaking them does:
+
+1. **Never drop or rename in the same release that stops using the thing.** The old code is still serving requests against the new schema. Split it: one release stops using the column, a *later* one drops it with `safeSince` set to the first.
+2. **Never add a `NOT NULL` column without a default.** The running version does not know to write it. That is `breaking`, not `expand`.
+3. **Keep every statement idempotent** — use `ensureColumn` / `ensureIndex` / `ensureTable` / `ensureNoColumn` from `src/worker/db/migrations/ensure.ts`. MySQL and SQLite do not roll back a failed migration, so re-running it is the normal recovery, and that only works if what already applied is skipped.
+4. **Never edit a migration that has been applied anywhere.** Write a new one.
+
+Full reasoning and the worked rename example: `docs/DEPLOYMENT.md`.
 
 ## Configuration
 
