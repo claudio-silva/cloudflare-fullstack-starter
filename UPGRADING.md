@@ -60,6 +60,13 @@ Node 24 LTS, a generic `wrangler.toml` environment merge, and removal of decorat
 4. **The `KV_RATE` scaffolding is removed.** It was parsed by `vite.config.ts` but never declared in `wrangler.toml` nor used anywhere in `src/`.
 5. **New `deploy.config.ts`** at the repository root (committed), holding the deploy mode, deployment branches, maintenance mechanism and failure-report address. `tsconfig.cli.json` includes it.
 6. **New `npm run maintenance`** (`bin/maintenance.ts`): zone-level maintenance mode, `redirect` (any zone plan) or `snippet` (Pro or above). Defaults to `none`, so nothing changes until you configure it.
+7. **`bin/deploy-production` is now `bin/deploy-production.ts`** (TypeScript, run through `tsx`). Delete the old executable. Same options plus `--local`.
+8. **Migrations declare `compatibility`** — `expand` (default), `contract` (requires `safeSince`) or `breaking` — and that decides when they run: expand before the deploy, contract after it, breaking inside a maintenance window. Existing migrations need no change; they default to `expand`, which is what they already were.
+9. **`npm run deploy:preview` is now `bin/deploy-pipeline.ts`**, the same sequence CI runs. New `npm run deploy:ci` for CI (adds `--skip-build`).
+10. **Production deploys require a tag.** In `workers-builds` / `external-ci` mode a push to the deployment branch with no `vX.Y.Z` tag deploys nothing.
+11. **New `migration_journal` table**, created automatically as bookkeeping (not a migration), plus `npm run db -- journal`. New CLI endpoints `/api/cli/migrations/pending`, `/api/cli/migrations/journal`, `/api/cli/schema`, `/api/cli/deploy-report`.
+12. **`config.email.deployReportsTo`** in `src/config.ts`: where a failed deploy reports itself. Empty disables it.
+13. **Fixed:** `getApiBaseUrl` now loads `.env.<environment>` itself. Callers that had not gone through `connectToDatabase` first silently used the placeholder URL from `src/config.ts`.
 
 ### Required actions
 
@@ -68,6 +75,9 @@ Node 24 LTS, a generic `wrangler.toml` environment merge, and removal of decorat
 - **If you use Durable Objects, keep yours.** Only remove `ExampleCounter` if you never renamed it. Removing a deployed DO class needs a new `[[migrations]]` tag with `deleted_classes`; dropping the block outright is only safe before the first deploy.
 - **If you declare DO bindings at the top level only**, move them under each `[env.*]`: the new warning will tell you. They worked before by inheritance from the flat config, which is not how `wrangler` itself behaves.
 - Optional, to use maintenance mode: set `maintenance.mechanism`, `zoneId` and `redirectTo` in `deploy.config.ts`, and issue an API token with **zone** rule permissions (the Workers-scoped token from `bin/init` is not enough).
+- Take the starter-owned changes in `bin/` (new: `deploy-pipeline.ts`, `deploy-production.ts`, `maintenance.ts`, `lib/deploy-config.ts`; deleted: `deploy-production`), `src/worker/db/migrations/`, `src/worker/db/schema-snapshot.ts`, `src/shared/migration-types.ts`, `src/cli/utils/db.ts`; merge `package.json` scripts, `src/config.ts`, `src/worker/routes/cli.ts`, `tsconfig.cli.json`.
+- Set `deployConfig.mode`. It defaults to `manual`, which behaves like 3.2.0 except for the migration ordering.
+- Read the expand/contract section of `docs/DEPLOYMENT.md` before writing the next migration that drops anything.
 - Verify: `npx tsc -b`, `npm run lint`, `npm test`, `npm run build:production`, then check `dist/<name>/wrangler.json` has your production `name`, `vars` and bindings. `npm run maintenance -- status --env production` should report the configured mechanism.
 
 ---
