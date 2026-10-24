@@ -10,6 +10,23 @@ import { isSignInPath, recordLoginAttempt } from "./lib/login-log";
 import { scheduled } from "./scheduled";
 import { migrateDatabase } from "./db/migrations";
 
+/**
+ * Better Auth rejects an internal promise nobody awaits on a failed password
+ * sign-in: the 401 is returned correctly, but the rejection escapes. Left
+ * alone the runtime reports it on every wrong password, which is both noise
+ * in observability and, in some runtimes, a risk to the request context.
+ *
+ * We log rather than swallow — if something else ever rejects unhandled, it
+ * is still visible in observability — and stop it from being treated as a
+ * crash. Note this guard is NOT exercised by the test suite: the Vitest
+ * Workers pool installs its own handler first, so the rejection it catches
+ * there is not the one this sees in a deployed Worker.
+ */
+addEventListener("unhandledrejection", (event) => {
+	console.error("[worker] unhandled promise rejection", event.reason);
+	event.preventDefault();
+});
+
 // Growth pattern: add one file per feature under ./routes and mount it here
 // with `app.route()`, instead of adding handlers to this file.
 const app = new Hono<AppBindings>();

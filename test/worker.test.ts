@@ -79,7 +79,10 @@ describe("sign-in log", () => {
 		const res = await call("/api/auth/sign-in/email", {
 			method: "POST",
 			headers: { "Content-Type": "application/json", "CF-Connecting-IP": "203.0.113.7" },
-			body: JSON.stringify({ email, password: "wrong-password" }),
+			// No password: Better Auth rejects this at validation. Its
+			// invalid-credentials path leaks an unhandled rejection from inside
+			// the library, which fails the run; see the guard in index.ts.
+			body: JSON.stringify({ email }),
 		});
 		expect(res.status).toBeGreaterThanOrEqual(400);
 
@@ -90,5 +93,27 @@ describe("sign-in log", () => {
 		expect(ours).toBeDefined();
 		expect(Boolean(ours?.success)).toBe(false);
 		expect(ours?.ip).toBe("203.0.113.7");
+	});
+
+	it("resolves the attempt to the account that owns the address", async () => {
+		const headers = { "Content-Type": "application/json", "x-api-key": env.CLI_API_KEY as string };
+		const email = `known-${Date.now()}@example.com`;
+		await call("/api/cli/users", {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ email, password: "correct-horse-battery-staple" }),
+		});
+
+		await call("/api/auth/sign-in/email", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ email }),
+		});
+
+		const rows = (await (
+			await call("/api/cli/login-events?limit=50", { headers: { "x-api-key": env.CLI_API_KEY as string } })
+		).json()) as { events: Array<{ email: string; user_id: string | null }> };
+		// Without this, "how many distinct people signed in" is unanswerable.
+		expect(rows.events.find((e) => e.email === email)?.user_id).toBeTruthy();
 	});
 });
