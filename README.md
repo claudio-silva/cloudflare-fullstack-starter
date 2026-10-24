@@ -409,17 +409,25 @@ The default Cloudflare Email Service adapter uses the `EMAIL` binding in `wrangl
    ```
 
 **Day-to-day:**
-- **Add or update a secret** — edit the relevant `.env.<env>` file and redeploy. The deploy script compares a hash of the file and only syncs what has changed; you never need to use `wrangler secret put` manually.
-- **Add a Cloudflare binding** (D1, KV, R2, …) — add it to `wrangler.toml`; it is picked up automatically at build time.
+- **Add or update a secret** — edit the relevant `.env.<env>` file and run `npm run sync-secrets -- <env>`. Only what changed is synced; you never need `wrangler secret put`.
+- **Add a Cloudflare binding** (D1, KV, R2, …) — add it under `[env.*]` in `wrangler.toml` and it reaches the deploy on its own. Nothing to mirror anywhere.
 
-Each deploy command (`deploy:preview`, `deploy:production`) runs these steps in sequence:
-1. Syncs secrets from `.env.<env>` to Cloudflare (skipped if nothing changed)
-2. Pushes the non-secret build variables (`VITE_*`, …) to Workers Builds, when it is set up
-3. Builds the app with the correct environment config baked in
-4. Deploys to Cloudflare — no manual `--env` flags or dashboard visits needed
-5. Runs the database migrations, if any are pending
+A deploy runs this sequence, on your machine or in CI — the same script either way:
 
-`deploy:production` also cuts a versioned release (`vX.Y.Z` git tag). Details, Workers Builds setup and how to write migrations for this order: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+```
+maintenance on   (only when a pending migration is `breaking`)
+  build
+  migrate expand     ← before the deploy: old code ignores new columns
+  wrangler deploy
+  migrate contract   ← after it: new code no longer uses them
+maintenance off
+```
+
+Almost every schema change is additive and needs no window at all. Each migration declares whether it is `expand`, `contract` or `breaking`, and that is what decides the order — a single fixed order cannot be right for both directions.
+
+`deploy:production` cuts a versioned release: it tags `vX.Y.Z` and, in a CI mode, promotes the deployment branch and waits for the Worker to report the new version. **A push to that branch with no tag deploys nothing**, so nothing ever goes online without a version attached to it.
+
+Where the build happens is one setting in `deploy.config.ts`: `manual` (your machine), `workers-builds` (Cloudflare) or `external-ci` (GitLab, Actions, anything). Full details, including maintenance mode and how to write a migration that drops a column safely: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ### How Environment Variables Work
 
@@ -445,8 +453,10 @@ npm run check        # Type check + build + deploy dry-run
 ## Deploy
 
 ```bash
-npm run deploy:production    # Versioned release (patch; --minor/--major): secrets + build + deploy + tag + migrate
-npm run deploy:preview       # Secrets + build + deploy + migrate on preview
+npm run deploy:production    # Versioned release (patch; --minor/--major); --local to build here
+npm run deploy:preview       # Build, migrate and deploy preview
+npm run maintenance -- status --env production   # on | off | status
+npm run db -- logins --env production            # who has signed in, and how many
 ```
 
 Each command handles secrets, the environment-specific build, deployment and database migrations in one step. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) (versions, migrations, Workers Builds) and [docs/VITE_CLOUDFLARE_BRIDGE.md](docs/VITE_CLOUDFLARE_BRIDGE.md) for how environment config is handled under the hood.
