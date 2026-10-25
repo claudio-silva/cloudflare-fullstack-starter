@@ -29,11 +29,22 @@ export type MaintenanceOptions = {
 };
 
 const DEFAULTS = {
-	pollScheduleMs: [2_000, 3_000, 5_000, 5_000, 10_000],
-	maxWaitMs: 10 * 60 * 1000,
+	/**
+	 * Used only when the server sends no `Retry-After`. Ours always does, so
+	 * this is the fallback for an unexpected 503: a minute, because a
+	 * maintenance window is minutes long and polling every two seconds for
+	 * minutes is pure noise against a server that is already busy.
+	 */
+	pollScheduleMs: [60_000],
+	/**
+	 * Total budget before giving up and letting the error through. Has to be
+	 * comfortably larger than `maxRetryAfterMs`, or a single honoured
+	 * `Retry-After` would consume the whole allowance and we would poll once.
+	 */
+	maxWaitMs: 30 * 60 * 1000,
 	probePath: "/api/",
-	/** Clamp for `Retry-After`, so a careless header cannot stall the UI for an hour. */
-	maxRetryAfterMs: 60_000,
+	/** Clamp for `Retry-After`: honour a long wait, but not an unbounded one. */
+	maxRetryAfterMs: 10 * 60 * 1000,
 };
 
 /**

@@ -71,7 +71,8 @@ Node 24 LTS, a generic `wrangler.toml` environment merge, and removal of decorat
 15. **New `MAINTENANCE` Worker var** (`src/worker/middleware/maintenance.ts`): takes the app out of service in place, with a 503 shaped by the `Accept` header. The deploy sets it around a `breaking` migration; `/api/` and `/api/cli/*` stay reachable.
 16. **New client interceptor** (`src/react-app/lib/maintenance.ts` + `components/MaintenanceOverlay.tsx`, installed in `main.tsx`): patches global `fetch`, holds requests that hit a maintenance 503, and replays them once the app returns. Concurrent calls share one polling loop.
 17. **The `snippet` maintenance mechanism is removed.** `maintenance.mechanism` is now `redirect` or `none`. Snippets need a Pro zone and the `MAINTENANCE` var covers the planned case better; the zone redirect remains the emergency tool.
-18. **Fixed:** `getApiBaseUrl` now loads `.env.<environment>` itself. Callers that had not gone through `connectToDatabase` first silently used the placeholder URL from `src/config.ts`.
+18. **New `docs/MECHANISMS.md`**: what the starter provides and why, so the README can stay an introduction.
+19. **Fixed:** `getApiBaseUrl` now loads `.env.<environment>` itself. Callers that had not gone through `connectToDatabase` first silently used the placeholder URL from `src/config.ts`.
 
 ### Required actions
 

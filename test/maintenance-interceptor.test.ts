@@ -145,6 +145,8 @@ describe("maintenance interceptor", () => {
 		expect(parseRetryAfterMs("5", 60_000)).toBe(5_000);
 		// Clamped: a careless header must not freeze the UI.
 		expect(parseRetryAfterMs("99999", 60_000)).toBe(60_000);
+		// The shipped clamp is ten minutes.
+		expect(parseRetryAfterMs("99999", 600_000)).toBe(600_000);
 		expect(parseRetryAfterMs(null, 60_000)).toBeNull();
 		expect(parseRetryAfterMs("not-a-date", 60_000)).toBeNull();
 		expect(parseRetryAfterMs("-1", 60_000)).toBeNull();

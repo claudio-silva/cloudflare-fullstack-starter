@@ -196,6 +196,9 @@ IPs are personal data, so the cron in `src/worker/scheduled.ts` prunes the table
 
 ### Writing migrations
 
+> The reasoning behind this and every other mechanism the starter provides is in
+> [docs/MECHANISMS.md](docs/MECHANISMS.md). Read it before changing any of them.
+
 Scaffold with `npm run db -- new-migration <snake_case_name>`; never hand-write the file or forget to register it.
 
 Every migration declares **`compatibility`**, and that decides when the deploy runs it:

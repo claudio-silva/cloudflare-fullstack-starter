@@ -427,7 +427,9 @@ Almost every schema change is additive and needs no window at all. Each migratio
 
 `deploy:production` cuts a versioned release: it tags `vX.Y.Z` and, in a CI mode, promotes the deployment branch and waits for the Worker to report the new version. **A push to that branch with no tag deploys nothing**, so nothing ever goes online without a version attached to it.
 
-Where the build happens is one setting in `deploy.config.ts`: `manual` (your machine), `workers-builds` (Cloudflare) or `external-ci` (GitLab, Actions, anything). Full details, including maintenance mode and how to write a migration that drops a column safely: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+Where the build happens is one setting in `deploy.config.ts`: `manual` (your machine), `workers-builds` (Cloudflare) or `external-ci` (GitLab, Actions, anything).
+
+**[docs/MECHANISMS.md](docs/MECHANISMS.md) is the one to read** — what this starter gives you and why each piece is the way it is: migrations that do not take the app down, maintenance mode, versioning, secrets, the sign-in log, database portability. The mechanics of deploying are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ### How Environment Variables Work
 
