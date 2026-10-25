@@ -1,19 +1,25 @@
 #!/usr/bin/env tsx
 /**
- * Take the app out of service, and put it back.
+ * Pull the app offline in an emergency, and put it back. The equivalent of
+ * `artisan down`, for when something is wrong right now.
  *
- * Both mechanisms live at the **zone** level, outside the Worker. That is the
- * whole point: an in-app flag needs the Worker healthy enough to read it and
- * render a page, which is precisely what you cannot count on during an
- * incident. It also costs nothing per request — no storage read in the hot path.
+ * A Single Redirect rule at the **zone** level, outside the Worker. That is
+ * the whole point: it still works when the Worker itself is what is broken or
+ * compromised, and it is one API call rather than a build and a deploy — about
+ * five seconds, not ninety.
  *
- *   redirect  Single Redirect rule, 302 to a page you host elsewhere.
- *             Available on every zone plan, including Free.
- *   snippet   Snippet returning a real 503 with Retry-After. Correct
- *             semantics, but Snippets require a Pro zone or above.
+ * For a *planned* window — the deploy of a `breaking` migration — do not use
+ * this. The `MAINTENANCE` var handles that case better: the URL does not
+ * change, the response is a real 503 the client can act on, and the browser
+ * can simply retry. See `src/worker/middleware/maintenance.ts`. The deploy
+ * sets it on its own; there is nothing to run by hand.
  *
- * `deployConfig.maintenance.bypassPaths` (default `/api/cli/`) stays reachable,
- * so migrations and failure reports still work while the app is down.
+ * The trade here is honest: a redirect changes the URL, so the user cannot
+ * just refresh. In an emergency that is the least of the problems.
+ *
+ * `deployConfig.maintenance.bypassPaths` (default `/api/cli/`) and
+ * `bypassExactPaths` (default `/api/`) stay reachable, so migrations, failure
+ * reports and the deploy's own version check still work.
  *
  * Credentials: CLOUDFLARE_API_TOKEN from the environment or .env.setup.local.
  * The token needs zone-level rule permissions, which the Workers-scoped token
@@ -28,7 +34,6 @@ import { loadDeployConfig, cloudflareCredentials, type DeployEnv } from "./lib/d
 const CF_API = "https://api.cloudflare.com/client/v4";
 /** Marks the rules we own, so other rules in the same ruleset are never touched. */
 const MARKER = "maintenance (managed by bin/maintenance.ts)";
-const SNIPPET_NAME = "maintenance";
 
 type CfResponse<T> = { success?: boolean; result?: T; errors?: { message: string }[] };
 
@@ -70,28 +75,6 @@ function buildExpression(
 		clauses.push(`http.request.uri.path ne "${path}"`);
 	}
 	return `(${clauses.join(" and ")})`;
-}
-
-function maintenanceHtml(hostname: string): string {
-	return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Temporarily unavailable</title>
-<style>
-  body { font-family: system-ui, sans-serif; display: grid; place-items: center;
-         min-height: 100vh; margin: 0; background: #0f172a; color: #e2e8f0; }
-  main { max-width: 32rem; padding: 2rem; text-align: center; }
-  h1 { font-size: 1.5rem; margin: 0 0 .75rem; }
-  p { margin: 0; color: #94a3b8; line-height: 1.6; }
-</style>
-</head>
-<body><main>
-  <h1>Temporarily unavailable</h1>
-  <p>${hostname} is being updated and will be back in a few minutes.</p>
-</main></body>
-</html>`;
 }
 
 type RulesetRule = { id?: string; description?: string; enabled?: boolean; [k: string]: unknown };
@@ -156,74 +139,8 @@ async function applyRedirect(
 	await cf(token, "PUT", `/zones/${zoneId}/rulesets/${ruleset.id}`, { rules });
 }
 
-/** Snippet rules, or an empty list when the zone has none yet (404). */
-async function snippetRules(token: string, zoneId: string): Promise<RulesetRule[]> {
-	try {
-		const res = await cf<{ rules?: RulesetRule[] }>(token, "GET", `/zones/${zoneId}/snippets/snippet_rules`);
-		return res.rules ?? [];
-	} catch (error) {
-		if (error instanceof CfError && error.status === 404) return [];
-		throw error;
-	}
-}
-
-async function uploadSnippet(token: string, zoneId: string, hostname: string): Promise<void> {
-	const code = `const BODY = ${JSON.stringify(maintenanceHtml(hostname))};
-export default {
-  async fetch() {
-    return new Response(BODY, {
-      status: 503,
-      headers: { "content-type": "text/html; charset=utf-8", "retry-after": "300" },
-    });
-  },
-};
-`;
-	const form = new FormData();
-	form.append("files", new Blob([code], { type: "application/javascript+module" }), "maintenance.js");
-	form.append("metadata", JSON.stringify({ main_module: "maintenance.js" }));
-	const res = await fetch(`${CF_API}/zones/${zoneId}/snippets/${SNIPPET_NAME}`, {
-		method: "PUT",
-		headers: { Authorization: `Bearer ${token}` },
-		body: form,
-	});
-	const json = (await res.json().catch(() => null)) as CfResponse<unknown> | null;
-	if (!res.ok || !json?.success) {
-		const detail = json?.errors?.map((e) => e.message).join("; ") ?? `HTTP ${res.status}`;
-		throw new Error(`PUT /zones/${zoneId}/snippets/${SNIPPET_NAME}: ${detail}`);
-	}
-}
-
-async function applySnippet(
-	token: string,
-	zoneId: string,
-	hostname: string,
-	expression: string,
-	enabled: boolean,
-	dryRun: boolean,
-): Promise<void> {
-	if (dryRun) {
-		console.log(`[dry-run] upload snippet "${SNIPPET_NAME}" and set its rule (enabled=${enabled})`);
-		return;
-	}
-	await uploadSnippet(token, zoneId, hostname);
-	const existing = await snippetRules(token, zoneId);
-	const others = existing.filter((r) => r.description !== MARKER);
-	const rules = [
-		...others.map(forWriting),
-		{ expression, enabled, snippet_name: SNIPPET_NAME, description: MARKER },
-	];
-	await cf(token, "PUT", `/zones/${zoneId}/snippets/snippet_rules`, { rules });
-}
-
-async function readStatus(
-	token: string,
-	zoneId: string,
-	mechanism: "redirect" | "snippet",
-): Promise<boolean | null> {
-	const rules =
-		mechanism === "redirect"
-			? ((await redirectEntrypoint(token, zoneId)).rules ?? [])
-			: await snippetRules(token, zoneId);
+async function readStatus(token: string, zoneId: string): Promise<boolean | null> {
+	const rules = (await redirectEntrypoint(token, zoneId)).rules ?? [];
 	const ours = rules.find((r) => r.description === MARKER);
 	return ours ? ours.enabled === true : null;
 }
@@ -257,7 +174,7 @@ async function main(): Promise<void> {
 		);
 	}
 	// `status` only reads, so it must work even before a target is configured.
-	if (action !== "status" && mechanism === "redirect" && !redirectTo) {
+	if (action !== "status" && !redirectTo) {
 		throw new Error('mechanism "redirect" needs maintenance.redirectTo — a page hosted outside this Worker.');
 	}
 
@@ -267,7 +184,7 @@ async function main(): Promise<void> {
 	}
 
 	if (action === "status") {
-		const on = await readStatus(token, zoneId, mechanism);
+		const on = await readStatus(token, zoneId);
 		console.log(
 			on === null
 				? `○ ${hostname}: no maintenance rule yet (${mechanism})`
@@ -280,11 +197,7 @@ async function main(): Promise<void> {
 
 	const enabled = action === "on";
 	const expression = buildExpression(hostname, bypassPaths, bypassExactPaths);
-	if (mechanism === "redirect") {
-		await applyRedirect(token, zoneId, expression, redirectTo, enabled, dryRun);
-	} else {
-		await applySnippet(token, zoneId, hostname, expression, enabled, dryRun);
-	}
+	await applyRedirect(token, zoneId, expression, redirectTo, enabled, dryRun);
 	console.log(
 		enabled
 			? `● Maintenance ON for ${hostname} (${mechanism}). Bypass: ${[...bypassPaths, ...bypassExactPaths].join(", ")}`

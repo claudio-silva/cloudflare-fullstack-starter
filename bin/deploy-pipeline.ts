@@ -7,19 +7,28 @@
  *
  * Order is not a style choice. It follows from expand/contract:
  *
- *   maintenance on (only if a migration is `breaking`)
- *     build
- *     migrate expand    ← before the deploy: the old code ignores new columns
- *     migrate breaking  ← inside the window
- *     wrangler deploy
- *     migrate contract  ← after the deploy: the new code no longer uses them
- *   maintenance off
+ *   migrate expand     ← before the deploy: the old code ignores new columns
+ *   wrangler deploy
+ *   migrate contract   ← after it: the new code no longer uses them
  *
  * Putting every migration after the deploy, as earlier versions did, runs the
  * new code against the old schema — the one direction that reliably breaks.
  *
- * If anything fails the maintenance window stays OPEN on purpose, so nobody
- * reaches a half-migrated database, and a report goes out by email.
+ * A `breaking` migration cannot be made to fit either order, so it gets a
+ * window instead:
+ *
+ *   wrangler deploy --var MAINTENANCE:1   ← app answers 503 in place
+ *   migrate
+ *   wrangler deploy                        ← var gone, app back
+ *
+ * The window is a Worker var rather than the zone-level redirect because the
+ * var keeps the URL, returns a real 503 with Retry-After, and lets the client
+ * replay the request (src/react-app/lib/maintenance.ts). It needs a deploy to
+ * flip, which is free here: we are deploying anyway. The zone redirect stays
+ * for emergencies, where the Worker may be the thing that is broken.
+ *
+ * If anything fails the window stays OPEN on purpose, so nobody reaches a
+ * half-migrated database, and a report goes out by email.
  *
  * Usage:
  *   tsx bin/deploy-pipeline.ts --env <preview|production> [--skip-build] [--dry-run]
@@ -27,7 +36,7 @@
 
 import { execFileSync } from "node:child_process";
 import { connectToDatabase } from "../src/cli/utils/db";
-import { loadDeployConfig, type DeployEnv } from "./lib/deploy-config";
+import { type DeployEnv } from "./lib/deploy-config";
 import { resolveBuildInfo } from "./lib/build-info";
 import type { MigrationStatus } from "../src/shared/migration-types";
 
@@ -40,15 +49,9 @@ function run(command: string, args: string[]): void {
 	execFileSync(command, args, { stdio: "inherit" });
 }
 
-function maintenance(action: "on" | "off", env: DeployEnv): void {
-	try {
-		run("npx", ["tsx", "bin/maintenance.ts", action, "--env", env]);
-	} catch (error) {
-		// Failing to CLOSE a window must not mask the deploy's own result, but
-		// failing to OPEN one means the window we promised does not exist.
-		if (action === "on") throw error;
-		console.error(`⚠ Could not close the maintenance window: ${String(error)}`);
-	}
+/** Deploy the current build, optionally with the app taken out of service. */
+function deployWorker(inMaintenance: boolean): void {
+	run("npx", inMaintenance ? ["wrangler", "deploy", "--var", "MAINTENANCE:1"] : ["wrangler", "deploy"]);
 }
 
 /** Compare `vX.Y.Z` style versions, ignoring any build metadata. */
@@ -95,7 +98,6 @@ async function main(): Promise<void> {
 	if (env !== "preview" && env !== "production") throw new Error(`Unknown environment "${env}"`);
 	const skipBuild = args.includes("--skip-build");
 	const dryRun = args.includes("--dry-run");
-	const cfg = loadDeployConfig(env);
 
 	const client = await connectToDatabase(env);
 	const pending: MigrationStatus[] = (await client.migrations()).filter((m) => !m.applied);
@@ -129,8 +131,8 @@ async function main(): Promise<void> {
 	const needsWindow = breaking.length > 0;
 	console.log(
 		needsWindow
-			? `  Maintenance window: YES (${breaking.map((m) => m.name).join(", ")} is breaking)`
-			: `  Maintenance window: no (${cfg.maintenance.mechanism === "none" ? "mechanism disabled" : "nothing breaking"})`,
+			? `  Maintenance window: YES — MAINTENANCE=1 while ${breaking.map((m) => m.name).join(", ")} runs`
+			: "  Maintenance window: no (nothing breaking)",
 	);
 	if (dryRun) {
 		console.log("(dry run — nothing changed)");
@@ -138,7 +140,6 @@ async function main(): Promise<void> {
 	}
 
 	let stage: Stage = "build";
-	if (needsWindow) maintenance("on", env);
 	try {
 		if (!skipBuild) {
 			// CI builds before this runs; locally we also push secrets and build vars.
@@ -149,16 +150,25 @@ async function main(): Promise<void> {
 			run("npm", ["run", `build:${env}`]);
 		}
 
-		stage = "migrate-expand";
-		run("npx", ["tsx", "bin/db.ts", "migrate", "--env", env, "--safe", "--only", "expand"]);
-
 		if (needsWindow) {
-			stage = "migrate-breaking";
-			run("npx", ["tsx", "bin/db.ts", "migrate", "--env", env, "--safe", "--only", "breaking"]);
-		}
+			// Take the app down first: a breaking migration suits neither order,
+			// so everything happens behind the window.
+			stage = "deploy";
+			deployWorker(true);
 
-		stage = "deploy";
-		run("npx", ["wrangler", "deploy"]);
+			stage = "migrate-breaking";
+			run("npx", ["tsx", "bin/db.ts", "migrate", "--env", env, "--safe", "--only", "expand"]);
+			run("npx", ["tsx", "bin/db.ts", "migrate", "--env", env, "--safe", "--only", "breaking"]);
+
+			stage = "deploy";
+			deployWorker(false);
+		} else {
+			stage = "migrate-expand";
+			run("npx", ["tsx", "bin/db.ts", "migrate", "--env", env, "--safe", "--only", "expand"]);
+
+			stage = "deploy";
+			deployWorker(false);
+		}
 
 		if (contract.length > 0) {
 			stage = "migrate-contract";
@@ -177,15 +187,14 @@ async function main(): Promise<void> {
 	} catch (error) {
 		console.error(`\n✗ Deploy to ${env} failed at "${stage}".`);
 		if (needsWindow) {
-			console.error("  The maintenance window is still OPEN, on purpose: nobody reaches a half-migrated");
+			console.error("  The app is still in maintenance, on purpose: nobody reaches a half-migrated");
 			console.error(`  database. Inspect with: npm run db -- journal --env ${env}`);
-			console.error(`  Reopen the app with:    npm run maintenance -- off --env ${env}`);
+			console.error("  Bring it back with:     npx wrangler deploy   (without --var MAINTENANCE:1)");
 		}
 		await reportFailure(env, stage, error);
 		process.exit(1);
 	}
 
-	if (needsWindow) maintenance("off", env);
 	console.log(`✓ ${env} deployed.`);
 }
 

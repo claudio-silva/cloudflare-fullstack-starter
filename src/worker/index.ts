@@ -7,6 +7,7 @@ import { config } from "../config";
 import { APP_COMMIT, APP_VERSION } from "../shared/app-version";
 import { createDb, databaseKind } from "./db";
 import { isSignInPath, recordLoginAttempt } from "./lib/login-log";
+import { maintenanceMiddleware } from "./middleware/maintenance";
 import { scheduled } from "./scheduled";
 import { migrateDatabase } from "./db/migrations";
 
@@ -45,6 +46,10 @@ app.use("/api/*", async (c, next) => {
 	}
 	await next();
 });
+
+// Must come before every route: while MAINTENANCE=1 the app answers 503 to
+// everything except the health endpoint and the CLI routes the migration needs.
+app.use("*", maintenanceMiddleware);
 
 // Health check
 app.get("/api/", (c) => {

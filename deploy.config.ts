@@ -25,18 +25,24 @@
 export type DeployMode = "manual" | "workers-builds" | "external-ci";
 
 /**
- * How the app is taken out of service for a `breaking` migration or an incident.
- * Both mechanisms live **outside** the Worker, so they still work when the
- * Worker itself is the problem — which is exactly when you need them.
+ * How the app is taken **out of service in an emergency** — a security problem,
+ * a bad deploy, anything where you need traffic to stop now.
+ *
+ * This lives at the zone level, outside the Worker, which is the point: it
+ * still works when the Worker itself is what is broken, and it is one API call
+ * rather than a deploy.
+ *
+ * A *planned* window is a different problem with a different answer: see the
+ * `MAINTENANCE` var in `src/worker/middleware/maintenance.ts`. That one keeps
+ * the URL, returns a real 503, and lets the client replay the request. The
+ * deploy sets it on its own for a `breaking` migration.
  *
  * - `redirect` — a Single Redirect rule. Available on **every zone plan**,
- *                including Free. Answers 302 to a page you host elsewhere.
- * - `snippet`  — a Snippet returning a real 503 with `Retry-After`. The correct
- *                semantics, but Snippets need a **Pro zone or above**.
- * - `none`     — no maintenance mechanism. Required for `*.workers.dev`, which
- *                is not part of a zone and so has neither.
+ *                including Free. 302 to a page you host elsewhere.
+ * - `none`     — disabled. Required for `*.workers.dev`, which is not part of
+ *                a zone and so has no rules.
  */
-export type MaintenanceMechanism = "redirect" | "snippet" | "none";
+export type MaintenanceMechanism = "redirect" | "none";
 
 export const deployConfig = {
 	mode: "manual" as DeployMode,

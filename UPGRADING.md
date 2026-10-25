@@ -68,7 +68,10 @@ Node 24 LTS, a generic `wrangler.toml` environment merge, and removal of decorat
 12. **`config.email.deployReportsTo`** in `src/config.ts`: where a failed deploy reports itself. Empty disables it.
 13. **New `login_events` table and a cron that prunes it.** Migration `0004_login_events` (additive). `POST /api/auth/sign-in/*` now records every attempt, successful or failed, with IP, user agent and country. New `npm run db -- logins`, new CLI endpoint `/api/cli/login-events`, new `[env.*.triggers] crons` in `wrangler.toml` and a `scheduled` handler in `src/worker/scheduled.ts`. Retention is `AUTH_LOG_RETENTION_DAYS` (default 90) — IPs are personal data.
 14. **The Worker entry is now an object, not the Hono app.** `export default { fetch, scheduled }`; the app is also exported as the named `app` for tests. Anything doing `import app from "./worker"` and calling `app.request()` must switch to `import { app }`.
-15. **Fixed:** `getApiBaseUrl` now loads `.env.<environment>` itself. Callers that had not gone through `connectToDatabase` first silently used the placeholder URL from `src/config.ts`.
+15. **New `MAINTENANCE` Worker var** (`src/worker/middleware/maintenance.ts`): takes the app out of service in place, with a 503 shaped by the `Accept` header. The deploy sets it around a `breaking` migration; `/api/` and `/api/cli/*` stay reachable.
+16. **New client interceptor** (`src/react-app/lib/maintenance.ts` + `components/MaintenanceOverlay.tsx`, installed in `main.tsx`): patches global `fetch`, holds requests that hit a maintenance 503, and replays them once the app returns. Concurrent calls share one polling loop.
+17. **The `snippet` maintenance mechanism is removed.** `maintenance.mechanism` is now `redirect` or `none`. Snippets need a Pro zone and the `MAINTENANCE` var covers the planned case better; the zone redirect remains the emergency tool.
+18. **Fixed:** `getApiBaseUrl` now loads `.env.<environment>` itself. Callers that had not gone through `connectToDatabase` first silently used the placeholder URL from `src/config.ts`.
 
 ### Required actions
 

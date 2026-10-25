@@ -72,29 +72,51 @@ Recovery is normally **forward**: leave the state as it is, correct the migratio
 
 ## Taking the app out of service
 
-```bash
-npm run maintenance -- status --env production
-npm run maintenance -- on     --env production
-npm run maintenance -- off    --env production
+Two mechanisms, for two different problems. Do not reach for the wrong one.
+
+### Planned window — the `MAINTENANCE` var
+
+A `breaking` migration needs the app to stop while it runs. The deploy does this on its own:
+
+```
+wrangler deploy --var MAINTENANCE:1   ← app answers 503 in place
+migrate
+wrangler deploy                        ← var gone, app back
 ```
 
-Deploys do this on their own for a `breaking` migration. You run it by hand for an incident.
+The Worker reads the var from memory, so this costs **nothing per request** — an earlier design kept the flag in storage and paid a read on every request for something that is off essentially all the time. The price is that flipping it needs a deploy, which is free here: a migration window wraps a deploy anyway.
 
-Both mechanisms live at the **zone** level, outside the Worker, and that is the point: an in-app flag needs the Worker healthy enough to read it and render a page, which is exactly what you cannot count on during an incident. It also costs nothing per request, since there is no storage read in the hot path.
+Responses depend on what the caller asked for, so each kind of client gets something it can act on:
 
-| `maintenance.mechanism` | Zone plan | Response |
-|---|---|---|
-| `redirect` | **any, including Free** | 302 to `maintenance.redirectTo`, a page you host outside this Worker |
-| `snippet` | **Pro or above** | a real 503 with `Retry-After`, served by a Snippet |
-| `none` | — | disabled; required for `*.workers.dev`, which is not part of a zone |
+| `Accept` | Response |
+|---|---|
+| `application/json` | `503` with `{"error":"Service unavailable","code":"maintenance"}` |
+| `text/html` | `503` with a page that reloads itself |
+| anything else | `503`, empty body |
 
-Snippets are the semantically correct answer — a 503 tells crawlers and monitoring the outage is temporary, which a 302 does not — but they are not available on Free zones. A WAF block rule cannot stand in: its custom response is limited to status codes 400–499. Note that the **Workers** plan is a different subscription from the **zone** plan; Workers Paid does not grant Snippets.
+All carry `X-Maintenance: 1` and `Retry-After: 60`. `/api/` and `/api/cli/*` answer normally throughout: the first is what `deploy:production` polls to confirm the release, the second carries the migration the window was opened for.
 
-`maintenance.bypassPaths` (default `/api/cli/`) stays reachable while the app is down, so migrations and failure reports still work inside a maintenance window. Removing it means a window you cannot deploy inside of.
+**The client handles this by itself.** `src/react-app/lib/maintenance.ts` patches global `fetch`, holds any request that comes back with `X-Maintenance`, polls until the app answers, and replays it with the same method and payload. Concurrent calls share a single polling loop rather than each hammering a server that is already down, and `<MaintenanceOverlay />` tells the user what is happening. Call sites never learn that any of it occurred.
 
-The rule is created once and then toggled, and rules you own in the same ruleset are left untouched: ours is recognised by its description. `hostname` defaults to the first route declared under `[env.<name>]` in `wrangler.toml`, so there is one source of truth.
+Patching global `fetch` rather than exporting a wrapper is deliberate, for the reason Angular uses an HTTP interceptor: libraries make their own requests. Better Auth's would otherwise slip past.
 
-The API token needs **zone**-level rule permissions (*Zone → Config: Edit* for redirects; Snippets additionally need snippet write access). This is a different token from the Workers-scoped one `bin/init` creates — with that one, every call fails with `Authentication error`.
+### Emergency — `npm run maintenance`
+
+For a security problem or a bad deploy, when traffic has to stop **now**:
+
+```bash
+npm run maintenance -- on     --env production
+npm run maintenance -- off    --env production
+npm run maintenance -- status --env production
+```
+
+A Single Redirect rule at the zone, toggled through the Cloudflare API. One call, about five seconds, and — the reason it exists — **it works when the Worker itself is what is broken or compromised**, which is exactly when an in-Worker flag cannot help.
+
+The trade is honest: a redirect changes the URL, so the user cannot simply refresh. In an emergency that is the least of the problems.
+
+`maintenance.mechanism` is `redirect` or `none`; `none` is required for `*.workers.dev`, which is not part of a zone. Cloudflare Snippets would give an in-place 503 at the zone level, but they need a **Pro zone**, and the `MAINTENANCE` var already covers the planned case better — a third mechanism for a rare event is where the complexity stops paying.
+
+The API token needs the zone permission **Dynamic URL Redirects Write**. A Workers-scoped token does not have it, and every call fails with `Authentication error`.
 
 ## Versions and releases
 

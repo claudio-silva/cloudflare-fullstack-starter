@@ -18,6 +18,9 @@ export type AppEnv = {
 	// Google OAuth credentials (optional)
 	GOOGLE_CLIENT_ID?: string;
 	GOOGLE_CLIENT_SECRET?: string;
+	// "1" takes the app out of service (src/worker/middleware/maintenance.ts).
+	// Set by the deploy for a breaking migration; absent the rest of the time.
+	MAINTENANCE?: string;
 	// Days of sign-in history kept by the cron in src/worker/scheduled.ts (default 90).
 	AUTH_LOG_RETENTION_DAYS?: string;
 	// Shared secret used by management CLI (`npm run auth …`) to authenticate
