@@ -5,6 +5,7 @@ import {
 	subscribeToMaintenance,
 	parseRetryAfterMs,
 	MAINTENANCE_PROBE_PATH,
+	replayKey,
 } from "../src/react-app/lib/maintenance";
 import { isMaintenanceBypassed } from "../src/worker/middleware/maintenance";
 
@@ -252,5 +253,73 @@ describe("maintenance interceptor", () => {
 		expect(res.status).toBe(503);
 		expect(fetchImpl).toHaveBeenCalledTimes(1);
 		expect(getMaintenanceState().active).toBe(false);
+	});
+
+	// The countdown used to stop on "1s" for as long as the probe took.
+	it("reports checking (0s) before every probe, not a countdown left at 1", async () => {
+		const server = fakeServer({ downForProbes: 2 });
+		const seenAtProbe: number[] = [];
+		const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			if (String(input) === MAINTENANCE_PROBE_PATH) seenAtProbe.push(getMaintenanceState().nextAttemptIn);
+			return server.fetchImpl(input, init);
+		});
+		vi.stubGlobal("fetch", fetchImpl);
+		uninstall = installMaintenanceInterceptor({ pollScheduleMs: [1_000], maxWaitMs: 10_000 });
+
+		await fetch("/api/profile");
+		expect(seenAtProbe).toEqual([0, 0, 0]);
+	});
+
+	// A polling loop keeps calling while the app is down; on recovery those
+	// calls must not all fire at once.
+	it("merges identical held requests into one, and gives every caller its own response", async () => {
+		const server = fakeServer({ downForProbes: 0, gated: true });
+		vi.stubGlobal("fetch", server.fetchImpl);
+		uninstall = installMaintenanceInterceptor({ pollScheduleMs: [5], maxWaitMs: 5_000 });
+
+		const first = fetch("/api/first");
+		await vi.waitFor(() => expect(getMaintenanceState().active).toBe(true));
+
+		const polls = Array.from({ length: 5 }, () => fetch("/api/poll"));
+		const same = [1, 2].map(() => fetch("/api/save", { method: "POST", body: '{"n":1}' }));
+		const other = fetch("/api/save", { method: "POST", body: '{"n":2}' });
+		server.release();
+
+		const results = await Promise.all([first, ...polls, ...same, other]);
+		expect(results.every((r) => r.status === 200)).toBe(true);
+		// Every caller can read its body: none was handed the shared response.
+		const bodies = await Promise.all(results.map((r) => r.json()));
+		expect(bodies.slice(1, 6)).toEqual(Array(5).fill({ url: "/api/poll" }));
+
+		const sent = (url: string) => server.calls.filter((c) => c.url === url);
+		expect(sent("/api/poll")).toHaveLength(1);
+		// Same payload merged; a different payload is a different action.
+		expect(sent("/api/save").map((c) => c.body)).toEqual(['{"n":1}', '{"n":2}']);
+	});
+
+	it("lets one caller abort without cancelling the merged request for the others", async () => {
+		const server = fakeServer({ downForProbes: 0, gated: true });
+		vi.stubGlobal("fetch", server.fetchImpl);
+		uninstall = installMaintenanceInterceptor({ pollScheduleMs: [5], maxWaitMs: 5_000 });
+
+		const first = fetch("/api/first");
+		await vi.waitFor(() => expect(getMaintenanceState().active).toBe(true));
+
+		const controller = new AbortController();
+		const abandoned = fetch("/api/poll", { signal: controller.signal });
+		const kept = fetch("/api/poll");
+		controller.abort();
+		server.release();
+
+		await expect(abandoned).rejects.toThrow();
+		expect((await kept).status).toBe(200);
+		await first;
+	});
+
+	it("keys requests by method, URL, headers and body, and refuses bodies it cannot read", () => {
+		expect(replayKey("/api/a")).toBe(replayKey("http://localhost/api/a", { method: "get" }));
+		expect(replayKey("/api/a", { method: "POST", body: "1" })).not.toBe(replayKey("/api/a", { method: "POST", body: "2" }));
+		expect(replayKey("/api/a", { headers: { "x-a": "1" } })).not.toBe(replayKey("/api/a"));
+		expect(replayKey("/api/a", { method: "POST", body: new FormData() })).toBeNull();
 	});
 });

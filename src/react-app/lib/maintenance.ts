@@ -142,6 +142,10 @@ async function waitForRecovery(
 			emit();
 			await sleep(Math.min(1000, left));
 		}
+		// Say so before asking: the probe is a round trip, sometimes a slow
+		// one, and a countdown left on "1s" for its duration reads as stuck.
+		nextAttemptIn = 0;
+		emit();
 		attempt += 1;
 		if ((await probe(originalFetch, opts.probePath)) === "up") return true;
 	}
@@ -206,6 +210,79 @@ function isSameOrigin(input: RequestInfo | URL): boolean {
 	}
 }
 
+/**
+ * Identity of a held request, for collapsing duplicates; null when it cannot be
+ * told apart safely, and so must go out as itself.
+ *
+ * A polling loop keeps calling while the app is down. Every one of those calls
+ * is held, and without this they would all go out at once on recovery — a burst
+ * of identical requests aimed at a server that has only just come back.
+ *
+ * Method, URL, headers and body all count. "Same URL" alone would be wrong for
+ * anything but reads: two POSTs to one endpoint with different payloads are two
+ * different actions, and merging them would silently drop one. Two with the
+ * *same* payload are a double submit or a repeated heartbeat, and sending one
+ * is right. A body we cannot read without consuming it (FormData, Blob,
+ * stream, a Request object's body) is never merged.
+ */
+export function replayKey(input: RequestInfo | URL, init?: RequestInit): string | null {
+	const isRequest = typeof input === "object" && !(input instanceof URL);
+	const method = (init?.method ?? (isRequest ? input.method : "GET")).toUpperCase();
+	const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+	const base = (globalThis as { location?: { href: string } }).location?.href ?? "http://localhost/";
+
+	let body = "";
+	const raw = init?.body;
+	if (raw instanceof URLSearchParams) body = raw.toString();
+	else if (typeof raw === "string") body = raw;
+	else if (raw != null) return null;
+	else if (isRequest && method !== "GET" && method !== "HEAD") return null;
+
+	const headers = [...new Headers(init?.headers ?? (isRequest ? input.headers : undefined)).entries()]
+		.sort(([a], [b]) => a.localeCompare(b))
+		.map(([k, v]) => `${k}:${v}`)
+		.join("\n");
+	try {
+		return [method, new URL(url, base).href, headers, body].join("\u0000");
+	} catch {
+		return null;
+	}
+}
+
+/** Replays in flight, by `replayKey`. Only replays are merged, never live traffic. */
+const replays = new Map<string, Promise<Response>>();
+
+/**
+ * Send a held request, joining an identical one already going out.
+ *
+ * Each caller gets its own `clone()`: the shared response is never handed out
+ * itself, so one caller reading its body cannot take it from the others.
+ *
+ * The shared request is sent without anyone's abort signal — one caller giving
+ * up must not cancel it for the rest — and each caller's signal is honoured on
+ * its own copy of the wait instead.
+ */
+function sendReplay(originalFetch: typeof fetch, input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+	const key = replayKey(input, init);
+	if (key === null) return originalFetch(input, init);
+
+	let shared = replays.get(key);
+	if (!shared) {
+		shared = originalFetch(input, { ...init, signal: null }).finally(() => replays.delete(key));
+		replays.set(key, shared);
+	}
+	const mine = shared.then((response) => response.clone());
+
+	const signal = init?.signal;
+	if (!signal) return mine;
+	if (signal.aborted) return Promise.reject(signal.reason);
+	return new Promise<Response>((resolve, reject) => {
+		const onAbort = () => reject(signal.reason);
+		signal.addEventListener("abort", onAbort, { once: true });
+		mine.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+	});
+}
+
 let recovery: Promise<boolean> | null = null;
 
 /**
@@ -255,6 +332,10 @@ export function installMaintenanceInterceptor(options: MaintenanceOptions = {}):
 		// Per request, not per window: a request replayed into a window that
 		// opens again must still give up eventually.
 		const deadline = Date.now() + opts.maxWaitMs;
+		// Once a request has waited, it goes out as a replay, merged with any
+		// identical one. Before that it is live traffic and is never merged.
+		let held = false;
+		const send = () => (held ? sendReplay(originalFetch, input, init) : originalFetch(input, init));
 
 		for (;;) {
 			// Already known to be down: hold the request without sending it.
@@ -263,15 +344,16 @@ export function installMaintenanceInterceptor(options: MaintenanceOptions = {}):
 			// until the single polling loop says it has recovered.
 			if (active) {
 				const recovered = await awaitRecovery(originalFetch, opts);
+				held = true;
 				// Gave up: one last real attempt, and its result — 503, error or
 				// success — goes to the caller untouched. Its own error handling
 				// takes over from here.
-				if (!recovered || Date.now() >= deadline) return originalFetch(input, init);
+				if (!recovered || Date.now() >= deadline) return send();
 			}
 
 			let response: Response;
 			try {
-				response = await originalFetch(input, init);
+				response = await send();
 			} catch (error) {
 				// Either really offline, or the emergency redirect: a request
 				// stopped by the redirect never reached the Worker, so holding
@@ -301,5 +383,6 @@ export function installMaintenanceInterceptor(options: MaintenanceOptions = {}):
 		since = null;
 		recovery = null;
 		diagnosis = null;
+		replays.clear();
 	};
 }

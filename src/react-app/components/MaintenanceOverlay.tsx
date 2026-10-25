@@ -34,9 +34,9 @@ export function MaintenanceOverlay() {
 				</span>
 				<div className="text-sm">
 					<p className="font-medium">{config.appName} is being updated</p>
-					<p className="text-muted-foreground">
-						Your last action is queued and will go through on its own.
-						{state.nextAttemptIn > 0 ? ` Checking again in ${state.nextAttemptIn}s…` : " Checking…"}
+					<p className="text-muted-foreground">Please wait until the service is available again.</p>
+					<p className="text-muted-foreground tabular-nums">
+						{state.nextAttemptIn > 0 ? `Checking again in ${state.nextAttemptIn}s…` : "Checking…"}
 					</p>
 				</div>
 			</div>
