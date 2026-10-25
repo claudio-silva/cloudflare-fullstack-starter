@@ -272,7 +272,7 @@ describe("maintenance interceptor", () => {
 
 	// A polling loop keeps calling while the app is down; on recovery those
 	// calls must not all fire at once.
-	it("merges identical held requests into one, and gives every caller its own response", async () => {
+	it("merges identical held reads into one, and gives every caller its own response", async () => {
 		const server = fakeServer({ downForProbes: 0, gated: true });
 		vi.stubGlobal("fetch", server.fetchImpl);
 		uninstall = installMaintenanceInterceptor({ pollScheduleMs: [5], maxWaitMs: 5_000 });
@@ -281,11 +281,10 @@ describe("maintenance interceptor", () => {
 		await vi.waitFor(() => expect(getMaintenanceState().active).toBe(true));
 
 		const polls = Array.from({ length: 5 }, () => fetch("/api/poll"));
-		const same = [1, 2].map(() => fetch("/api/save", { method: "POST", body: '{"n":1}' }));
-		const other = fetch("/api/save", { method: "POST", body: '{"n":2}' });
+		const increments = [1, 2].map(() => fetch("/api/counter", { method: "POST", body: '{"by":1}' }));
 		server.release();
 
-		const results = await Promise.all([first, ...polls, ...same, other]);
+		const results = await Promise.all([first, ...polls, ...increments]);
 		expect(results.every((r) => r.status === 200)).toBe(true);
 		// Every caller can read its body: none was handed the shared response.
 		const bodies = await Promise.all(results.map((r) => r.json()));
@@ -293,8 +292,8 @@ describe("maintenance interceptor", () => {
 
 		const sent = (url: string) => server.calls.filter((c) => c.url === url);
 		expect(sent("/api/poll")).toHaveLength(1);
-		// Same payload merged; a different payload is a different action.
-		expect(sent("/api/save").map((c) => c.body)).toEqual(['{"n":1}', '{"n":2}']);
+		// Never merged, payload or not: two increments are two increments.
+		expect(sent("/api/counter")).toHaveLength(2);
 	});
 
 	it("lets one caller abort without cancelling the merged request for the others", async () => {
@@ -316,10 +315,11 @@ describe("maintenance interceptor", () => {
 		await first;
 	});
 
-	it("keys requests by method, URL, headers and body, and refuses bodies it cannot read", () => {
+	it("merges only reads, keyed by URL and headers", () => {
 		expect(replayKey("/api/a")).toBe(replayKey("http://localhost/api/a", { method: "get" }));
-		expect(replayKey("/api/a", { method: "POST", body: "1" })).not.toBe(replayKey("/api/a", { method: "POST", body: "2" }));
 		expect(replayKey("/api/a", { headers: { "x-a": "1" } })).not.toBe(replayKey("/api/a"));
-		expect(replayKey("/api/a", { method: "POST", body: new FormData() })).toBeNull();
+		for (const method of ["POST", "PUT", "PATCH", "DELETE"]) {
+			expect(replayKey("/api/a", { method, body: "{}" })).toBeNull();
+		}
 	});
 });

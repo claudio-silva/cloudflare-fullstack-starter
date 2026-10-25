@@ -211,39 +211,34 @@ function isSameOrigin(input: RequestInfo | URL): boolean {
 }
 
 /**
- * Identity of a held request, for collapsing duplicates; null when it cannot be
- * told apart safely, and so must go out as itself.
+ * Identity of a held request, for collapsing duplicates; null when it must go
+ * out as itself.
  *
  * A polling loop keeps calling while the app is down. Every one of those calls
  * is held, and without this they would all go out at once on recovery — a burst
  * of identical requests aimed at a server that has only just come back.
  *
- * Method, URL, headers and body all count. "Same URL" alone would be wrong for
- * anything but reads: two POSTs to one endpoint with different payloads are two
- * different actions, and merging them would silently drop one. Two with the
- * *same* payload are a double submit or a repeated heartbeat, and sending one
- * is right. A body we cannot read without consuming it (FormData, Blob,
- * stream, a Request object's body) is never merged.
+ * Only reads are merged: GET and HEAD. Anything else is never merged, however
+ * identical it looks. A POST that increments a counter sends the same payload
+ * every time, and each one is a separate action — merging two of them silently
+ * loses one. PUT and DELETE are idempotent in HTTP's terms, but that is a
+ * promise the server may or may not keep, and nothing here can check it.
  */
 export function replayKey(input: RequestInfo | URL, init?: RequestInit): string | null {
 	const isRequest = typeof input === "object" && !(input instanceof URL);
 	const method = (init?.method ?? (isRequest ? input.method : "GET")).toUpperCase();
+	if (method !== "GET" && method !== "HEAD") return null;
+
 	const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
 	const base = (globalThis as { location?: { href: string } }).location?.href ?? "http://localhost/";
-
-	let body = "";
-	const raw = init?.body;
-	if (raw instanceof URLSearchParams) body = raw.toString();
-	else if (typeof raw === "string") body = raw;
-	else if (raw != null) return null;
-	else if (isRequest && method !== "GET" && method !== "HEAD") return null;
-
+	// Headers count: the same URL asked for with a different Accept, say, can
+	// legitimately answer differently.
 	const headers = [...new Headers(init?.headers ?? (isRequest ? input.headers : undefined)).entries()]
 		.sort(([a], [b]) => a.localeCompare(b))
 		.map(([k, v]) => `${k}:${v}`)
 		.join("\n");
 	try {
-		return [method, new URL(url, base).href, headers, body].join("\u0000");
+		return [method, new URL(url, base).href, headers].join("\u0000");
 	} catch {
 		return null;
 	}

@@ -114,13 +114,15 @@ would make every deploy inside one time out with the deploy having worked.
   only that first 503 ever costs a round trip;
 - when the app answers, the held requests go out, each with its own method and
   payload, and the caller's promise resolves with the real response;
-- **identical held requests go out once.** A polling loop keeps calling while
+- **identical held reads go out once.** A polling loop keeps calling while
   the app is down, and without this every one of those calls would fire
-  together on recovery, at a server that has only just come back. Requests
-  are merged when method, URL, headers and body all match — not on URL alone,
-  because two POSTs with different payloads are two actions, and merging them
-  would drop one. Each caller still gets its own copy of the response, and
-  one caller aborting does not cancel it for the rest;
+  together on recovery, at a server that has only just come back. GET and
+  HEAD requests to the same URL with the same headers are merged; each caller
+  still gets its own copy of the response, and one caller aborting does not
+  cancel it for the rest. **Nothing else is ever merged**, however identical:
+  a POST that increments a counter sends the same payload every time, and two
+  of them are two increments. PUT and DELETE are idempotent only if the server
+  keeps that promise, which the client cannot check;
 - a replay that lands in a window that opened again goes back to waiting,
   rather than handing the caller a 503;
 - after 30 minutes it gives up and lets the 503 through, rather than hanging;
