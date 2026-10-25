@@ -32,7 +32,28 @@ const DEFAULTS = {
 	pollScheduleMs: [2_000, 3_000, 5_000, 5_000, 10_000],
 	maxWaitMs: 10 * 60 * 1000,
 	probePath: "/api/",
+	/** Clamp for `Retry-After`, so a careless header cannot stall the UI for an hour. */
+	maxRetryAfterMs: 60_000,
 };
+
+/**
+ * `Retry-After`, in milliseconds, or null when absent or unusable.
+ *
+ * The server knows how long the window will be and the client does not, so
+ * when it says, we listen — but only within a bound: this value comes over the
+ * wire and a mistake in it would otherwise freeze the UI.
+ */
+export function parseRetryAfterMs(value: string | null, maxMs: number): number | null {
+	if (!value) return null;
+	const seconds = Number(value.trim());
+	if (Number.isFinite(seconds)) {
+		if (seconds < 0) return null;
+		return Math.min(seconds * 1000, maxMs);
+	}
+	const date = Date.parse(value);
+	if (Number.isNaN(date)) return null;
+	return Math.min(Math.max(date - Date.now(), 0), maxMs);
+}
 
 export type MaintenanceState = { active: boolean; since: number | null; nextAttemptIn: number };
 
@@ -73,11 +94,18 @@ function isMaintenance(response: Response): boolean {
  * Wait for the app to come back, counting down so the UI can show progress.
  * Resolves true when it answers, false when we give up.
  */
-async function waitForRecovery(originalFetch: typeof fetch, opts: Required<MaintenanceOptions>): Promise<boolean> {
+async function waitForRecovery(
+	originalFetch: typeof fetch,
+	opts: Required<MaintenanceOptions>,
+	firstDelayMs: number | null,
+): Promise<boolean> {
 	const deadline = Date.now() + opts.maxWaitMs;
 	let attempt = 0;
 	while (Date.now() < deadline) {
-		const delay = opts.pollScheduleMs[Math.min(attempt, opts.pollScheduleMs.length - 1)];
+		const delay =
+			attempt === 0 && firstDelayMs !== null
+				? firstDelayMs
+				: opts.pollScheduleMs[Math.min(attempt, opts.pollScheduleMs.length - 1)];
 		// Count down in whole seconds so the dialog can show a timer.
 		for (let left = delay; left > 0; left -= 1000) {
 			nextAttemptIn = Math.ceil(left / 1000);
@@ -106,8 +134,12 @@ let recovery: Promise<boolean> | null = null;
  * loop and hammering a server that is already down: the first 503 creates the
  * wait, everyone else joins it, and they all replay together once it resolves.
  */
-function awaitRecovery(originalFetch: typeof fetch, opts: Required<MaintenanceOptions>): Promise<boolean> {
-	recovery ??= waitForRecovery(originalFetch, opts).finally(() => {
+function awaitRecovery(
+	originalFetch: typeof fetch,
+	opts: Required<MaintenanceOptions>,
+	firstDelayMs: number | null = null,
+): Promise<boolean> {
+	recovery ??= waitForRecovery(originalFetch, opts, firstDelayMs).finally(() => {
 		recovery = null;
 		active = false;
 		since = null;
@@ -127,16 +159,26 @@ export function installMaintenanceInterceptor(options: MaintenanceOptions = {}):
 	const originalFetch = globalThis.fetch.bind(globalThis);
 
 	globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+		// Already known to be down: hold the request without sending it. Only
+		// the first 503 costs a round trip; everything after it waits, so a
+		// server that is already struggling is not asked again until the single
+		// polling loop says it has recovered.
+		if (active) {
+			const recovered = await awaitRecovery(originalFetch, opts);
+			void recovered; // either way the request now goes out for the first time
+			return originalFetch(input, init);
+		}
+
 		const response = await originalFetch(input, init);
 		if (!isMaintenance(response)) return response;
 
-		if (!active) {
-			active = true;
-			since = Date.now();
-			emit();
-		}
+		active = true;
+		since = Date.now();
+		emit();
 
-		const recovered = await awaitRecovery(originalFetch, opts);
+		// The server said how long to wait; the first poll honours it.
+		const firstDelay = parseRetryAfterMs(response.headers.get("retry-after"), opts.maxRetryAfterMs);
+		const recovered = await awaitRecovery(originalFetch, opts, firstDelay);
 		// Give the caller the real answer, not the 503, so call sites never
 		// need to know this happened. If we gave up, the 503 is the honest
 		// result and the caller's own error handling takes over.

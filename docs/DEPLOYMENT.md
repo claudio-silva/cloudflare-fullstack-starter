@@ -96,7 +96,13 @@ Responses depend on what the caller asked for, so each kind of client gets somet
 
 All carry `X-Maintenance: 1` and `Retry-After: 60`. `/api/` and `/api/cli/*` answer normally throughout: the first is what `deploy:production` polls to confirm the release, the second carries the migration the window was opened for.
 
-**The client handles this by itself.** `src/react-app/lib/maintenance.ts` patches global `fetch`, holds any request that comes back with `X-Maintenance`, polls until the app answers, and replays it with the same method and payload. Concurrent calls share a single polling loop rather than each hammering a server that is already down, and `<MaintenanceOverlay />` tells the user what is happening. Call sites never learn that any of it occurred.
+**The client handles this by itself.** `src/react-app/lib/maintenance.ts` patches global `fetch`:
+
+- the **first** request to come back with `X-Maintenance` starts a single polling loop, seeded with the server's `Retry-After`;
+- every request made after that is **held without being sent** — once the app is known to be down there is no point asking it again, so only that first 503 ever costs a round trip;
+- when the app answers, the held requests go out, each with its own method and payload, and the caller's promise resolves with the real response.
+
+`<MaintenanceOverlay />` tells the user what is happening. Call sites never learn that any of it occurred.
 
 Patching global `fetch` rather than exporting a wrapper is deliberate, for the reason Angular uses an HTTP interceptor: libraries make their own requests. Better Auth's would otherwise slip past.
 
