@@ -358,9 +358,10 @@ export function installMaintenanceInterceptor(options: MaintenanceOptions = {}):
 				// Either really offline, or the emergency redirect: a request
 				// stopped by the redirect never reached the Worker, so holding
 				// and replaying it is safe. Anything else is the caller's error.
-				if (Date.now() >= deadline || !(await isRedirectMaintenance(originalFetch, opts.probePath))) {
-					throw error;
-				}
+				// Already known to be down (a request that was in flight when the
+				// window was detected): no need to ask again.
+				if (Date.now() >= deadline) throw error;
+				if (!active && !(await isRedirectMaintenance(originalFetch, opts.probePath))) throw error;
 				// The redirect hides its headers, so no Retry-After: the
 				// default schedule applies.
 				enterMaintenance(null);
