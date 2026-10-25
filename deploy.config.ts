@@ -21,6 +21,11 @@
  *                      `deploy:production` tags and promotes; Cloudflare builds.
  * - `external-ci`    — any other CI (self-hosted GitLab, GitHub Actions, …).
  *                      `deploy:production` tags and promotes; your CI builds.
+ *
+ * `manual` is also the **off switch for CI deploys**: set it, commit, and every
+ * CI deploy job ends green at its first step (`bin/ci-deploy-guard.ts`) having
+ * done nothing, while `deploy:production` deploys from your machine. Set the
+ * previous mode back to turn them on again. See docs/DEPLOYMENT.md.
  */
 export type DeployMode = "manual" | "workers-builds" | "external-ci";
 

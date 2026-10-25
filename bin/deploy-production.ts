@@ -101,6 +101,20 @@ async function waitForVersion(version: string, timeoutMs = 600_000): Promise<voi
 	die(`${baseUrl} still serves ${seen} after ${timeoutMs / 1000}s; expected ${expected}. Check the CI build.`);
 }
 
+/**
+ * Push a ref without starting a pipeline for it. `ci.skip` is GitLab's push
+ * option; a host that rejects push options gets a plain push instead. Where
+ * the CI still runs, its deploy job stops at bin/ci-deploy-guard.ts when the
+ * mode is `manual` — `--local` in a CI mode is the one case left to it.
+ */
+function pushWithoutCi(ref: string): void {
+	try {
+		run("git", ["push", "-o", "ci.skip", "origin", ref]);
+	} catch {
+		run("git", ["push", "origin", ref]);
+	}
+}
+
 async function main(): Promise<void> {
 	const args = process.argv.slice(2);
 	if (args.includes("--help") || args.includes("-h")) return usage();
@@ -194,7 +208,10 @@ async function main(): Promise<void> {
 	if (tagNeeded) {
 		run("git", ["tag", "-a", version, "-m", version]);
 		run("git", ["push", "origin", "main"]);
-		run("git", ["push", "origin", version]);
+		// Already deployed from here (manual mode, or --local): the tag is a
+		// record, not a trigger, and a CI watching tags must not deploy it again.
+		if (mode === "manual") pushWithoutCi(version);
+		else run("git", ["push", "origin", version]);
 		console.log(`Tagged ${version}`);
 	} else if (mode !== "manual") {
 		run("git", ["push", "origin", "main"]);

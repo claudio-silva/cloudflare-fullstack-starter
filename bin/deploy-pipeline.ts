@@ -36,7 +36,7 @@
 
 import { execFileSync } from "node:child_process";
 import { connectToDatabase } from "../src/cli/utils/db";
-import { type DeployEnv } from "./lib/deploy-config";
+import { loadDeployConfig, type DeployEnv } from "./lib/deploy-config";
 import { resolveBuildInfo } from "./lib/build-info";
 import type { MigrationStatus } from "../src/shared/migration-types";
 
@@ -96,6 +96,13 @@ async function main(): Promise<void> {
 	const envIdx = args.indexOf("--env");
 	const env = (envIdx === -1 ? "production" : args[envIdx + 1]) as DeployEnv;
 	if (env !== "preview" && env !== "production") throw new Error(`Unknown environment "${env}"`);
+
+	// CI deploys switched off (deploy.config.ts mode "manual"). Ends green, so a
+	// CI that runs this without bin/ci-deploy-guard.ts first does not fail.
+	if (isCi() && loadDeployConfig(env).mode === "manual") {
+		console.log('CI deploys are OFF: deploy.config.ts has mode "manual". Nothing was deployed.');
+		return;
+	}
 	const skipBuild = args.includes("--skip-build");
 	const dryRun = args.includes("--dry-run");
 

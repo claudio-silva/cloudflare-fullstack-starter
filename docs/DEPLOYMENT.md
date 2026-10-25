@@ -209,12 +209,30 @@ deploy:production:
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
   script:
+    # First, before installing anything: ends the job, green, when CI deploys are off.
+    - node bin/ci-deploy-guard.ts || { [ $? -eq 78 ] && exit 0; exit 1; }
     - npm ci
     - npm run build:production
     - npm run deploy:ci -- --env production
 ```
 
 Mark the Cloudflare token as a **protected** CI variable and protect the deployment branch, so a token for production is never exposed to a pipeline running on some other branch.
+
+### Switching CI deploys off, and back on
+
+Set `mode: "manual"` in `deploy.config.ts` and commit. That is the whole switch, in both directions — for when the CI host is down, overloaded, or simply not to be trusted with a release this week.
+
+With it off:
+
+- `deploy:production` builds and deploys from your machine, then tags. The tag is pushed with GitLab's `ci.skip` push option, so it starts no pipeline there.
+- Any CI deploy job that does run anyway — a push to the preview branch, a retried job, a host that ignores `ci.skip` — stops at its first step, `bin/ci-deploy-guard.ts`, and ends **green** having done nothing. Green, because "deploys are off" is the configured state, not a failure. `deploy-pipeline` makes the same check, for CI that runs it without the guard.
+- Verification jobs (lint, tests) are untouched: the switch is about who deploys, not about whether CI runs.
+
+To turn them back on, set the mode back to `external-ci` or `workers-builds`.
+
+It is a committed value rather than a CI variable on purpose: `deploy:production` on every developer's machine has to read the same answer as the CI. A CI-side toggle would leave the local command pushing a tag and waiting for a deploy that the CI had been told not to do.
+
+`--local` is different: a one-off, with the mode unchanged. It too pushes the tag with `ci.skip`; on a host that ignores it, the CI will deploy the same commit a second time — harmless, but wasted.
 
 ### What CI needs, and what it does not
 

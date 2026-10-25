@@ -71,8 +71,9 @@ Node 24 LTS, a generic `wrangler.toml` environment merge, and removal of decorat
 15. **New `MAINTENANCE` Worker var** (`src/worker/middleware/maintenance.ts`): takes the app out of service in place, with a 503 shaped by the `Accept` header. The deploy sets it around a `breaking` migration; `/api/` and `/api/cli/*` stay reachable.
 16. **New client interceptor** (`src/react-app/lib/maintenance.ts` + `components/MaintenanceOverlay.tsx`, installed in `main.tsx`): patches global `fetch`, holds same-origin requests caught by either maintenance mechanism — the var's 503, or the zone redirect, which reaches `fetch` as a network error — and replays them once the app returns. Concurrent calls share one polling loop. It polls the new **`GET /api/ping`**, which must stay subject to maintenance: `/api/` is exempt, so it cannot tell a recovery from a window. Identical held reads (GET/HEAD, same URL and headers) are replayed once and share the response; writes are never merged.
 17. **The `snippet` maintenance mechanism is removed.** `maintenance.mechanism` is now `redirect` or `none`. Snippets need a Pro zone and the `MAINTENANCE` var covers the planned case better; the zone redirect remains the emergency tool.
-18. **New `docs/MECHANISMS.md`**: what the starter provides and why, so the README can stay an introduction.
-19. **Fixed:** `getApiBaseUrl` now loads `.env.<environment>` itself. Callers that had not gone through `connectToDatabase` first silently used the placeholder URL from `src/config.ts`.
+18. **CI deploys can be switched off with `mode: "manual"`.** New `bin/ci-deploy-guard.ts`, the first step of a CI deploy job: ends the job green when the mode is `manual`. `deploy-pipeline` checks the same in CI. After a local deploy (`manual` or `--local`), the tag is pushed with `-o ci.skip`. See `docs/DEPLOYMENT.md`, *Switching CI deploys off*.
+19. **New `docs/MECHANISMS.md`**: what the starter provides and why, so the README can stay an introduction.
+20. **Fixed:** `getApiBaseUrl` now loads `.env.<environment>` itself. Callers that had not gone through `connectToDatabase` first silently used the placeholder URL from `src/config.ts`.
 
 ### Required actions
 
@@ -83,6 +84,7 @@ Node 24 LTS, a generic `wrangler.toml` environment merge, and removal of decorat
 - Optional, to use maintenance mode: set `maintenance.mechanism`, `zoneId` and `redirectTo` in `deploy.config.ts`, and issue an API token with **zone** rule permissions (the Workers-scoped token from `bin/init` is not enough).
 - Take the starter-owned changes in `bin/` (new: `deploy-pipeline.ts`, `deploy-production.ts`, `maintenance.ts`, `lib/deploy-config.ts`; deleted: `deploy-production`), `src/worker/db/migrations/`, `src/worker/db/schema-snapshot.ts`, `src/shared/migration-types.ts`, `src/cli/utils/db.ts`; merge `package.json` scripts, `src/config.ts`, `src/worker/routes/cli.ts`, `tsconfig.cli.json`.
 - Set `deployConfig.mode`. It defaults to `manual`, which behaves like 3.2.0 except for the migration ordering.
+- If you deploy from your own CI, add `node bin/ci-deploy-guard.ts || { [ $? -eq 78 ] && exit 0; exit 1; }` as the first step of each deploy job, so `mode: "manual"` can switch it off.
 - Read the expand/contract section of `docs/DEPLOYMENT.md` before writing the next migration that drops anything.
 - If you already have a `scheduled` handler or cron triggers, merge rather than replace them; if you do not want the sign-in log, drop the migration, the handler and the `[env.*.triggers]` blocks together.
 - Mention the sign-in log in your privacy notice: it stores IP addresses.

@@ -219,6 +219,14 @@ deploy cannot drift apart. `--local` forces the local path in any mode.
 Workers Builds triggers on branch pushes and **never on tags**, so in that mode
 a deploy hook is what keeps "no deploy without a tag" true.
 
+**The mode is also the off switch for CI.** Setting it to `manual` turns CI
+deploys off without touching the CI configuration: deploy jobs start with
+`bin/ci-deploy-guard.ts`, which reads the committed mode with plain `node` —
+no install, no build — and ends the job green. Setting it back turns them on.
+It is a committed value and not a CI variable because the local
+`deploy:production` has to agree with the CI: with a CI-side toggle, the laptop
+would push a tag and then wait for a deploy the CI had been told not to do.
+
 ---
 
 ## Secrets and build variables
