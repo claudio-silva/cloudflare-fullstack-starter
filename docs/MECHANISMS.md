@@ -107,13 +107,24 @@ would make every deploy inside one time out with the deploy having worked.
 `fetch`:
 
 - the **first** response marked `X-Maintenance` starts one polling loop, seeded
-  with the server's `Retry-After` (clamped to 10 minutes; 1 minute if absent);
+  with the server's `Retry-After` (clamped to 10 minutes; 1 minute if absent),
+  that polls `GET /api/ping`;
 - every request after that is **held without being sent** — once the app is
   known to be down, asking it again is exactly the load it does not need, so
   only that first 503 ever costs a round trip;
 - when the app answers, the held requests go out, each with its own method and
   payload, and the caller's promise resolves with the real response;
-- after 30 minutes it gives up and lets the 503 through, rather than hanging.
+- a replay that lands in a window that opened again goes back to waiting,
+  rather than handing the caller a 503;
+- after 30 minutes it gives up and lets the 503 through, rather than hanging;
+- requests to other origins are left alone: a third-party API failing says
+  nothing about this app.
+
+**Why the probe is `/api/ping` and not `/api/`.** `/api/` has to stay up during
+a window so the deploy can read the version it is waiting for. A probe aimed at
+it answers 200 throughout, and every held request is "recovered" straight into
+another 503. The probe has to be down exactly when the app is, so `/api/ping`
+is exempt from neither mechanism — and must not become so.
 
 Call sites never learn any of this happened. `<MaintenanceOverlay />` shows a
 banner — not a modal, and with no retry button, because the request is already
@@ -135,6 +146,20 @@ itself is broken or compromised**, which is when an in-Worker flag cannot help.
 
 The trade is that a redirect changes the URL, so the user cannot simply refresh.
 In an emergency that is the least of the problems.
+
+**An open tab is covered too, though it does not look like it.** A `fetch` that
+meets the redirect follows it to the maintenance page, on another origin and
+with no CORS headers, so the browser rejects it with a bare
+`TypeError: Failed to fetch` — indistinguishable, from the caller's side, from
+being offline. So on a same-origin network error the interceptor asks the probe
+with `redirect: "manual"`: being redirected comes back as an `opaqueredirect`,
+which `/api/ping` never answers with, and the request is held and replayed like
+any other. Safe to replay, because the redirect happens at the zone and the
+request never reached the Worker. A network error that the probe does not
+explain is passed on to the caller as it was.
+
+There is no `Retry-After` here — the redirect's headers are invisible to
+`fetch` — so the client polls on its default minute.
 
 Needs the zone permission *Dynamic URL Redirects Write*; a Workers-scoped token
 fails with `Authentication error`. Set `mechanism: "none"` for `*.workers.dev`,

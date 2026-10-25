@@ -100,7 +100,10 @@ All carry `X-Maintenance: 1` and `Retry-After: 60`. `/api/` and `/api/cli/*` ans
 
 - the **first** request to come back with `X-Maintenance` starts a single polling loop, seeded with the server's `Retry-After`;
 - every request made after that is **held without being sent** — once the app is known to be down there is no point asking it again, so only that first 503 ever costs a round trip;
-- when the app answers, the held requests go out, each with its own method and payload, and the caller's promise resolves with the real response.
+- when the app answers, the held requests go out, each with its own method and payload, and the caller's promise resolves with the real response;
+- the emergency redirect below is handled the same way, though it looks nothing like a 503 to `fetch` — see [MECHANISMS.md](MECHANISMS.md#maintenance-mode).
+
+Recovery is judged by polling `GET /api/ping`, **not** `/api/`. `/api/` is exempt from maintenance so the deploy can read the version, which means it answers 200 all through a window.
 
 `<MaintenanceOverlay />` tells the user what is happening. Call sites never learn that any of it occurred.
 

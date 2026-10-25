@@ -57,6 +57,12 @@ app.get("/api/", (c) => {
 	return c.json({ name: config.appName, environment, status: "healthy", version: APP_VERSION, commit: APP_COMMIT });
 });
 
+// What an open tab polls to learn the app is back from maintenance. Unlike
+// `/api/` above it is NOT exempt from either mechanism, and must not become
+// so: a probe that answers during the window reports a recovery that has not
+// happened. See src/react-app/lib/maintenance.ts.
+app.get("/api/ping", (c) => c.body(null, 204, { "Cache-Control": "no-store" }));
+
 // Auth routes. Sign-in attempts are recorded after the fact, through
 // waitUntil: an audit record is never a reason to make a user wait, nor to
 // turn a successful sign-in into an error because an insert failed.

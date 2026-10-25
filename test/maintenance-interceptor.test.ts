@@ -4,7 +4,9 @@ import {
 	getMaintenanceState,
 	subscribeToMaintenance,
 	parseRetryAfterMs,
+	MAINTENANCE_PROBE_PATH,
 } from "../src/react-app/lib/maintenance";
+import { isMaintenanceBypassed } from "../src/worker/middleware/maintenance";
 
 /**
  * The interceptor's job is to make a maintenance window invisible to call
@@ -15,7 +17,9 @@ import {
  *    only the first 503 costs a round trip, the rest wait;
  *  - concurrent requests share ONE polling loop;
  *  - every held request goes out once recovered, with its own method and payload;
- *  - a 503 that is not ours is passed straight through.
+ *  - a 503 that is not ours is passed straight through;
+ *  - the emergency redirect, which reaches fetch as a bare network error, is
+ *    recognised and handled the same way — and a real network error is not.
  */
 
 const maintenance = (retryAfter?: string) =>
@@ -35,24 +39,37 @@ afterEach(() => {
 
 type Call = { url: string; method: string; body?: unknown };
 
+/** What `fetch` returns for a redirect when called with `redirect: "manual"`. */
+const opaqueRedirect = () =>
+	({ type: "opaqueredirect", status: 0, ok: false, headers: new Headers() }) as unknown as Response;
+
 /**
  * A fake server that is down until `downForProbes` probes have gone by, or —
  * when `gated` is set — until `release()` is called, so a test can inspect the
  * world mid-outage without racing a timer.
+ *
+ * `mode: "redirect"` plays the emergency mechanism: requests fail the way a
+ * cross-origin redirect does in a browser, and only a probe that declines to
+ * follow redirects can see why.
  */
-function fakeServer(opts: { downForProbes: number; retryAfter?: string; gated?: boolean }) {
+function fakeServer(opts: { downForProbes: number; retryAfter?: string; gated?: boolean; mode?: "var" | "redirect" }) {
 	const calls: Call[] = [];
 	let probes = 0;
 	let released = false;
 	const isUp = () => (opts.gated ? released : probes > opts.downForProbes);
+	const down = (init?: RequestInit) => {
+		if (opts.mode !== "redirect") return maintenance(opts.retryAfter);
+		if (init?.redirect === "manual") return opaqueRedirect();
+		throw new TypeError("Failed to fetch");
+	};
 	const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
 		const url = String(input);
 		calls.push({ url, method: init?.method ?? "GET", body: init?.body });
-		if (url === "/api/") {
+		if (url === MAINTENANCE_PROBE_PATH) {
 			probes += 1;
-			return isUp() ? ok('{"status":"healthy"}') : maintenance(opts.retryAfter);
+			return isUp() ? new Response(null, { status: 204 }) : down(init);
 		}
-		return isUp() ? ok(`{"url":"${url}"}`) : maintenance(opts.retryAfter);
+		return isUp() ? ok(`{"url":"${url}"}`) : down(init);
 	});
 	return { calls, fetchImpl, probeCount: () => probes, release: () => { released = true; } };
 }
@@ -177,5 +194,63 @@ describe("maintenance interceptor", () => {
 
 		const res = await fetch("/api/profile");
 		expect(res.status).toBe(503);
+	});
+
+	// The bug that shipped first: the probe hit `/api/`, which both mechanisms
+	// exempt so the deploy can read the version. It answered 200 all through
+	// the window, and every held request was "recovered" straight into a 503.
+	it("probes a route that maintenance does not exempt", () => {
+		expect(isMaintenanceBypassed(MAINTENANCE_PROBE_PATH)).toBe(false);
+		expect(isMaintenanceBypassed("/api/")).toBe(true);
+	});
+
+	it("recognises the emergency redirect, holds the request and replays it", async () => {
+		const server = fakeServer({ downForProbes: 2, mode: "redirect" });
+		vi.stubGlobal("fetch", server.fetchImpl);
+		uninstall = installMaintenanceInterceptor({ pollScheduleMs: [1], maxWaitMs: 5_000 });
+
+		const res = await fetch("/api/lessons", { method: "POST", body: "{}" });
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({ url: "/api/lessons" });
+	});
+
+	it("lets a real network error through", async () => {
+		// Requests fail, but the probe says the app is fine: not maintenance.
+		const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+			if (String(input) === MAINTENANCE_PROBE_PATH) return new Response(null, { status: 204 });
+			throw new TypeError("Failed to fetch");
+		});
+		vi.stubGlobal("fetch", fetchImpl);
+		uninstall = installMaintenanceInterceptor({ pollScheduleMs: [1], maxWaitMs: 5_000 });
+
+		await expect(fetch("/api/profile")).rejects.toThrow("Failed to fetch");
+		expect(getMaintenanceState().active).toBe(false);
+	});
+
+	it("waits again when a replay lands in a window that is still open", async () => {
+		// The probe recovers before the route does — a deploy rolling out, say.
+		let appCalls = 0;
+		const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+			if (String(input) === MAINTENANCE_PROBE_PATH) return new Response(null, { status: 204 });
+			appCalls += 1;
+			return appCalls <= 2 ? maintenance() : ok();
+		});
+		vi.stubGlobal("fetch", fetchImpl);
+		uninstall = installMaintenanceInterceptor({ pollScheduleMs: [1], maxWaitMs: 5_000 });
+
+		const res = await fetch("/api/profile");
+		expect(res.status).toBe(200);
+		expect(appCalls).toBe(3);
+	});
+
+	it("leaves other origins alone", async () => {
+		const fetchImpl = vi.fn(async () => maintenance());
+		vi.stubGlobal("fetch", fetchImpl);
+		uninstall = installMaintenanceInterceptor({ pollScheduleMs: [1], maxWaitMs: 5_000 });
+
+		const res = await fetch("https://api.example.com/v1/thing");
+		expect(res.status).toBe(503);
+		expect(fetchImpl).toHaveBeenCalledTimes(1);
+		expect(getMaintenanceState().active).toBe(false);
 	});
 });

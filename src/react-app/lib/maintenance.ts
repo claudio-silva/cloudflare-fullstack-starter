@@ -1,9 +1,18 @@
 /**
  * Global handling for "the app is in maintenance".
  *
- * The Worker answers 503 with an `X-Maintenance` header while a deploy with a
- * breaking migration is in flight. Without this, every in-flight call in an
- * open tab would surface as a random failure, and the user would be left
+ * A maintenance window reaches an open tab in one of two shapes:
+ *
+ *  - planned (the `MAINTENANCE` var): the Worker answers 503 with an
+ *    `X-Maintenance` header;
+ *  - emergency (the zone redirect): the request is redirected to a page on
+ *    another origin, and since that page sends no CORS headers, `fetch`
+ *    rejects with a bare `TypeError: Failed to fetch`. A network error, as far
+ *    as the caller can tell — so on a same-origin network error we ask the
+ *    probe, with redirects not followed, whether it is being redirected.
+ *
+ * Without this, every in-flight call in an open tab would surface as a random
+ * failure ("Não foi possível…", "Failed to fetch"), and the user would be left
  * reloading by hand until it happened to work.
  *
  * Instead the request is held: the UI says what is going on, the base URL is
@@ -19,12 +28,22 @@
 
 const MAINTENANCE_HEADER = "x-maintenance";
 
+/**
+ * What the client polls to learn the app is back.
+ *
+ * NOT `/api/`. That one is exempt from both mechanisms, because the deploy
+ * polls it to confirm the release — so it answers 200 throughout the window,
+ * and a probe aimed at it reports a recovery that has not happened. The probe
+ * has to be down exactly when the app is.
+ */
+export const MAINTENANCE_PROBE_PATH = "/api/ping";
+
 export type MaintenanceOptions = {
 	/** Polling backoff. Starts responsive, settles down so a long window is cheap. */
 	pollScheduleMs?: number[];
 	/** Stop replaying after this long and let the error through, rather than hang forever. */
 	maxWaitMs?: number;
-	/** Exempt in the Worker too, so it answers while everything else is down. */
+	/** Must be subject to maintenance like any other route — see MAINTENANCE_PROBE_PATH. */
 	probePath?: string;
 };
 
@@ -42,7 +61,7 @@ const DEFAULTS = {
 	 * `Retry-After` would consume the whole allowance and we would poll once.
 	 */
 	maxWaitMs: 30 * 60 * 1000,
-	probePath: "/api/",
+	probePath: MAINTENANCE_PROBE_PATH,
 	/** Clamp for `Retry-After`: honour a long wait, but not an unbounded one. */
 	maxRetryAfterMs: 10 * 60 * 1000,
 };
@@ -124,16 +143,67 @@ async function waitForRecovery(
 			await sleep(Math.min(1000, left));
 		}
 		attempt += 1;
-		try {
-			// The probe goes through the original fetch: routing it through the
-			// patched one would re-enter this handler and never terminate.
-			const probe = await originalFetch(opts.probePath, { method: "GET", cache: "no-store" });
-			if (probe.ok && !isMaintenance(probe)) return true;
-		} catch {
-			// Network error during a deploy is expected; keep waiting.
-		}
+		if ((await probe(originalFetch, opts.probePath)) === "up") return true;
 	}
 	return false;
+}
+
+type ProbeResult = "up" | "maintenance" | "unknown";
+
+/**
+ * Ask the app whether it is serving.
+ *
+ * `redirect: "manual"` is what makes the emergency window visible: followed,
+ * the zone redirect ends in a CORS failure indistinguishable from being
+ * offline; not followed, it is an `opaqueredirect`, which our probe route
+ * never answers with.
+ *
+ * Goes through the original fetch: routing it through the patched one would
+ * re-enter this handler and never terminate.
+ */
+async function probe(originalFetch: typeof fetch, path: string): Promise<ProbeResult> {
+	try {
+		const res = await originalFetch(path, { method: "GET", cache: "no-store", redirect: "manual" });
+		// Widened: the Workers typings (this module is also compiled for the tests)
+		// omit browser-only response types.
+		if ((res.type as string) === "opaqueredirect" || isMaintenance(res)) return "maintenance";
+		return res.ok ? "up" : "unknown";
+	} catch {
+		// Offline, or the Worker mid-deploy. Not a verdict either way.
+		return "unknown";
+	}
+}
+
+let diagnosis: Promise<boolean> | null = null;
+
+/**
+ * After a same-origin network error: is it the emergency redirect?
+ *
+ * Shared like the recovery wait, so a burst of failed requests costs one probe
+ * rather than one each.
+ */
+function isRedirectMaintenance(originalFetch: typeof fetch, path: string): Promise<boolean> {
+	diagnosis ??= probe(originalFetch, path)
+		.then((result) => result === "maintenance")
+		.finally(() => {
+			diagnosis = null;
+		});
+	return diagnosis;
+}
+
+/**
+ * Only our own origin is ours to diagnose. A third-party API failing says
+ * nothing about this app's maintenance, and holding its requests would only
+ * delay an error the caller should see.
+ */
+function isSameOrigin(input: RequestInfo | URL): boolean {
+	const raw = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+	const base = (globalThis as { location?: { href: string } }).location?.href ?? "http://localhost/";
+	try {
+		return new URL(raw, base).origin === new URL(base).origin;
+	} catch {
+		return false;
+	}
 }
 
 let recovery: Promise<boolean> | null = null;
@@ -169,32 +239,59 @@ export function installMaintenanceInterceptor(options: MaintenanceOptions = {}):
 	const opts = { ...DEFAULTS, ...options };
 	const originalFetch = globalThis.fetch.bind(globalThis);
 
-	globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-		// Already known to be down: hold the request without sending it. Only
-		// the first 503 costs a round trip; everything after it waits, so a
-		// server that is already struggling is not asked again until the single
-		// polling loop says it has recovered.
-		if (active) {
-			const recovered = await awaitRecovery(originalFetch, opts);
-			void recovered; // either way the request now goes out for the first time
-			return originalFetch(input, init);
+	/** Mark the app as down and start the one shared wait, if not already running. */
+	const enterMaintenance = (firstDelayMs: number | null) => {
+		if (!active) {
+			active = true;
+			since = Date.now();
+			emit();
 		}
+		void awaitRecovery(originalFetch, opts, firstDelayMs);
+	};
 
-		const response = await originalFetch(input, init);
-		if (!isMaintenance(response)) return response;
+	globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+		if (!isSameOrigin(input)) return originalFetch(input, init);
 
-		active = true;
-		since = Date.now();
-		emit();
+		// Per request, not per window: a request replayed into a window that
+		// opens again must still give up eventually.
+		const deadline = Date.now() + opts.maxWaitMs;
 
-		// The server said how long to wait; the first poll honours it.
-		const firstDelay = parseRetryAfterMs(response.headers.get("retry-after"), opts.maxRetryAfterMs);
-		const recovered = await awaitRecovery(originalFetch, opts, firstDelay);
-		// Give the caller the real answer, not the 503, so call sites never
-		// need to know this happened. If we gave up, the 503 is the honest
-		// result and the caller's own error handling takes over.
-		if (!recovered) return response;
-		return originalFetch(input, init);
+		for (;;) {
+			// Already known to be down: hold the request without sending it.
+			// Only the first failure costs a round trip; everything after it
+			// waits, so a server that is already struggling is not asked again
+			// until the single polling loop says it has recovered.
+			if (active) {
+				const recovered = await awaitRecovery(originalFetch, opts);
+				// Gave up: one last real attempt, and its result — 503, error or
+				// success — goes to the caller untouched. Its own error handling
+				// takes over from here.
+				if (!recovered || Date.now() >= deadline) return originalFetch(input, init);
+			}
+
+			let response: Response;
+			try {
+				response = await originalFetch(input, init);
+			} catch (error) {
+				// Either really offline, or the emergency redirect: a request
+				// stopped by the redirect never reached the Worker, so holding
+				// and replaying it is safe. Anything else is the caller's error.
+				if (Date.now() >= deadline || !(await isRedirectMaintenance(originalFetch, opts.probePath))) {
+					throw error;
+				}
+				// The redirect hides its headers, so no Retry-After: the
+				// default schedule applies.
+				enterMaintenance(null);
+				continue;
+			}
+
+			// Includes a replay that landed in a window that opened again: it
+			// goes back to waiting instead of handing the caller a 503.
+			if (!isMaintenance(response) || Date.now() >= deadline) return response;
+
+			// The server said how long to wait; the first poll honours it.
+			enterMaintenance(parseRetryAfterMs(response.headers.get("retry-after"), opts.maxRetryAfterMs));
+		}
 	};
 
 	return () => {
@@ -203,5 +300,6 @@ export function installMaintenanceInterceptor(options: MaintenanceOptions = {}):
 		active = false;
 		since = null;
 		recovery = null;
+		diagnosis = null;
 	};
 }
