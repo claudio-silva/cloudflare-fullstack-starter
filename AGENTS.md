@@ -102,7 +102,7 @@ Return errors through `AppError` / `fail()` (`src/worker/lib/errors.ts`): a mess
 if (!post) return fail(c, 404, "That post no longer exists.", { log: `post ${id} not found`, code: "post_not_found" });
 throw new AppError(403, "You can't edit someone else's post.", { log: `user ${user.id} → post ${id}` });
 ```
-In the browser, the HTTP layer (`src/react-app/lib/http/`) shows every API failure and then makes `fetch` **reject** with `HandledHttpError`. So call sites do not check `res.ok` or show error messages; code after `await fetch()` runs only on success. A call that handles a status itself lists it: `fetch(url, { handles: [404] })`. A `catch` that exists to undo local state must not show `HandledHttpError` again (`isHandledHttpError()`). See `docs/MECHANISMS.md`, *The HTTP layer*.
+In the browser, call the API with `http()` (`import { http } from "@/lib/http"`), never bare `fetch`. The HTTP layer (`src/react-app/lib/http/`) shows every failure of a managed call and then makes it **reject** with `HandledHttpError`. So call sites do not check `res.ok` or show error messages; code after `await http()` runs only on success. A call that handles a status itself lists it: `http(url, { handles: [404] })`; `"responses"` takes every response, `"all"` everything. A `catch` that exists to undo local state must not show `HandledHttpError` again (`isHandledHttpError()`). The layer manages only calls with a `handles` key (which `http()` adds): a plain `fetch` is left alone, so do not add `handles` to code that expects raw responses. Lost connections are retried automatically, writes included, with a stable `Idempotency-Key` — an endpoint where a duplicate would do harm should deduplicate on it. See `docs/MECHANISMS.md`, *The HTTP layer*.
 
 ### Localisation (i18n)
 User-facing strings of the starter's own UI — the HTTP layer's dialogs, banners and toasts among them — live in `src/react-app/lib/i18n.ts` and are read through `t(key, params)`. Add new ones there under a stable key with an English default. No i18n library is imposed: an app plugs its own in with `setTranslator()`, or changes a few words with `overrideMessages()`; a missing translation falls back to the default. Server messages are looked up as `error.<code>` first, so the server keeps writing English and the client translates by code. See `docs/MECHANISMS.md`, *Localising*.
@@ -313,7 +313,7 @@ Use the bundled shadcn/ui components (`@/components/ui/`) first, or compositions
 - Don't hardcode URLs (use environment-based config)
 - Don't deploy to production without the user's explicit approval, and never with raw `wrangler deploy`: use `npm run deploy:production` (`bin/deploy-production`)
 - Don't call a service SDK/API directly from feature code when an adapter exists (go through `src/worker/adapters/`)
-- Don't show API errors at call sites (`if (!res.ok) toast.error(...)`): the HTTP layer already has; use `handles` for statuses the call deals with itself
+- Don't call the app's API with bare `fetch` (it would bypass the HTTP layer), and don't show API errors at call sites (`if (!res.ok) toast.error(...)`): use `http()`, with `handles` for statuses the call deals with itself
 - Don't put internal details (SQL, ids of other users, stack traces) in an error's user message: they go in `log`
 
 ## Project-Specific Notes

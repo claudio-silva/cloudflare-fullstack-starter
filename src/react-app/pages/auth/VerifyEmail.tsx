@@ -4,6 +4,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/Logo";
 import { CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import { http } from "@/lib/http";
 
 export function VerifyEmail() {
 	const [searchParams] = useSearchParams();
@@ -23,9 +24,11 @@ export function VerifyEmail() {
 				}
 
 				// Let the browser follow the redirect to properly set the session cookie
-				const response = await fetch(`/api/auth/verify-email?token=${encodeURIComponent(token)}&callbackURL=/`, {
+				// "responses": every answer is handled below; a lost connection is still ridden out.
+				const response = await http(`/api/auth/verify-email?token=${encodeURIComponent(token)}&callbackURL=/`, {
 					method: "GET",
 					credentials: "include",
+					handles: "responses",
 				});
 
 				if (response.ok || response.redirected) {

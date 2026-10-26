@@ -9,7 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { User, Key, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { isHandledHttpError } from "@/lib/http/handled-error";
+import { http, isHandledHttpError } from "@/lib/http";
 
 export function Profile() {
 	const { data: session } = authClient.useSession();
@@ -116,7 +116,7 @@ export function Profile() {
 		try {
 			// No `if (!response.ok)`: a failure is shown by the HTTP layer and
 			// rejects, so the lines below only run when it worked.
-			await fetch("/api/profile", {
+			await http("/api/profile", {
 				method: "DELETE",
 				credentials: "include",
 			});

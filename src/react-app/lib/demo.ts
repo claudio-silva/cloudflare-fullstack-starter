@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { http } from "@/lib/http";
 
 /**
  * The demo account, when the app runs as the public demo (the `DEMO_MODE`
@@ -12,7 +13,7 @@ export type DemoAccount = { email: string; password: string };
 let request: Promise<DemoAccount | null> | null = null;
 
 function loadDemoAccount(): Promise<DemoAccount | null> {
-	request ??= fetch("/api/demo", { handles: "all" })
+	request ??= http("/api/demo", { handles: "all" })
 		.then((res) => (res.ok ? (res.json() as Promise<DemoAccount>) : null))
 		.catch(() => null);
 	return request;

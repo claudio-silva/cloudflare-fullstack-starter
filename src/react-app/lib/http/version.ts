@@ -11,7 +11,7 @@ import { createStore } from "./store";
  * the version this bundle was built with opens a dialog offering to reload.
  *
  *  - "Update now" reloads.
- *  - "Later" leaves a banner with an Update button, and turns on update-
+ *  - "Postpone" leaves a banner with an Update button, and turns on update-
  *    pending mode. The dialog does not come back: the user may be presenting,
  *    and a dialog that keeps returning is worse than a stale tab. Instead, the
  *    next client-side navigation becomes a full page load, which gets the new
@@ -50,7 +50,7 @@ export function updateNow(): void {
 	browser.location?.reload();
 }
 
-/** "Later": no more dialogs; the banner stays, and the next navigation loads the new version. */
+/** "Postpone": no more dialogs; the banner stays, and the next navigation loads the new version. */
 export function postponeUpdate(): void {
 	const { serverVersion } = updateStore.get();
 	updateStore.set({ status: "pending", serverVersion });

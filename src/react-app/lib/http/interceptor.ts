@@ -10,7 +10,7 @@ import {
 } from "../../../shared/http-contract";
 import { defaultMessages, t, translate, type MessageKey } from "../i18n";
 import { browser } from "./browser";
-import { awaitConnection, configureConnection } from "./connection";
+import { awaitConnection } from "./connection";
 import { HandledHttpError, isHandledHttpError } from "./handled-error";
 import { installMaintenanceInterceptor, MAINTENANCE_PROBE_PATH, type MaintenanceOptions } from "./maintenance";
 import { installErrorReporter, reportClientError } from "./reporter";
@@ -20,36 +20,50 @@ import { checkOnReturn, CLIENT_VERSION, noteServerVersion, reloadOnStaleChunks }
  * The app's HTTP layer: one place where every API call's low-level outcomes
  * are handled the same way, so feature code deals only with its own.
  *
- * Patches global `fetch` (like an Angular interceptor, and for the same
- * reason: libraries make their own requests). Same-origin calls under
- * `/api/` go through it; everything else is left alone.
+ * **Opt-in, per call.** It patches global `fetch`, but only a same-origin
+ * call under `/api/` that has a `handles` key in its options is managed —
+ * `handles: []` or `handles: null` is enough, and means "I know about the
+ * layer and handle no status myself". A call without the key is passed
+ * through untouched (its response's `X-App-Version` is read, nothing more),
+ * so code and libraries unaware of the layer behave exactly as without it.
+ * The app's own code uses `http()` (lib/http/http.ts), which adds the key.
  *
  * | Outcome                                   | What happens                                             |
  * |-------------------------------------------|----------------------------------------------------------|
  * | Maintenance (either mechanism)            | held and replayed — lib/http/maintenance.ts               |
- * | Network failure, 502/503/504/52x from edge | held behind one dialog — lib/http/connection.ts          |
+ * | Network failure, 502/503/504/52x from edge | held behind one dialog and sent again — lib/http/connection.ts |
  * | 4xx                                       | the server's message as a toast (warning, or its `level`) |
  * | 401                                       | the same, and the session is re-checked (sign-in shows)   |
  * | 5xx from the app                          | production: a generic toast with a reference; elsewhere, the real cause |
  * | Any response                              | `X-App-Version` checked — lib/http/version.ts             |
  *
- * After a handled failure, `fetch` **rejects** with `HandledHttpError`: the
+ * After a handled failure, the call **rejects** with `HandledHttpError`: the
  * call site's code simply stops, as it would after an Angular `$http` error,
  * and needs no `if (!res.ok)` for these cases. A caller that handles a status
- * itself says so, and gets the response as usual:
+ * itself lists it, and gets the response as usual:
  *
- *   const res = await fetch(`/api/posts/${id}`, { handles: [404] });
+ *   const res = await http(`/api/posts/${id}`, { handles: [404] });
  *   if (res.status === 404) return showEmptyState();
  *
- * `handles: [0]` takes network failures; `handles: "all"` takes everything.
+ * `handles: [0]` takes network failures; `"responses"` every HTTP response
+ * (Better Auth's client uses it: its forms show their own errors, while lost
+ * connections and maintenance are still ridden out); `"all"` everything.
  */
 
 declare global {
 	interface RequestInit {
-		/** Statuses this call handles itself (0 = network failure), or "all". See lib/http/interceptor.ts. */
-		handles?: number[] | "all";
+		/**
+		 * Present (even `[]` or `null`): this call is managed by the HTTP layer,
+		 * and handles itself only the statuses listed (0 = network failure).
+		 * `"responses"`: every HTTP response is the caller's, the layer only rides
+		 * out lost connections and maintenance. `"all"`: everything is the caller's.
+		 * Absent: the layer leaves the call alone. See lib/http/interceptor.ts.
+		 */
+		handles?: Handles;
 	}
 }
+
+export type Handles = number[] | "responses" | "all" | null;
 
 export type HttpLayerOptions = {
 	/**
@@ -57,14 +71,13 @@ export type HttpLayerOptions = {
 	 * Auth session, which shows the sign-in overlay if it has really expired.
 	 */
 	onUnauthorized?: () => void;
-	/** Paths that keep their own error handling. Better Auth reports its errors to its forms. */
-	unmanagedPrefixes?: string[];
 	/** Off to keep the browser's errors out of the Worker logs. */
 	reportErrors?: boolean;
 	maintenance?: MaintenanceOptions;
 };
 
 const API_PREFIX = "/api/";
+const IDEMPOTENCY_HEADER = "Idempotency-Key";
 const READS = new Set(["GET", "HEAD"]);
 
 let installed = false;
@@ -148,74 +161,79 @@ export function installHttpLayer(options: HttpLayerOptions = {}): () => void {
 	const uninstallMaintenance = installMaintenanceInterceptor(options.maintenance);
 	const inner = globalThis.fetch;
 
-	configureConnection({
-		probe: async () => {
-			try {
-				const res = await rawFetch(MAINTENANCE_PROBE_PATH, { cache: "no-store", redirect: "manual" });
-				// Anything the app (or the maintenance redirect) answered counts:
-				// it is reachable, and the maintenance layer takes it from there.
-				return (res.type as string) === "opaqueredirect" || !isUnreachable(res);
-			} catch {
-				return false;
-			}
-		},
-	});
-
-	const unmanaged = options.unmanagedPrefixes ?? ["/api/auth/"];
-
 	globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
 		const url = resolve(input);
-		if (!url || url.origin !== (browser.location?.origin ?? url.origin) || !url.pathname.startsWith(API_PREFIX)) {
-			return inner(input, init);
-		}
+		const api = !!url && url.origin === (browser.location?.origin ?? url.origin) && url.pathname.startsWith(API_PREFIX);
 
-		const { handles, ...rest } = init ?? {};
+		// Not opted in: untouched — not even held through maintenance. Only the
+		// version an API response reports is noted, which changes nothing for the caller.
+		if (init?.handles === undefined) {
+			const response = await rawFetch(input, init);
+			if (api) noteServerVersion(response.headers.get(APP_VERSION_HEADER));
+			return response;
+		}
+		if (!api) return inner(input, init);
+
+		const { handles, ...rest } = init;
 		const original = typeof input === "object" && !(input instanceof URL) ? input : null;
 		const headers = new Headers(rest.headers ?? original?.headers);
 		headers.set(CLIENT_VERSION_HEADER, CLIENT_VERSION);
-		const request: RequestInit = { ...rest, headers };
 		const method = (rest.method ?? original?.method ?? "GET").toUpperCase();
-		const callerHandles = (status: number) => handles === "all" || (handles?.includes(status) ?? false);
-		const managed = !unmanaged.some((prefix) => url.pathname.startsWith(prefix));
+		// The same key on every retry of this call, so the server can tell a
+		// repeat from a new request (see lib/http/connection.ts).
+		if (!READS.has(method) && !headers.has(IDEMPOTENCY_HEADER)) headers.set(IDEMPOTENCY_HEADER, crypto.randomUUID());
+		const request: RequestInit = { ...rest, headers };
 
-		for (;;) {
-			let response: Response;
+		/** Statuses the caller named, which it takes even when they mean "unreachable". */
+		const named = (status: number) => handles === "all" || (Array.isArray(handles) && handles.includes(status));
+		const callerHandles = (status: number) => named(status) || (handles === "responses" && status > 0);
+
+		type Attempt = { response: Response } | { error: unknown };
+		const send = async (): Promise<Attempt> => {
 			try {
 				// A Request's body can be read once: send a copy, keep the original for a retry.
-				response = await inner(original ? original.clone() : input, request);
+				return { response: await inner(original ? original.clone() : input, request) };
 			} catch (error) {
-				const aborted = rest.signal?.aborted || (error instanceof DOMException && error.name === "AbortError");
-				if (aborted || !managed || callerHandles(0)) throw error;
-				if ((await awaitConnection(READS.has(method), rest.signal)) === "retry") continue;
-				throw new HandledHttpError(t("connection.cancelled"), 0, undefined, { cause: error });
+				return { error };
 			}
+		};
+		const aborted = (error: unknown) => rest.signal?.aborted || (error instanceof DOMException && error.name === "AbortError");
+		const stillDown = (attempt: Attempt) =>
+			"error" in attempt
+				? !aborted(attempt.error) && !named(0)
+				: isUnreachable(attempt.response) && !named(attempt.response.status);
 
-			noteServerVersion(response.headers.get(APP_VERSION_HEADER));
-			if (response.status < 400 || !managed || callerHandles(response.status)) return response;
-
-			if (isUnreachable(response)) {
-				if ((await awaitConnection(READS.has(method), rest.signal)) === "retry") continue;
-				throw new HandledHttpError(t("connection.cancelled"), response.status);
+		let attempt = await send();
+		if (stillDown(attempt)) {
+			const held = await awaitConnection(send, stillDown, rest.signal);
+			if (held === "cancel") {
+				throw new HandledHttpError(t("connection.cancelled"), "response" in attempt ? attempt.response.status : 0);
 			}
-
-			const fromApp = response.headers.has(APP_VERSION_HEADER);
-			const body = await readErrorBody(response);
-			if (response.status >= 500 || !fromApp) {
-				// The Worker logged its own 5xx; these are for the ones it never saw,
-				// and to tie a server error to the page and version that hit it.
-				reportClientError({
-					kind: "http",
-					message: body?.debug?.message ?? body?.error ?? `HTTP ${response.status}`,
-					request: { method, url: url.pathname + url.search, status: response.status, requestId: body?.requestId },
-				});
-			}
-			if (!isProduction()) console.error(`[http] ${method} ${url.pathname} → ${response.status}`, body ?? response);
-
-			const { message, level, description } = describeError(response.status, body, fromApp);
-			notify(message, level, description);
-			if (response.status === 401) options.onUnauthorized?.();
-			throw new HandledHttpError(message, response.status, body);
+			attempt = held;
 		}
+		if ("error" in attempt) throw attempt.error;
+		const response = attempt.response;
+
+		noteServerVersion(response.headers.get(APP_VERSION_HEADER));
+		if (response.status < 400 || callerHandles(response.status)) return response;
+
+		const fromApp = response.headers.has(APP_VERSION_HEADER);
+		const body = await readErrorBody(response);
+		if (response.status >= 500 || !fromApp) {
+			// The Worker logged its own 5xx; these are for the ones it never saw,
+			// and to tie a server error to the page and version that hit it.
+			reportClientError({
+				kind: "http",
+				message: body?.debug?.message ?? body?.error ?? `HTTP ${response.status}`,
+				request: { method, url: url.pathname + url.search, status: response.status, requestId: body?.requestId },
+			});
+		}
+		if (!isProduction()) console.error(`[http] ${method} ${url.pathname} → ${response.status}`, body ?? response);
+
+		const { message, level, description } = describeError(response.status, body, fromApp);
+		notify(message, level, description);
+		if (response.status === 401) options.onUnauthorized?.();
+		throw new HandledHttpError(message, response.status, body);
 	};
 
 	// An API call whose failure was already shown and that nobody caught is

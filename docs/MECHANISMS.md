@@ -141,9 +141,14 @@ Call sites never learn any of this happened. `<MaintenanceOverlay />` shows a
 banner — not a modal, and with no retry button, because the request is already
 being retried and a button would only add a second one.
 
-It patches global `fetch` rather than exporting a wrapper for the reason Angular
-uses an HTTP interceptor: libraries make their own requests, and Better Auth's
-would otherwise slip past.
+Only calls managed by the HTTP layer are held (see below): those that opt in
+with `handles`, which includes the app's `http()` calls and Better Auth's.
+
+**Why maintenance polls `/api/ping` while a lost connection retries the real
+request:** in maintenance the app is known to be busy and down for minutes,
+so held requests are deliberately *not* sent until it is back; one cheap
+probe is the polite way to find out. A lost connection is usually the
+user's network, and the request itself is the cheapest probe there is.
 
 ### Emergency — `npm run maintenance`
 
@@ -223,32 +228,61 @@ incompatibly.
 ### In the browser: one interceptor, no `if (!res.ok)`
 
 `installHttpLayer()` (`src/react-app/lib/http/interceptor.ts`, called in
-`main.tsx`) patches global `fetch` — like an Angular interceptor, and for the
-same reason: libraries make their own requests. Same-origin calls under
-`/api/` go through it, except `/api/auth/`, whose errors Better Auth reports
-to its own forms.
+`main.tsx`) patches global `fetch` — like an Angular interceptor — but manages
+**only the calls that opt in**: a same-origin call under `/api/` whose options
+have a `handles` key. `handles: []` or `handles: null` is enough; it says "I
+know about the layer, and handle no status myself". A call without the key is
+passed through untouched — not even held through maintenance; only the
+`X-App-Version` of its response is noted, which changes nothing for the
+caller. So code and libraries that know nothing about the layer behave
+exactly as they would without it.
+
+The app's own code calls `http()` (`import { http } from "@/lib/http"`), a
+one-line wrapper that gives `handles` a default of `[]`, so call sites carry
+no ceremony.
 
 | Outcome | What happens |
 |---|---|
 | Maintenance (either mechanism) | held and replayed — see [Maintenance mode](#maintenance-mode) |
-| Network failure, or 502/503/504/52x from the edge | held behind one dialog — see below |
+| Network failure, or 502/503/504/52x from the edge | held behind one dialog and sent again — see below |
 | 4xx | the server's message as a toast (warning, or the server's `level`) |
 | 401 | the same, and the session is re-checked, which brings up sign-in |
 | 5xx | production: a generic message with a reference to quote; elsewhere, the real cause |
 
-After a failure it has shown, `fetch` **rejects** with `HandledHttpError`.
-The caller's code after `await fetch()` simply does not run, so call sites
+After a failure it has shown, the call **rejects** with `HandledHttpError`.
+The caller's code after `await http()` simply does not run, so call sites
 need no error handling for these cases; a `catch` is only for undoing
 something of their own, and should let `HandledHttpError` go (an uncaught
-one is silenced, not reported). A call that handles a status itself says so,
+one is silenced, not reported). A call that handles a status itself lists it,
 and gets the response as usual:
 
 ```ts
-const res = await fetch(`/api/posts/${id}`, { handles: [404] });
+const res = await http(`/api/posts/${id}`, { handles: [404] });
 if (res.status === 404) return showEmptyState();
 ```
 
-`handles: [0]` takes network failures, `handles: "all"` everything.
+| `handles` | The caller takes | The layer takes |
+|---|---|---|
+| absent | everything | nothing — the call is not managed |
+| `[]`, `null` (the `http()` default) | nothing | everything |
+| `[404, 409]` | those statuses | the rest |
+| `[0]` | network failures | the rest |
+| `"responses"` | every HTTP response | lost connections and maintenance |
+| `"all"` | everything | nothing but maintenance |
+
+Better Auth's client opts in with `"responses"` (`customFetchImpl` in
+`src/react-app/lib/auth/client.ts`): its forms keep showing its own errors,
+while a sign-in during a dropped connection or a maintenance window waits
+instead of failing. Any library that accepts a custom `fetch` can be wired
+the same way.
+
+**Why opt-in, keyed on `handles`:** a global patch that changed the
+behaviour of every request would break code written without knowing about
+it — a library that expects to see its 4xx, a call site that already shows
+its own error. The key's presence is the caller saying it knows. The other way
+to get the same guarantee is not to patch at all and export only a wrapper,
+but then nothing reaches requests that libraries make, not even to note the
+server's version.
 
 **Why reject rather than resolve with the error response:** a resolved error
 response must be checked at every call site, and the one that forgets carries
@@ -259,22 +293,35 @@ rejection fails safe.
 
 A network error, or a gateway status *without* our version header (the edge
 answering for an app it could not reach), opens one modal dialog that counts
-down to the next check of `/api/ping` (3, 5, 10, 20, then every 30 s). However
-many requests failed, there is one dialog and one check.
+down to the next attempt (3, 5, 10, 20, then every 30 s). However many
+requests failed, there is one dialog. *Try now* — focused, so Enter works —
+skips the countdown; *Cancel* rejects every held request with
+`HandledHttpError`.
 
-- **Reads** (GET, HEAD) are sent again by themselves once the app answers.
-- **Writes** wait for the user to press *Send*. A write that failed on the way
-  back may already have been carried out, and only the user knows whether
-  sending it twice matters.
-- **Cancel** rejects every held request with `HandledHttpError`.
+**The attempt is the request itself.** There is no status endpoint to ask:
+the held requests are sent again, oldest first, and the first is the check.
+If it gets through, the app is reachable and that request has done its job,
+so the rest follow in order and the dialog closes; if it does not, they all
+wait for the next attempt. Reads and writes alike, and with nothing to
+confirm: the user did something and wants it done, and has no way of judging
+which HTTP method a click turned into.
+
+**Every managed write carries an `Idempotency-Key`**, the same on each retry
+of that call. A write that failed on the way *back* may already have been
+carried out, and sending it again repeats it. For most writes that is
+harmless (setting a name twice); where it is not — a payment, an order, a
+message — the endpoint should remember the keys it has served and answer a
+repeat with the first result. The starter sends the key; deduplicating is the
+endpoint's decision, since only it knows what a duplicate costs.
 
 Unlike the maintenance banner, this dialog is modal and offers a way out: a
-maintenance window is known to end, a lost connection is not.
+maintenance window is known to end, a lost connection is not. While a
+maintenance window is on, the dialog stays closed and the banner speaks.
 
 ### New versions
 
 The first response whose `X-App-Version` differs from the version the bundle
-was built with opens a dialog: *Update now* reloads; *Later* leaves a banner
+was built with opens a dialog: *Update now* reloads; *Postpone* leaves a banner
 across the top of the page with an *Update* button, and the dialog never comes
 back — the user may be presenting. Instead, while an update is pending, the
 next client-side navigation becomes a full page load (`history.pushState`,

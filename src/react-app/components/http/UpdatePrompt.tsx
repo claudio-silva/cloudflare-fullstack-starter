@@ -26,7 +26,16 @@ export function UpdateDialog() {
 			}}>
 				<AlertDialogHeader>
 					<AlertDialogTitle>{t("update.title", { app: config.appName })}</AlertDialogTitle>
-					<AlertDialogDescription>{t("update.body")}</AlertDialogDescription>
+					<AlertDialogDescription asChild>
+						<div className="space-y-3">
+							<p>{t("update.body")}</p>
+							<p className="text-xs">
+								{t("update.unsaved", { later: t("update.later") })}
+								<br />
+								{t("update.postponed")}
+							</p>
+						</div>
+					</AlertDialogDescription>
 				</AlertDialogHeader>
 				<AlertDialogFooter>
 					<Button variant="outline" onClick={postponeUpdate}>
@@ -67,10 +76,11 @@ export function UpdateBanner() {
 		<div
 			role="status"
 			style={{ height: BANNER_HEIGHT }}
-			className="fixed inset-x-0 top-0 z-50 flex items-center justify-center gap-3 border-b bg-muted px-4 text-sm"
+			// Dark, desaturated blue with white text: clearly not part of the page.
+			className="fixed inset-x-0 top-0 z-50 flex items-center justify-center gap-3 bg-[hsl(215_32%_27%)] px-4 text-sm text-white"
 		>
 			<span>{t("update.banner", { app: config.appName })}</span>
-			<Button size="sm" variant="outline" className="h-7" onClick={updateNow}>
+			<Button size="sm" className="h-7 bg-white text-[hsl(215_32%_27%)] hover:bg-white/90" onClick={updateNow}>
 				{t("update.bannerAction")}
 			</Button>
 		</div>

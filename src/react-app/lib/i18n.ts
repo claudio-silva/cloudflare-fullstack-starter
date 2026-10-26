@@ -11,7 +11,7 @@
  *   setTranslator((key, params) => (i18n.exists(key) ? i18n.t(key, params) : undefined));
  *
  *   // no library: a single language, a few words changed
- *   overrideMessages({ "update.now": "Actualizar agora", "update.later": "Mais tarde" });
+ *   overrideMessages({ "update.now": "Actualizar agora", "update.later": "Adiar" });
  *
  * Placeholders are `{name}`, which is also ICU MessageFormat's simple
  * argument, so the same strings work in FormatJS and Lingui as they are.
@@ -32,9 +32,7 @@ export const defaultMessages = {
 	"connection.body": "Check your internet connection. What you were doing is on hold and will carry on when the connection returns.",
 	"connection.countdown": "Trying again in {seconds}s…",
 	"connection.checking": "Trying again…",
-	"connection.restored": "The connection is back. Send what was on hold?",
 	"connection.retry": "Try now",
-	"connection.send": "Send",
 	"connection.cancel": "Cancel",
 	"connection.cancelled": "The operation was cancelled.",
 
@@ -52,10 +50,12 @@ export const defaultMessages = {
 	"http.reference": "Reference: {id}",
 
 	// New version (lib/http/version.ts)
-	"update.title": "A new version of {app} is available",
-	"update.body": "Update now so everything keeps working as it should. If you are in the middle of something, you can update later.",
+	"update.title": "A new version of the app is available.",
+	"update.body": "To make sure the app works correctly, you should update it now.",
+	"update.unsaved": "If you are writing something you have not saved yet, click {later} and save your work now.",
+	"update.postponed": "If you postpone, update the app as soon as you can, to avoid it malfunctioning.",
 	"update.now": "Update now",
-	"update.later": "Later",
+	"update.later": "Postpone",
 	"update.banner": "A new version of {app} is available.",
 	"update.bannerAction": "Update",
 } as const;
