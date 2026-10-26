@@ -40,7 +40,12 @@ export function defineCliBackupSuite(label: string, kind: DatabaseKind, fresh: (
 			await createProjectTables(db, kind);
 			const now = dbNow(kind);
 			await db.insertInto("users").values({ id: "u1", email: "a@example.com", createdAt: now, updatedAt: now }).execute();
-			for (let i = 0; i < 1200; i++) await db.insertInto("z_parent").values({ title: `row ${i}` }).execute();
+			// In batches: 1200 single-row inserts made this the one test that a busy machine could push past its timeout.
+			// 100 per statement keeps under D1's limit of 100 bound parameters, should this suite ever run there.
+			for (let i = 0; i < 1200; i += 100) {
+				const batch = Array.from({ length: 100 }, (_, j) => ({ title: `row ${i + j}` }));
+				await db.insertInto("z_parent").values(batch).execute();
+			}
 			const count = async (d: AnyDb) => Number((await d.selectFrom("z_parent").select(sql<number>`count(*)`.as("n")).executeTakeFirstOrThrow()).n);
 
 			const dir = mkdtempSync(join(tmpdir(), "backup-test-"));

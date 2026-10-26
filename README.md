@@ -32,13 +32,13 @@ This starter removes that overhead **entirely**. Create a project from the templ
 | **Complete Auth Flow** | Sign up, email verification, login, logout, profile management, powered by [Better Auth](https://www.better-auth.com/) |
 | **Transactional emails** | Email verification and password reset through a swappable adapter: Cloudflare Email Service by default, other providers easy to add |
 | **CLI Tools** | User management and full database tooling (migrate, backup, restore, time-travel, seed) across all environments, from your terminal |
-| **One-command, versioned releases** | `npm run deploy:production` bumps the version, tags `vX.Y.Z` and deploys — or hands off to CI and waits until the Worker reports the new version. A push with no tag deploys nothing, so nothing goes live without a version. `GET /api/` reports the running version and commit |
-| **Three deploy modes** | One committed setting in `deploy.config.ts`: `manual` (build and deploy from your machine), `workers-builds` (Cloudflare builds it) or `external-ci` (GitLab CI, GitHub Actions, anything). All three run the same pipeline script, so a CI deploy and a laptop deploy cannot drift apart. Setting `manual` also switches CI deploys off, without touching the CI configuration |
-| **Zero-downtime migrations** | Each migration declares `expand`, `contract` or `breaking`, and the deploy orders it accordingly: additive changes before the new code, removals after it — guarded by `safeSince`, so a column is never dropped while the live release still reads it — and only a `breaking` one opens a maintenance window. Idempotent `ensure*` helpers and a migration journal make a failed run safe to re-run, even on databases that cannot roll back schema changes |
-| **Maintenance mode, planned and emergency** | **Planned:** a `MAINTENANCE` Worker var makes the app answer 503 in place (HTML page or JSON, by `Accept`), at no per-request cost; the deploy sets it around a `breaking` migration. **Emergency:** `npm run maintenance -- on` redirects the whole zone to your maintenance page in seconds, and works even when the Worker itself is broken. Either way, the open app holds its requests, tells the user, and replays them when service returns — no lost work, and no burst of duplicate polling on recovery |
-| **Sign-in log** | Every sign-in attempt, successful or failed, with IP, user agent and country; pruned by a cron; `npm run db -- logins` |
+| **Versioned releases** | One command ships a tagged release; you always know which version is live |
+| **Deploy your way** | From your machine, Cloudflare Workers Builds or your own CI, through the same pipeline |
+| **Zero-downtime migrations** | Schema changes ship without taking the app down |
+| **Maintenance mode** | Planned or emergency, and users don't lose what they were doing |
+| **Sign-in log** | Who signed in, and who tried |
 | **Built-in Observability** | Monitor your Worker logs, metrics, traces, performance and health |
-| **CI/CD Ready** | GitHub Actions workflow validates every push: lint, type-check, tests, build and an E2E smoke test must pass. Deploy jobs for Workers Builds or your own CI are documented in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).<br>You can also display the CI status badge in your README.md |
+| **CI/CD Ready** | GitHub Actions workflow validates every push: lint, type-check, tests, build and an E2E smoke test must pass.<br>You can also display the CI status badge in your README.md |
 | **Testing** | Vitest integration tests running in the Workers runtime against D1 (migrations applied), plus a Playwright E2E smoke test |
 | **Beautiful UI** | 50+ [shadcn/ui](https://ui.shadcn.com/) components, dark/light theme with FOUC prevention |
 | **Agent skill, release log and upgrade guide** | An installable skill plus [UPGRADING.md](UPGRADING.md) (breaking changes per release, staged upgrades) so agents can install, convert and upgrade without trial and error |
