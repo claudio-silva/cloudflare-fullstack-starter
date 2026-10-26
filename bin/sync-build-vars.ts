@@ -6,7 +6,9 @@
  *
  * What counts as a build variable:
  *   - plain:  every `VITE_*` key (public by definition — it is inlined into the
- *             client bundle) and `CLI_API_URL*` (the public URL migrations call);
+ *             client bundle), `CLI_API_URL*` (the public URL migrations call),
+ *             `DEPLOY_MODE` / `DEPLOY_BRANCH` (the CI guard reads them), and
+ *             `D1_DATABASE_ID` / `APP_VERSION_FROM` (read by the build itself);
  *   - secret: `CLI_API_KEY` (write-only in the dashboard), because migrations run
  *             through the deployed Worker and CI must be able to call it.
  * Every other key is a runtime secret and goes through `bin/sync-secrets.ts`.
@@ -52,7 +54,9 @@ function parseEnvFile(filePath: string): Record<string, string> {
 }
 
 const SECRET_BUILD_KEYS = new Set(["CLI_API_KEY"]);
-const isBuildKey = (key: string) => key.startsWith("VITE_") || key.startsWith("CLI_API_URL") || SECRET_BUILD_KEYS.has(key);
+const PLAIN_BUILD_KEYS = new Set(["DEPLOY_MODE", "DEPLOY_BRANCH", "D1_DATABASE_ID", "APP_VERSION_FROM"]);
+const isBuildKey = (key: string) =>
+	key.startsWith("VITE_") || key.startsWith("CLI_API_URL") || PLAIN_BUILD_KEYS.has(key) || SECRET_BUILD_KEYS.has(key);
 
 function flag(args: string[], name: string): string | undefined {
 	const i = args.indexOf(name);

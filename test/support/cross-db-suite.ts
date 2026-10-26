@@ -30,7 +30,7 @@ export function defineCrossDbSuite(label: string, kind: DatabaseKind, fresh: () 
 			await migrateDatabase(db, { kind });
 			expect((await migrateDatabase(db, { kind })).applied).toEqual([]);
 			const rows = await db.selectFrom("kysely_migration").select("name").orderBy("name").execute();
-			expect(rows.map((r: { name: string }) => r.name)).toEqual(["0001_initial", "0002_add_role", "0003_account_token_columns", "0004_login_events"]);
+			expect(rows.map((r: { name: string }) => r.name)).toEqual(["0001_initial", "0002_add_role", "0003_account_token_columns", "0004_login_events", "0005_credential_account_ids"]);
 		});
 
 		it("supports the portable query subset the app uses", async () => {

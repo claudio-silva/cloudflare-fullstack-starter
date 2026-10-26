@@ -2,6 +2,7 @@ import { Command, Option } from "commander";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, resolve } from "node:path";
+import { tmpdir } from "node:os";
 import { createInterface } from "node:readline";
 import { applyRestore, prepareRestore, readBackup, writeBackup } from "../src/cli/utils/backup";
 import { connectToDatabase, getApiBaseUrl, type CliDatabaseClient } from "../src/cli/utils/db";
@@ -42,12 +43,36 @@ function getDatabaseName(env: DbEnvironment): string {
 	return match[1];
 }
 
-function runWrangler(args: string[]): void {
+function runWrangler(args: string[], cwd?: string): void {
 	execFileSync("wrangler", args, {
 		stdio: "inherit",
 		env: process.env,
 		timeout: commandTimeoutMs,
+		cwd,
 	});
+}
+
+/**
+ * Run `wrangler d1 <...> <database>` against the remote database of `env`.
+ *
+ * Normally wrangler resolves the database through wrangler.toml. When the real
+ * id is not committed but given as `D1_DATABASE_ID` (a template, see
+ * vite.config.ts), wrangler.toml holds a placeholder for that name, so it runs
+ * from an empty directory instead, where wrangler looks the name up through
+ * the API.
+ */
+function runWranglerD1(command: string[], env: Exclude<DbEnvironment, "local">, extra: string[] = []): void {
+	if (process.env.D1_DATABASE_ID) {
+		const wranglerBin = resolve(process.cwd(), "node_modules/.bin/wrangler");
+		execFileSync(wranglerBin, ["d1", ...command, getDatabaseName(env), ...extra], {
+			stdio: "inherit",
+			env: process.env,
+			timeout: commandTimeoutMs,
+			cwd: tmpdir(),
+		});
+		return;
+	}
+	runWrangler(["d1", ...command, getDatabaseName(env), "--env", env, ...extra]);
 }
 
 function formatTimestampForFilename(date = new Date()): string {
@@ -347,7 +372,7 @@ async function takeSafetyNet(client: CliDatabaseClient, env: DbEnvironment, arch
 	if (remote && (await client.backupInfo()).kind === "sqlite") {
 		console.log(`Time Travel bookmark before migrating ${env} (restore: npm run db -- time-travel restore --env ${env} --bookmark <id>):`);
 		try {
-			runWrangler(["d1", "time-travel", "info", getDatabaseName(env), "--env", env]);
+			runWranglerD1(["time-travel", "info"], env);
 		} catch {
 			console.warn("  (could not read the bookmark: the token needs D1 access; continuing)");
 		}
@@ -812,15 +837,7 @@ Examples:
 			const parent = command.parent?.opts() as { env: Exclude<DbEnvironment, "local"> };
 			const env = parent?.env ?? "preview";
 			const timestamp = options.timestamp ? parseTimestamp(options.timestamp) : undefined;
-			runWrangler([
-				"d1",
-				"time-travel",
-				"info",
-				getDatabaseName(env),
-				"--env",
-				env,
-				...(timestamp ? ["--timestamp", timestamp] : []),
-			]);
+			runWranglerD1(["time-travel", "info"], env, timestamp ? ["--timestamp", timestamp] : []);
 		}),
 );
 
@@ -850,13 +867,7 @@ Examples:
 			}
 			const timestamp = hasTimestamp ? parseTimestamp(options.timestamp as string) : undefined;
 
-			runWrangler([
-				"d1",
-				"time-travel",
-				"restore",
-				getDatabaseName(env),
-				"--env",
-				env,
+			runWranglerD1(["time-travel", "restore"], env, [
 				...(timestamp ? ["--timestamp", timestamp] : []),
 				...(hasBookmark ? ["--bookmark", options.bookmark!] : []),
 			]);

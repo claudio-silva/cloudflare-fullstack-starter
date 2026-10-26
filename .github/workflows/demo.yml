@@ -1,0 +1,29 @@
+# Deploys the starter's public demo when a release of the template is published.
+#
+# Cloudflare Workers Builds does the build and the deploy; it triggers on branch
+# pushes only, never on tags or releases, so this calls the Worker's deploy hook
+# instead (docs/DEPLOYMENT.md, "workers-builds").
+#
+# In a project created from the template the secret does not exist and this
+# job does nothing: the demo is the template's, not yours. Delete this file if
+# you prefer.
+name: Demo
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  deploy-demo:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger the demo build on Cloudflare
+        env:
+          DEMO_DEPLOY_HOOK_URL: ${{ secrets.DEMO_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$DEMO_DEPLOY_HOOK_URL" ]; then
+            echo "No DEMO_DEPLOY_HOOK_URL secret: nothing to deploy."
+            exit 0
+          fi
+          curl --fail-with-body --silent --show-error -X POST "$DEMO_DEPLOY_HOOK_URL"

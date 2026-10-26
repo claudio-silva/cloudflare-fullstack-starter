@@ -164,8 +164,10 @@ Local builds read `.env.<env>`; a CI build has no such file. `npm run sync-build
 
 | Pushed as | Keys |
 |---|---|
-| Plain build variable | every `VITE_*` (public by definition: it ends up in the client bundle) and `CLI_API_URL*` |
+| Plain build variable | every `VITE_*` (public by definition: it ends up in the client bundle), `CLI_API_URL*`, `DEPLOY_MODE` / `DEPLOY_BRANCH` (read by the CI guard), and `D1_DATABASE_ID` / `APP_VERSION_FROM` (read by the build; see below) |
 | Secret build variable (write-only) | `CLI_API_KEY`, which CI needs to run migrations through the Worker |
+
+`D1_DATABASE_ID` replaces the `DB` binding's `database_id` in the generated config, so a deployment can use its own database without editing the committed `wrangler.toml` — that is how the starter's demo runs from the template unchanged. `APP_VERSION_FROM=starter` makes the build report `starter.version` instead of `version`. Neither is a Worker secret: `sync-secrets` skips them, and every `DEPLOY_*` key.
 
 Whoever holds the `.env.*` files is the source of truth: their values overwrite the cloud ones; keys missing from the file are left untouched. Everyone else just uses what was pushed. Runtime secrets still go through `bin/sync-secrets.ts` (it skips `VITE_*`).
 

@@ -8,6 +8,8 @@ Install and start building. Authentication, database, UI, CLI, and deployment ar
 
 A great starting point for your next **MVP** or **SaaS** app.
 
+**[Live demo](https://cloudflare-fullstack-starter-production.dev-c1b.workers.dev)** — the template as it is, deployed from this repository's latest release. It is read-only: the sign-in page gives you the account, and nothing you change is saved.
+
 ---
 
 ## Why This Starter?
@@ -42,6 +44,7 @@ This starter removes that overhead **entirely**. Create a project from the templ
 | **Auto-update** | Open tabs learn about a new release and move to it without losing work |
 | **Client error reporting** | Browser errors land in your Worker logs, with abuse protection |
 | **Localisable** | Every built-in string can be translated, with or without an i18n library |
+| **Demo mode** | One secret turns a deployment into a public, read-only showcase that is safe to leave online |
 | **Built-in Observability** | Monitor your Worker logs, metrics, traces, performance and health |
 | **CI/CD Ready** | GitHub Actions workflow validates every push: lint, type-check, tests, build and an E2E smoke test must pass.<br>You can also display the CI status badge in your README.md |
 | **Testing** | Vitest integration tests running in the Workers runtime against D1 (migrations applied), plus a Playwright E2E smoke test |
@@ -244,6 +247,43 @@ If wrangler is logged in, you can do it from the command line:
 - Theme-aware logo component (auto-switches light/dark)
 - Theme can be passed via URL parameter for cross-app preference carry-over (e.g. from landing page to app)
 - 50+ shadcn/ui components ready to use
+
+## Errors, connectivity and updates
+
+A client/server app fails in the same few ways everywhere: the server refuses something, the server breaks, the connection drops, or the server is upgraded under a page that is still open. The starter handles each of them **once, for the whole app**, on both sides of one contract (`src/shared/http-contract.ts`), so feature code deals only with what belongs to the feature. The reasoning behind every choice below is in [docs/MECHANISMS.md — The HTTP layer](docs/MECHANISMS.md#the-http-layer).
+
+### Error handling
+
+- **One error shape.** Every error the Worker sends is `{ error, code, level, requestId }`. `error` is written for the user; the real cause goes only to the logs. Handlers say both at once with `AppError` / `fail()` (`src/worker/lib/errors.ts`), and anything else thrown — a bug — becomes a generic 500 whose cause is logged, and shown to developers outside production.
+- **No error handling at call sites.** `installHttpLayer()` (`src/react-app/lib/http/`) patches the browser's `fetch`, so it also covers requests made by libraries. A failed API call shows its message once, as a toast, and the `fetch` then **rejects** with `HandledHttpError`: the code after `await fetch()` runs only on success, and the call site that forgets to check `res.ok` cannot carry on as if it had worked. A 401 brings up sign-in.
+- **Opt-out where a feature handles a status itself:** `fetch(url, { handles: [404] })` gets the response as usual (`handles: "all"` for everything).
+- **Scope.** Only same-origin requests under `/api/` are managed. Better Auth's `/api/auth/` is left alone — its forms show their own errors — and so is every other origin, so third-party libraries behave exactly as they would without the layer.
+
+### Lost connection
+
+A network failure, or a gateway error from the edge, holds the request behind **one** dialog that counts down to the next check — however many requests failed. When the app answers again, reads are sent again by themselves and writes wait for the user to press *Send* (a write that failed on the way back may already have been applied). Maintenance windows are held the same way, behind a banner, and replayed when they end. → [Lost connection](docs/MECHANISMS.md#lost-connection), [Maintenance mode](docs/MECHANISMS.md#maintenance-mode)
+
+### Automatic update of open tabs
+
+Every response carries the server's version (`X-App-Version`). When it changes — a release, or a rollback — open tabs offer to update: *Update now* reloads, *Later* leaves a banner, and the next in-app navigation becomes a full page load, the one moment nothing typed can be lost. Tabs returning from the background check once, and a lazily loaded chunk that no longer exists reloads the page. → [New versions](docs/MECHANISMS.md#new-versions)
+
+### Client error reporting
+
+Uncaught errors, unhandled rejections, stale chunks and 5xx responses in the browser are posted to `POST /api/client-errors` and written to the Worker logs with `source: "client"`, the page, the client version and the browser — so you see the failures your users see, next to the server's. Nothing is stored. The endpoint has to be open (the errors that matter most can happen before sign-in), so it accepts only its own origin, caps sizes, is rate-limited per IP, and always answers 204. Turn it off with `config.http.reportClientErrors`. → [Client error reports](docs/MECHANISMS.md#client-error-reports)
+
+## Localisation (i18n)
+
+The starter's own user-facing strings — dialogs, banners, toasts, the messages above — are English defaults under stable keys in `src/react-app/lib/i18n.ts`, read through `t()`. No i18n library is imposed: plug in the one your app uses with `setTranslator()`, or change a few words without one with `overrideMessages()`. A missing translation falls back to the English default, never to a raw key, and server messages can be translated on the client by their `code` (`error.<code>`). → [Localising](docs/MECHANISMS.md#localising)
+
+## Demo mode
+
+Setting the `DEMO_MODE` secret on a deployed Worker turns it into a public showcase — the [live demo](https://cloudflare-fullstack-starter-production.dev-c1b.workers.dev) runs this way:
+
+- **Read-only:** every write under `/api/` is refused with a message the UI shows, except signing in and out. Nobody can change the demo account, sign up, or store anything, so the data never needs resetting.
+- **No email:** the email adapter becomes a no-op, so the app can never be used to send mail.
+- **The account is offered on the sign-in page** (`DEMO_EMAIL` / `DEMO_PASSWORD`), and sign-in attempts are rate-limited per IP.
+
+Everything that makes a deployment a demo lives on that deployment (Worker secrets, build variables), never in the repository: a project created from the template is not a demo and has nothing to switch off. → [Demo mode](docs/MECHANISMS.md#demo-mode)
 
 ## Project Structure
 

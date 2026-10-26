@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from "../ui/alert";
 import { Eye, EyeOff } from "lucide-react";
 import { GoogleSignInButton } from "./GoogleSignInButton";
 import { config } from "../../../config";
+import { useDemoAccount } from "@/lib/demo";
 
 interface LoginFormProps {
 	onSuccess?: () => void;
@@ -22,6 +23,9 @@ export function LoginForm({ onSuccess, showSignupLink = true }: LoginFormProps) 
 	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState("");
 	const passwordRef = useRef<HTMLInputElement>(null);
+	// The public demo: offer its account, and hide what it would refuse anyway.
+	const demo = useDemoAccount();
+	const isDemo = !!demo;
 
 	useEffect(() => {
 		if (error && passwordRef.current) {
@@ -69,6 +73,28 @@ export function LoginForm({ onSuccess, showSignupLink = true }: LoginFormProps) 
 			{error && (
 				<Alert variant="destructive" className="bg-red-50 dark:bg-red-950 border-red-500">
 					<AlertDescription className="text-red-800 dark:text-red-200">{error}</AlertDescription>
+				</Alert>
+			)}
+
+			{demo && (
+				<Alert>
+					<AlertDescription className="flex flex-wrap items-center justify-between gap-2">
+						<span>
+							This is a read-only demo. Sign in as <strong>{demo.email}</strong> with password{" "}
+							<strong>{demo.password}</strong>.
+						</span>
+						<Button
+							type="button"
+							size="sm"
+							variant="outline"
+							onClick={() => {
+								setEmail(demo.email);
+								setPassword(demo.password);
+							}}
+						>
+							Fill in
+						</Button>
+					</AlertDescription>
 				</Alert>
 			)}
 
@@ -120,7 +146,7 @@ export function LoginForm({ onSuccess, showSignupLink = true }: LoginFormProps) 
 				</div>
 			</div>
 
-			<div className="flex justify-between items-center text-sm">
+			{!isDemo && <div className="flex justify-between items-center text-sm">
 				<button
 					type="button"
 					onClick={() => navigate(`/forgot-password${email ? `?email=${encodeURIComponent(email)}` : ""}`)}
@@ -140,7 +166,7 @@ export function LoginForm({ onSuccess, showSignupLink = true }: LoginFormProps) 
 						</button>
 					</div>
 				)}
-			</div>
+			</div>}
 
 			<div className="flex justify-center">
 				<Button type="submit" className="w-1/2 mt-2 mb-2" disabled={isLoading}>
@@ -148,7 +174,7 @@ export function LoginForm({ onSuccess, showSignupLink = true }: LoginFormProps) 
 				</Button>
 			</div>
 
-			{config.auth.enableGoogleAuth && (
+			{config.auth.enableGoogleAuth && !isDemo && (
 				<>
 					<div className="relative my-4">
 						<div className="absolute inset-0 flex items-center">

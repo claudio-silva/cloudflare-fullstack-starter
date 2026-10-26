@@ -2,7 +2,7 @@ import path from "node:path";
 import { defineConfig } from "vitest/config";
 import { cloudflareTest } from "@cloudflare/vitest-plugin";
 
-const alias = { "@": path.resolve(__dirname, "./src/react-app") };
+const alias = { "@": path.resolve(import.meta.dirname, "./src/react-app") };
 
 // Two projects:
 //  - worker:   runs inside workerd with the real wrangler.toml bindings (D1, Durable Objects)

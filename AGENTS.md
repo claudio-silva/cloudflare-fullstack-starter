@@ -104,7 +104,11 @@ throw new AppError(403, "You can't edit someone else's post.", { log: `user ${us
 ```
 In the browser, the HTTP layer (`src/react-app/lib/http/`) shows every API failure and then makes `fetch` **reject** with `HandledHttpError`. So call sites do not check `res.ok` or show error messages; code after `await fetch()` runs only on success. A call that handles a status itself lists it: `fetch(url, { handles: [404] })`. A `catch` that exists to undo local state must not show `HandledHttpError` again (`isHandledHttpError()`). See `docs/MECHANISMS.md`, *The HTTP layer*.
 
-User-facing strings of the starter's own UI live in `src/react-app/lib/i18n.ts` (`t()`); add new ones there with an English default.
+### Localisation (i18n)
+User-facing strings of the starter's own UI — the HTTP layer's dialogs, banners and toasts among them — live in `src/react-app/lib/i18n.ts` and are read through `t(key, params)`. Add new ones there under a stable key with an English default. No i18n library is imposed: an app plugs its own in with `setTranslator()`, or changes a few words with `overrideMessages()`; a missing translation falls back to the default. Server messages are looked up as `error.<code>` first, so the server keeps writing English and the client translates by code. See `docs/MECHANISMS.md`, *Localising*.
+
+### Demo mode
+`DEMO_MODE` (a Worker secret, never committed) makes a deployment read-only: `src/worker/middleware/demo.ts` refuses every `/api/*` write except sign-in/out, client error reports and the CLI, and the email adapter sends nothing. A new write route needs nothing to be covered; a write that must stay possible in a demo goes in `ALLOWED_WRITES`. See `docs/MECHANISMS.md`, *Demo mode*.
 
 ### Using shadcn/ui Components
 Components are in `@/components/ui/`. Import directly:

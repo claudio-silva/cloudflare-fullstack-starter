@@ -152,7 +152,10 @@ cli.post("/users", async (c) => {
 
 	const now = dbNow();
 	const userId = crypto.randomUUID();
-	const accountId = crypto.randomUUID();
+	// For a password account Better Auth stores the user's own id as accountId,
+	// and looks the credential up by it: any other value and the user exists
+	// but can never sign in.
+	const accountId = userId;
 
 	const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -174,7 +177,7 @@ cli.post("/users", async (c) => {
 		.insertInto("accounts")
 		.values({
 			accountId,
-			id: accountId,
+			id: crypto.randomUUID(),
 			userId,
 			providerId: "credential",
 			provider: "credential",

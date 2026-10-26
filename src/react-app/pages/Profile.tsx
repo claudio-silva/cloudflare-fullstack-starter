@@ -32,9 +32,15 @@ export function Profile() {
 
 		setIsSavingName(true);
 		try {
-			await authClient.updateUser({
+			// Better Auth's client reports failures in `error` rather than throwing.
+			const result = await authClient.updateUser({
 				name: name.trim(),
 			});
+
+			if (result.error) {
+				toast.error(result.error.message || "Failed to update name");
+				return;
+			}
 
 			toast.success("Name updated successfully");
 		} catch (error: unknown) {

@@ -1,6 +1,8 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { app } from "../src/worker/index";
+import { createDb } from "../src/worker/db";
+import { pruneExpiredAuthRows } from "../src/worker/lib/expired-auth-rows";
 
 const call = (path: string, init?: RequestInit) => app.request(path, init, env);
 
@@ -46,7 +48,7 @@ describe("worker API", () => {
 		type Info = { kind: string; migrations: string[]; tables: Array<{ name: string; restoreChunkRows: number }> };
 		const info = (await (await call("/api/cli/backup/info", { headers })).json()) as Info;
 		expect(info.kind).toBe("sqlite");
-		expect(info.migrations).toEqual(["0001_initial", "0002_add_role", "0003_account_token_columns", "0004_login_events"]);
+		expect(info.migrations).toEqual(["0001_initial", "0002_add_role", "0003_account_token_columns", "0004_login_events", "0005_credential_account_ids"]);
 		const names = info.tables.map((t) => t.name);
 		expect(names.indexOf("users")).toBeLessThan(names.indexOf("accounts"));
 		expect(names).not.toContain("kysely_migration");
@@ -70,6 +72,29 @@ describe("worker API", () => {
 		}
 		const restored = (await (await call("/api/cli/backup/rows?table=users", { headers })).json()) as { rows: unknown[] };
 		expect(restored.rows).toEqual(dump.users);
+	});
+});
+
+describe("users created by the CLI", () => {
+	// They used to be created with an accountId Better Auth does not look up, and
+	// could never sign in. See migration 0005_credential_account_ids.
+	it("can sign in", async () => {
+		const headers = { "x-api-key": env.CLI_API_KEY as string, "content-type": "application/json" };
+		const email = `cli-${Date.now()}@example.com`;
+		const created = await call("/api/cli/users", { method: "POST", headers, body: JSON.stringify({ email, password: "password123" }) });
+		expect(created.status).toBe(200);
+
+		// "local": the test environment signs everyone in without a password.
+		const signIn = await app.request(
+			"http://localhost:5173/api/auth/sign-in/email",
+			{
+				method: "POST",
+				headers: { "content-type": "application/json", origin: "http://localhost:5173" },
+				body: JSON.stringify({ email, password: "password123" }),
+			},
+			{ ...env, ENVIRONMENT: "local" },
+		);
+		expect(signIn.status).toBe(200);
 	});
 });
 
@@ -115,5 +140,25 @@ describe("sign-in log", () => {
 		).json()) as { events: Array<{ email: string; user_id: string | null }> };
 		// Without this, "how many distinct people signed in" is unanswerable.
 		expect(rows.events.find((e) => e.email === email)?.user_id).toBeTruthy();
+	});
+});
+
+describe("expired auth rows", () => {
+	// Better Auth deletes an expired session only when it is looked up again;
+	// without the cron job, every sign-in leaves a row behind for good.
+	it("are pruned, and live ones kept", async () => {
+		const db = createDb(env);
+		const id = `prune-${Date.now()}`;
+		const at = (offsetMs: number) => new Date(Date.now() + offsetMs).toISOString();
+		await db.insertInto("users").values({ id, email: `${id}@example.com`, name: id, emailVerified: 0, createdAt: at(0), updatedAt: at(0) } as never).execute();
+		const session = (suffix: string, expiresAt: string) =>
+			({ id: `${id}-${suffix}`, userId: id, token: `${id}-${suffix}`, expiresAt, createdAt: at(0), updatedAt: at(0) }) as never;
+		await db.insertInto("sessions").values([session("old", at(-60_000)), session("live", at(60_000))]).execute();
+		await db.insertInto("verifications").values({ id, identifier: id, value: "x", expiresAt: at(-60_000), createdAt: at(0), updatedAt: at(0) } as never).execute();
+
+		expect(await pruneExpiredAuthRows(env)).toBeGreaterThanOrEqual(2);
+		const left = await db.selectFrom("sessions").select("id").where("userId", "=", id).execute();
+		expect(left.map((r) => r.id)).toEqual([`${id}-live`]);
+		expect(await db.selectFrom("verifications").select("id").where("id", "=", id).execute()).toHaveLength(0);
 	});
 });

@@ -10,7 +10,8 @@ import { isSignInPath, recordLoginAttempt } from "./lib/login-log";
 import { maintenanceMiddleware } from "./middleware/maintenance";
 import { versionMiddleware } from "./middleware/version";
 import { clientErrors } from "./routes/client-errors";
-import { AppError, errorResponse } from "./lib/errors";
+import { demo, demoMiddleware } from "./middleware/demo";
+import { AppError, errorResponse, failForAuthClient } from "./lib/errors";
 import { CLIENT_ERRORS_PATH } from "../shared/http-contract";
 import { scheduled } from "./scheduled";
 import { migrateDatabase } from "./db/migrations";
@@ -66,6 +67,10 @@ app.use("/api/*", async (c, next) => {
 // everything except the health endpoint and the CLI routes the migration needs.
 app.use("*", maintenanceMiddleware);
 
+// Public read-only showcase, when the DEMO_MODE secret is set; inert otherwise.
+// See src/worker/middleware/demo.ts.
+app.use("*", demoMiddleware);
+
 // Health check
 app.get("/api/", (c) => {
 	const environment = c.env.ENVIRONMENT || "local";
@@ -82,6 +87,22 @@ app.get("/api/ping", (c) => c.body(null, 204, { "Cache-Control": "no-store" }));
 // waitUntil: an audit record is never a reason to make a user wait, nor to
 // turn a successful sign-in into an error because an insert failed.
 app.all("/api/auth/*", async (c) => {
+	// Brute force and sign-up floods: every auth write is limited per IP when the
+	// AUTH_RATE_LIMITER binding exists (wrangler.toml). On *.workers.dev this is
+	// the only rate limit there is — no zone, so no WAF rules.
+	const limiter = c.env.AUTH_RATE_LIMITER;
+	if (limiter && c.req.method === "POST") {
+		const ip = c.req.header("CF-Connecting-IP") ?? "unknown";
+		if (!(await limiter.limit({ key: ip })).success) {
+			return failForAuthClient(
+				c,
+				429,
+				"Too many attempts. Please wait a minute and try again.",
+				{ code: "rate_limited", log: `auth rate limit for ${ip}` },
+				{ "Retry-After": "60" },
+			);
+		}
+	}
 	const response = await handleAuthRequest(c);
 	if (isSignInPath(c.req.path) && c.req.method === "POST") {
 		const write = recordLoginAttempt(c, response.status < 400).catch((error: unknown) =>
@@ -101,6 +122,7 @@ app.all("/api/auth/*", async (c) => {
 
 app.route("/api/cli", cli);
 app.route(CLIENT_ERRORS_PATH, clientErrors);
+app.route("/api/demo", demo);
 app.route("/api", profile);
 
 // Durable Object classes must be exported from the Worker entry.

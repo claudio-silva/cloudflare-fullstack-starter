@@ -29,4 +29,13 @@ export type AppEnv = {
 	// Optional Workers Rate Limiting binding for POST /api/client-errors
 	// (src/worker/routes/client-errors.ts). Without it a per-isolate budget applies.
 	CLIENT_ERRORS_RATE_LIMITER?: RateLimit;
+	// Optional Workers Rate Limiting binding for every POST under /api/auth/
+	// (sign-in, sign-up, password reset), keyed by IP. See wrangler.toml.
+	AUTH_RATE_LIMITER?: RateLimit;
+	// "1" turns on demo mode (src/worker/middleware/demo.ts): read-only, no email.
+	// A secret on the demo Worker only — never set it in wrangler.toml.
+	DEMO_MODE?: string;
+	// The demo account, offered on the sign-in form in demo mode.
+	DEMO_EMAIL?: string;
+	DEMO_PASSWORD?: string;
 };

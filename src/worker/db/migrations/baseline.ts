@@ -11,7 +11,14 @@ import type { Baseline } from "./types";
 export function createBaseline(kind: DatabaseKind): Baseline {
 	const t = columnTypes(kind);
 	return {
-		squashes: ["0001_initial", "0002_add_role", "0003_account_token_columns", "0004_login_events"],
+		squashes: [
+			"0001_initial",
+			"0002_add_role",
+			"0003_account_token_columns",
+			"0004_login_events",
+			// Data only: a new database has no rows to repair.
+			"0005_credential_account_ids",
+		],
 		async up(db: Kysely<unknown>) {
 			await db.schema
 				.createTable("users")

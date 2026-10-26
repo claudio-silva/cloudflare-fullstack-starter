@@ -45,6 +45,21 @@ database_id = "YOUR_PREVIEW_D1_DATABASE_ID"
 name = "EMAIL"
 allowed_sender_addresses = ["noreply@example.com"]
 
+# Per-IP rate limits (Workers Rate Limiting: no resource to create, free).
+# AUTH: every POST under /api/auth/ (sign-in brute force, sign-up floods).
+# CLIENT_ERRORS: browser error reports (src/worker/routes/client-errors.ts).
+# namespace_id is any integer, but unique within the Cloudflare account:
+# two Workers using the same one share their counters.
+[[env.preview.ratelimits]]
+name = "AUTH_RATE_LIMITER"
+namespace_id = "1001"
+simple = { limit = 10, period = 60 }
+
+[[env.preview.ratelimits]]
+name = "CLIENT_ERRORS_RATE_LIMITER"
+namespace_id = "1002"
+simple = { limit = 20, period = 60 }
+
 [env.production]
 [env.production.vars]
 ENVIRONMENT = "production"
@@ -60,3 +75,18 @@ database_id = "YOUR_PRODUCTION_D1_DATABASE_ID"
 [[env.production.send_email]]
 name = "EMAIL"
 allowed_sender_addresses = ["noreply@example.com"]
+
+# Per-IP rate limits (Workers Rate Limiting: no resource to create, free).
+# AUTH: every POST under /api/auth/ (sign-in brute force, sign-up floods).
+# CLIENT_ERRORS: browser error reports (src/worker/routes/client-errors.ts).
+# namespace_id is any integer, but unique within the Cloudflare account:
+# two Workers using the same one share their counters.
+[[env.production.ratelimits]]
+name = "AUTH_RATE_LIMITER"
+namespace_id = "1001"
+simple = { limit = 10, period = 60 }
+
+[[env.production.ratelimits]]
+name = "CLIENT_ERRORS_RATE_LIMITER"
+namespace_id = "1002"
+simple = { limit = 20, period = 60 }

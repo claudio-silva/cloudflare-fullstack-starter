@@ -54,6 +54,22 @@ export function fail(
 	return errorResponse(c, new AppError(status, userMessage, options));
 }
 
+/**
+ * `fail()` for routes under `/api/auth/`, whose responses are read by Better
+ * Auth's client. It looks for `message` rather than `error`, so the same text
+ * goes in both and its forms show ours instead of a generic failure.
+ */
+export async function failForAuthClient(
+	c: AppContext,
+	status: ContentfulStatusCode,
+	userMessage: string,
+	options: { log?: string; code?: string; level?: AlertLevel } = {},
+	headers?: Record<string, string>,
+): Promise<Response> {
+	const body = (await fail(c, status, userMessage, options).json()) as ApiErrorBody;
+	return c.json({ ...body, message: body.error }, status, headers);
+}
+
 const isProduction = (c: AppContext) => c.env?.ENVIRONMENT === "production";
 
 /** The id to quote when reporting a problem: Cloudflare's ray id, or one of our own where there is none (local). */

@@ -5,7 +5,7 @@ import type { AppContext, AppUser } from "../types/context";
 import { createEmailSender, type EmailSender } from "../adapters/email";
 import { getVerificationEmailTemplate, getPasswordResetEmailTemplate } from "../utils/email-templates";
 import { config } from "../../config";
-import { fail } from "../lib/errors";
+import { fail, failForAuthClient } from "../lib/errors";
 
 type Environment = "local" | "preview" | "production" | "test";
 
@@ -166,7 +166,7 @@ export async function authMiddleware(c: AppContext, next: () => Promise<void>) {
 export async function handleAuthRequest(c: AppContext) {
 	const isSignUpPath = c.req.path.includes("/sign-up");
 	if (!config.auth.enableSignups && isSignUpPath) {
-		return fail(c, 403, "Sign-up is disabled.", { code: "signups_disabled" });
+		return failForAuthClient(c, 403, "Sign-up is disabled.", { code: "signups_disabled" });
 	}
 
 	const auth = createAuth(c);

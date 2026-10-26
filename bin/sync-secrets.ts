@@ -26,7 +26,12 @@ const NON_SECRET_KEYS = new Set([
 	// Deploy-tooling credentials (bin/sync-build-vars.ts): must never reach the Worker.
 	"CLOUDFLARE_API_TOKEN",
 	"CLOUDFLARE_ACCOUNT_ID",
+	// Build-time only (bin/sync-build-vars.ts, vite.config.ts, bin/lib/build-info.ts).
+	"D1_DATABASE_ID",
+	"APP_VERSION_FROM",
 ]);
+/** Deploy settings (bin/lib/deploy-config.ts), including DEPLOY_HOOK_URL: tooling, not the Worker's. */
+const NON_SECRET_PREFIXES = ["DEPLOY_"];
 // Cloudflare aggressively rate-limits `wrangler secret put`. A short pause
 // between successive puts noticeably reduces 429s on bursts of >5 secrets.
 const SECRET_PUT_DELAY_MS = 350;
@@ -77,7 +82,7 @@ function parseEnvFile(filePath: string): Record<string, string> {
 			}
 			// Only sync non-empty values that look like secrets (not config).
 			// Skip VITE_ prefixed vars (client-side only) and config vars kept in wrangler.toml.
-			if (value && !key.startsWith("VITE_") && !NON_SECRET_KEYS.has(key)) {
+			if (value && !key.startsWith("VITE_") && !NON_SECRET_KEYS.has(key) && !NON_SECRET_PREFIXES.some((p) => key.startsWith(p))) {
 				secrets[key] = value;
 			}
 		}

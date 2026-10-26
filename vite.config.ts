@@ -4,7 +4,7 @@ import { cloudflare, type WorkerConfig } from "@cloudflare/vite-plugin";
 import path from "path";
 import fs from "node:fs";
 import { parse as parseToml } from "smol-toml";
-import { resolveBuildInfo } from "./bin/lib/build-info";
+import { resolveBuildInfo } from "./bin/lib/build-info.ts";
 
 type AnyRecord = Record<string, unknown>;
 
@@ -74,12 +74,23 @@ function createEnvCustomizer(tomlPath: string, env: "preview" | "production") {
 			if (key === "name") continue;
 			target[key] = value;
 		}
+
+		// The real database id from the build environment, when wrangler.toml
+		// holds a placeholder: a template must not commit its own ids, or every
+		// project created from it would point at the template's database. Set
+		// `D1_DATABASE_ID` as a build variable (Workers Builds) or in the shell.
+		const databaseId = process.env.D1_DATABASE_ID;
+		const databases = target.d1_databases as Array<AnyRecord> | undefined;
+		const db = databases?.find((d) => d.binding === "DB");
+		if (databaseId && db) {
+			target.d1_databases = databases!.map((d) => (d === db ? { ...d, database_id: databaseId } : d));
+		}
 	};
 }
 
 export default defineConfig(({ mode }) => {
-	const buildInfo = resolveBuildInfo(__dirname);
-	const tomlPath = path.resolve(__dirname, "wrangler.toml");
+	const buildInfo = resolveBuildInfo(import.meta.dirname);
+	const tomlPath = path.resolve(import.meta.dirname, "wrangler.toml");
 	const configCustomizer =
 		mode === "preview" || mode === "production" ? createEnvCustomizer(tomlPath, mode) : undefined;
 
@@ -93,7 +104,7 @@ export default defineConfig(({ mode }) => {
 		],
 		resolve: {
 			alias: {
-				"@": path.resolve(__dirname, "./src/react-app"),
+				"@": path.resolve(import.meta.dirname, "./src/react-app"),
 			},
 		},
 		// Release version (package.json) and commit, read by src/shared/app-version.ts.
@@ -104,7 +115,7 @@ export default defineConfig(({ mode }) => {
 		// Avoid ELOOP when `.claude/AGENTS.md` is a broken self-symlink (Cursor/Claude hook).
 		server: {
 			watch: {
-				ignored: [path.resolve(__dirname, ".claude")],
+				ignored: [path.resolve(import.meta.dirname, ".claude")],
 			},
 		},
 	};

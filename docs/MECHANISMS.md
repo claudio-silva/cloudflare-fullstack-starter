@@ -18,6 +18,7 @@ Vite ↔ wrangler bridge, [VITE_CLOUDFLARE_BRIDGE.md](VITE_CLOUDFLARE_BRIDGE.md)
 | [Deploy modes](#deploy-modes) | The same pipeline from a laptop or from CI |
 | [Secrets and build variables](#secrets-and-build-variables) | Deploying without holding every secret |
 | [Sign-in log](#sign-in-log) | Who used the app, and who tried |
+| [Demo mode](#demo-mode) | A public deployment with a published password, safe to leave online |
 | [Backup and restore](#backup-and-restore) | Getting data out, and back |
 | [Database portability](#database-portability) | D1, PostgreSQL or MySQL from one codebase |
 
@@ -323,9 +324,14 @@ sign-in, so it is built to be useless to abuse:
   ```toml
   [[env.production.ratelimits]]
   name = "CLIENT_ERRORS_RATE_LIMITER"
-  namespace_id = "1001"
+  namespace_id = "1002"
   simple = { limit = 20, period = 60 }
   ```
+
+  `wrangler.toml` declares it for preview and production, together with
+  `AUTH_RATE_LIMITER` (10 sign-in attempts per IP per minute). A
+  `namespace_id` is unique per Cloudflare account, not per Worker: two Workers
+  in one account with the same id share their counters.
 
 - **Always 204**, accepted or not, so probing it teaches nothing.
 
@@ -436,6 +442,53 @@ dropping the record there would leave the log quietly incomplete.
 cron in `src/worker/scheduled.ts` prunes the table after
 `AUTH_LOG_RETENTION_DAYS` (90 by default), and your privacy notice has to
 mention it.
+
+The same cron deletes expired `sessions` and `verifications`. Better Auth
+removes an expired session only when that session is used again, which a
+visitor who never returns never does: without the job both tables grow with
+every sign-in for the life of the app.
+
+---
+
+## Demo mode
+
+A deployment people can try without an invitation needs a published password,
+and a published password on a writable app is an invitation to abuse. The
+`DEMO_MODE` secret closes it (`src/worker/middleware/demo.ts`):
+
+- **Read-only.** Every write under `/api/` is refused with a 403
+  (`code: "demo_read_only"`, level `info`) — including Better Auth's: changing
+  the password or email, deleting the account, signing up, requesting resets.
+  Only signing in and out, client error reports and the CLI (behind
+  `CLI_API_KEY`) get through. The data never changes, so it never needs
+  resetting, and a new write route is covered without anyone remembering to.
+- **No email.** The writes that send mail are refused first; the email adapter
+  is a no-op as well, in case a path is ever missed. An app that mails
+  strangers on request is a spam relay.
+- **Sign-in rate limit** per IP (`AUTH_RATE_LIMITER`). On `*.workers.dev` it has
+  to be in the Worker: there is no zone, so no WAF or dashboard rule applies.
+  It is not specific to demos, and stays on in every deployment that declares
+  the binding.
+
+`GET /api/demo` returns `DEMO_EMAIL` / `DEMO_PASSWORD` so the sign-in page can
+offer them, and answers 404 outside demo mode. The account itself is created
+once with `npm run auth create-user -- --env production`.
+
+Refusals on `/api/auth/` carry the message in `message` as well as `error`
+(`failForAuthClient`), because Better Auth's client reads `message`: the
+sign-in and profile forms then show it like any other error.
+
+**Why a secret and not a variant of the template:** everything that makes a
+deployment a demo — `DEMO_*`, the database id (`D1_DATABASE_ID`), the
+deploy hook — lives on that deployment. The repository stays the template, a
+project created from it is not a demo, and there is nothing to strip out.
+
+The starter's own demo is built by Cloudflare Workers Builds from `main`, with
+the build variables `D1_DATABASE_ID`, `APP_VERSION_FROM=starter` (report the
+template's version rather than the app's `0.0.1`) and
+`DEPLOY_MODE=workers-builds`. `.github/workflows/demo.yml` calls its deploy
+hook when a release is published, and does nothing in a repository without the
+`DEMO_DEPLOY_HOOK_URL` secret.
 
 ---
 
