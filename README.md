@@ -32,10 +32,14 @@ This starter removes that overhead **entirely**. Create a project from the templ
 | **Complete Auth Flow** | Sign up, email verification, login, logout, profile management, powered by [Better Auth](https://www.better-auth.com/) |
 | **Transactional emails** | Email verification and password reset through a swappable adapter: Cloudflare Email Service by default, other providers easy to add |
 | **CLI Tools** | User management and full database tooling (migrate, backup, restore, time-travel, seed) across all environments, from your terminal |
-| **Dead simple deployment** | Deploy to Cloudflare's global network with one command |
+| **One-command, versioned releases** | `npm run deploy:production` bumps the version, tags `vX.Y.Z` and deploys — or hands off to CI and waits until the Worker reports the new version. A push with no tag deploys nothing, so nothing goes live without a version. `GET /api/` reports the running version and commit |
+| **Three deploy modes** | One committed setting in `deploy.config.ts`: `manual` (build and deploy from your machine), `workers-builds` (Cloudflare builds it) or `external-ci` (GitLab CI, GitHub Actions, anything). All three run the same pipeline script, so a CI deploy and a laptop deploy cannot drift apart. Setting `manual` also switches CI deploys off, without touching the CI configuration |
+| **Zero-downtime migrations** | Each migration declares `expand`, `contract` or `breaking`, and the deploy orders it accordingly: additive changes before the new code, removals after it — guarded by `safeSince`, so a column is never dropped while the live release still reads it — and only a `breaking` one opens a maintenance window. Idempotent `ensure*` helpers and a migration journal make a failed run safe to re-run, even on databases that cannot roll back schema changes |
+| **Maintenance mode, planned and emergency** | **Planned:** a `MAINTENANCE` Worker var makes the app answer 503 in place (HTML page or JSON, by `Accept`), at no per-request cost; the deploy sets it around a `breaking` migration. **Emergency:** `npm run maintenance -- on` redirects the whole zone to your maintenance page in seconds, and works even when the Worker itself is broken. Either way, the open app holds its requests, tells the user, and replays them when service returns — no lost work, and no burst of duplicate polling on recovery |
+| **Sign-in log** | Every sign-in attempt, successful or failed, with IP, user agent and country; pruned by a cron; `npm run db -- logins` |
 | **Built-in Observability** | Monitor your Worker logs, metrics, traces, performance and health |
-| **CI/CD Ready** | GitHub Actions workflow validates every push: lint, type-check, tests, build and an E2E smoke test must pass.<br>You can also display the CI status badge in your README.md |
-| **Testing** | Vitest integration tests running in the Workers runtime against D1 (migrations applied) and Durable Objects, plus a Playwright E2E smoke test |
+| **CI/CD Ready** | GitHub Actions workflow validates every push: lint, type-check, tests, build and an E2E smoke test must pass. Deploy jobs for Workers Builds or your own CI are documented in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).<br>You can also display the CI status badge in your README.md |
+| **Testing** | Vitest integration tests running in the Workers runtime against D1 (migrations applied), plus a Playwright E2E smoke test |
 | **Beautiful UI** | 50+ [shadcn/ui](https://ui.shadcn.com/) components, dark/light theme with FOUC prevention |
 | **Agent skill, release log and upgrade guide** | An installable skill plus [UPGRADING.md](UPGRADING.md) (breaking changes per release, staged upgrades) so agents can install, convert and upgrade without trial and error |
 | **AI-Assisted Installation and Development** | [AGENTS_SETUP.md](docs/AGENTS_SETUP.md) and [AGENTS.md](AGENTS.md) are included for easy installation and enhanced development assistance |
@@ -49,7 +53,7 @@ The starter uses Cloudflare services wherever one fits (D1, Email Service, Durab
 Cloudflare's developer platform offers a unique combination that's hard to match:
 
 - **Edge performance** — Your code runs in 300+ data centers worldwide, milliseconds from your users
-- **Unified stack** — Workers, D1 database, Durable Objects, Email and more on one platform (R2, KV and cron are wired into the build config in `vite.config.ts`, but no example code is included)
+- **Unified stack** — Workers, D1 database, Durable Objects, R2, KV, Email, cron triggers and more on one platform. Any binding declared under `[env.*]` in `wrangler.toml` reaches the deploy with no extra wiring
 - **Generous free tier** — Start with **zero cost**:
   - **Workers**: 100,000 requests/day
   - **D1 Database**: 5 GB storage, 5 million reads/day
@@ -217,6 +221,8 @@ If wrangler is logged in, you can do it from the command line:
 
 ### Database Features
 - Portable migrations (TypeScript, Kysely) applied per-environment via `npm run db:migrate:*`; new databases get a single baseline, existing ones the pending incremental migrations; local dev migrates automatically
+- **Expand / contract / breaking** — each migration declares how it relates to the running version, which decides whether it runs before the deploy, after it, or inside a maintenance window; `safeSince` stops a removal from running while the live release still uses it. `npm run db -- new-migration <name>` scaffolds one
+- **Idempotent and journaled** — `ensureTable`, `ensureColumn`, `ensureIndex` and `ensureNoColumn` skip what is already applied, so re-running a failed migration is the recovery; `migration_journal` records what each run did (`npm run db -- journal`)
 - **Safe migrate** — automatically takes a pre-migration backup before applying schema changes (`--safe`)
 - **Backup** — export the whole database (auth **and** your own tables) of any environment to a timestamped `.backup.jsonl` file in `.wrangler/backups/`; works on D1, PostgreSQL and MySQL
 - **Restore** — replace the database contents from a backup file; a safety backup of the current data is taken first (`--no-safety-backup` to skip, `--yes` to skip the prompt). The schema must be at the same migration level as the backup
@@ -249,17 +255,18 @@ If wrangler is logged in, you can do it from the command line:
 │   │   ├── pages/           # Route pages (Home, Profile, auth/)
 │   │   └── lib/auth/        # Better Auth client
 │   └── worker/              # Hono API backend
-│       ├── middleware/      # Auth middleware
+│       ├── middleware/      # Auth and maintenance middleware
 │       ├── routes/          # One module per feature, mounted with app.route()
-│       ├── durable-objects/ # Durable Object example
 │       ├── db/              # createDb(), portable migrations (baseline + incremental), seeds
 │       ├── utils/           # Email sender and templates
+│       ├── scheduled.ts     # Cron handler (sign-in log pruning)
 │       └── index.ts         # Mounts routes
 ├── src/cli/                 # CLI commands (auth user management, db utilities)
-├── bin/                     # CLI entry points (init, auth, db)
+├── bin/                     # CLI entry points (init, auth, db, deploy, maintenance)
 ├── test/                    # Vitest worker integration tests
 ├── e2e/                     # Playwright smoke tests
 ├── wrangler.toml            # Cloudflare config
+├── deploy.config.ts         # Deploy mode, branches, maintenance mechanism
 └── AGENTS.md                # Instructions for AI coding agents
 ```
 
@@ -425,11 +432,7 @@ maintenance off
 
 Almost every schema change is additive and needs no window at all. Each migration declares whether it is `expand`, `contract` or `breaking`, and that is what decides the order — a single fixed order cannot be right for both directions.
 
-`deploy:production` cuts a versioned release: it tags `vX.Y.Z` and, in a CI mode, promotes the deployment branch and waits for the Worker to report the new version. **A push to that branch with no tag deploys nothing**, so nothing ever goes online without a version attached to it.
-
-Where the build happens is one setting in `deploy.config.ts`: `manual` (your machine), `workers-builds` (Cloudflare) or `external-ci` (GitLab, Actions, anything).
-
-**[docs/MECHANISMS.md](docs/MECHANISMS.md) is the one to read** — what this starter gives you and why each piece is the way it is: migrations that do not take the app down, maintenance mode, versioning, secrets, the sign-in log, database portability. The mechanics of deploying are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+Releases, deploy modes and maintenance are summarised under [Deploy](#deploy). **[docs/MECHANISMS.md](docs/MECHANISMS.md) is the one to read** — what this starter gives you and why each piece is the way it is: migrations that do not take the app down, maintenance mode, versioning, secrets, the sign-in log, database portability. The mechanics of deploying are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ### How Environment Variables Work
 
@@ -454,6 +457,35 @@ npm run check        # Type check + build + deploy dry-run
 
 ## Deploy
 
+Releases, deploy modes, migrations and maintenance are summarised here; the reasoning is in [docs/MECHANISMS.md](docs/MECHANISMS.md) and the mechanics in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
+### Releases and versions
+
+`npm run deploy:production` cuts a release: it bumps `version` in `package.json`, commits `Release vX.Y.Z`, tags it and deploys. A new project starts at **`0.0.1`** (pre-alpha), and its first release is that version as it is; after that each release bumps the latest tag (`--minor`, `--major` or `-v X.Y.Z` to choose), unless you have set a higher version in `package.json` by hand — that one is released as it is. The version and commit are baked into the build and served by `GET /api/`. Preview deploys report `X.Y.Z+preview.<sha>`.
+
+### Deploy modes
+
+| `mode` in `deploy.config.ts` | Who builds and deploys |
+|---|---|
+| `manual` (default) | Your machine, through `deploy:production` / `deploy:preview` |
+| `workers-builds` | Cloudflare Workers Builds, connected to your GitHub or GitLab.com repo |
+| `external-ci` | Your own CI (self-hosted GitLab, GitHub Actions, …), triggered by the release tag |
+
+In the CI modes `deploy:production` pushes the tag, promotes the deployment branch and waits for the Worker to report the new version. `--local` deploys from your machine whatever the mode. To switch CI deploys off for a while — a runner that is down, a frozen period — set the mode to `manual` and commit: each CI deploy job stops at its first step, green, without installing or building.
+
+### Maintenance
+
+| | Planned | Emergency |
+|---|---|---|
+| Mechanism | `MAINTENANCE` Worker var | Zone-level Single Redirect |
+| Turned on by | The deploy, around a `breaking` migration | `npm run maintenance -- on --env production` |
+| Users see | A 503 in place (page that reloads itself, or JSON) | Your maintenance page, at its own URL |
+| Works if the Worker is broken | No | Yes |
+
+In both cases the open app does not fail: its requests are held, an overlay tells the user to wait, and they are replayed when the app answers again.
+
+### Commands
+
 ```bash
 npm run deploy:production    # Versioned release (patch; --minor/--major); --local to build here
 npm run deploy:preview       # Build, migrate and deploy preview
@@ -461,7 +493,7 @@ npm run maintenance -- status --env production   # on | off | status
 npm run db -- logins --env production            # who has signed in, and how many
 ```
 
-Each command handles secrets, the environment-specific build, deployment and database migrations in one step. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) (versions, migrations, Workers Builds) and [docs/VITE_CLOUDFLARE_BRIDGE.md](docs/VITE_CLOUDFLARE_BRIDGE.md) for how environment config is handled under the hood.
+Each command handles secrets, the environment-specific build, deployment and database migrations in one step. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) (versions, migrations, deploy modes, maintenance, CI) and [docs/VITE_CLOUDFLARE_BRIDGE.md](docs/VITE_CLOUDFLARE_BRIDGE.md) for how environment config is handled under the hood.
 
 ## Customization
 
@@ -471,7 +503,7 @@ Update `src/config.ts` to customize your app:
 export const config = {
   appName: "My App",  // Displayed in UI, emails, page title
   email: {
-    defaultProvider: "cloudflare",
+    provider: "cloudflare",
     fromAddress: "noreply@example.com",  // Must be allowed by the active provider
   },
 } as const;
@@ -526,7 +558,8 @@ For long-term retention or external analysis, you can forward logs via Cloudflar
 ## Additional Resources
 
 ### Template Internals
-- [Deployment, versions and migrations](docs/DEPLOYMENT.md) — what each deploy does, git-tag releases, migrations on every deploy, Workers Builds
+- [What this starter gives you, and why](docs/MECHANISMS.md) — migrations, maintenance mode, versioning, deploy modes, secrets, sign-in log, backups, database portability
+- [Deployment, versions and migrations](docs/DEPLOYMENT.md) — what each deploy does, git-tag releases, expand/contract migrations, maintenance, Workers Builds and your own CI
 - [Vite ↔ Cloudflare Bridge](docs/VITE_CLOUDFLARE_BRIDGE.md) — how the project bridges Vite's dev conventions with Cloudflare's deployment model (env config baking, secrets sync, cross-platform build scripts)
 
 ### External Resources

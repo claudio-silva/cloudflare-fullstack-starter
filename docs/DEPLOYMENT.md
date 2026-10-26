@@ -147,7 +147,7 @@ npm run deploy:production -- --local   # build and deploy from here, whatever th
 npm run deploy:production -- --release-only   # bump, tag and push; deploy nothing
 ```
 
-It runs from a clean `main` that equals `origin/main`. If `HEAD` already carries a tag, that version is redeployed instead of bumped. **Never run it against production without the owner's approval.**
+It runs from a clean `main` that equals `origin/main`. If `HEAD` already carries a tag, that version is redeployed instead of bumped. A new project starts at `0.0.1` (pre-alpha) and its first release is that version, unbumped. After that each release bumps the latest tag — unless `package.json` is ahead of it, which means someone set the version by hand (say `1.0.0` for the first stable release), and that version is released as it is. **Never run it against production without the owner's approval.**
 
 Where the tag sits in the sequence differs by mode, and both placements are deliberate:
 

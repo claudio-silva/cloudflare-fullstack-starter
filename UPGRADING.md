@@ -73,7 +73,8 @@ Node 24 LTS, a generic `wrangler.toml` environment merge, and removal of decorat
 17. **The `snippet` maintenance mechanism is removed.** `maintenance.mechanism` is now `redirect` or `none`. Snippets need a Pro zone and the `MAINTENANCE` var covers the planned case better; the zone redirect remains the emergency tool.
 18. **CI deploys can be switched off with `mode: "manual"`.** New `bin/ci-deploy-guard.ts`, the first step of a CI deploy job: ends the job green when the mode is `manual`. `deploy-pipeline` checks the same in CI. After a local deploy (`manual` or `--local`), the tag is pushed with `-o ci.skip`. See `docs/DEPLOYMENT.md`, *Switching CI deploys off*.
 19. **New `docs/MECHANISMS.md`**: what the starter provides and why, so the README can stay an introduction.
-20. **Fixed:** `getApiBaseUrl` now loads `.env.<environment>` itself. Callers that had not gone through `connectToDatabase` first silently used the placeholder URL from `src/config.ts`.
+20. **New projects start at version `0.0.1`** (pre-alpha), not `1.0.0`. The first `deploy:production` releases whatever `package.json` says, unbumped; later ones bump the latest tag, unless `package.json` is ahead of it, which means the version was set by hand and is released as-is.
+21. **Fixed:** `getApiBaseUrl` now loads `.env.<environment>` itself. Callers that had not gone through `connectToDatabase` first silently used the placeholder URL from `src/config.ts`.
 
 ### Required actions
 
@@ -83,6 +84,7 @@ Node 24 LTS, a generic `wrangler.toml` environment merge, and removal of decorat
 - **If you declare DO bindings at the top level only**, move them under each `[env.*]`: the new warning will tell you. They worked before by inheritance from the flat config, which is not how `wrangler` itself behaves.
 - Optional, to use maintenance mode: set `maintenance.mechanism`, `zoneId` and `redirectTo` in `deploy.config.ts`, and issue an API token with **zone** rule permissions (the Workers-scoped token from `bin/init` is not enough).
 - Take the starter-owned changes in `bin/` (new: `deploy-pipeline.ts`, `deploy-production.ts`, `maintenance.ts`, `lib/deploy-config.ts`; deleted: `deploy-production`), `src/worker/db/migrations/`, `src/worker/db/schema-snapshot.ts`, `src/shared/migration-types.ts`, `src/cli/utils/db.ts`; merge `package.json` scripts, `src/config.ts`, `src/worker/routes/cli.ts`, `tsconfig.cli.json`.
+- **Do not take the starter's `version: "0.0.1"`** when merging `package.json`: the top-level `version` is your project's.
 - Set `deployConfig.mode`. It defaults to `manual`, which behaves like 3.2.0 except for the migration ordering.
 - If you deploy from your own CI, add `node bin/ci-deploy-guard.ts || { [ $? -eq 78 ] && exit 0; exit 1; }` as the first step of each deploy job, so `mode: "manual"` can switch it off.
 - Read the expand/contract section of `docs/DEPLOYMENT.md` before writing the next migration that drops anything.

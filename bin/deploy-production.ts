@@ -49,7 +49,8 @@ function die(message: string): never {
 function usage(): void {
 	console.log(`Usage: npm run deploy:production -- [options]
 
-  --patch | --minor | --major   Bump kind (default: --patch)
+  --patch | --minor | --major   Bump kind (default: --patch); ignored while package.json
+                                is ahead of the latest tag, which is released as-is
   --version, -v X.Y.Z           Use this exact version
   --local                       Build and deploy from this machine, whatever the mode
   --release-only                Bump, tag and push; do not deploy or trigger CI
@@ -58,11 +59,31 @@ function usage(): void {
   --help, -h`);
 }
 
-function nextVersion(latest: string, kind: "patch" | "minor" | "major"): string {
-	if (!latest) return "v1.0.0";
-	const m = latest.match(/^v(\d+)\.(\d+)\.(\d+)$/);
-	if (!m) die(`cannot bump non-semver tag ${latest}`);
-	const [ma, mi, pa] = [Number(m[1]), Number(m[2]), Number(m[3])];
+function semver(version: string): [number, number, number] | null {
+	const m = version.match(/^v?(\d+)\.(\d+)\.(\d+)$/);
+	return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+}
+
+function isAhead(a: [number, number, number], b: [number, number, number]): boolean {
+	for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] > b[i];
+	return false;
+}
+
+/**
+ * The next release. Normally the latest tag, bumped. But when `package.json`
+ * is ahead of every tag, someone chose that version by hand — or the project
+ * is new and still on the 0.0.1 it was created with — so it ships unbumped.
+ */
+function nextVersion(latest: string, pkgVersion: string, kind: "patch" | "minor" | "major"): string {
+	const pkg = semver(pkgVersion);
+	if (!latest) {
+		if (!pkg) die(`package.json version ${pkgVersion} is not X.Y.Z`);
+		return `v${pkgVersion}`;
+	}
+	const parsed = semver(latest);
+	if (!parsed) die(`cannot bump non-semver tag ${latest}`);
+	if (pkg && isAhead(pkg, parsed)) return `v${pkgVersion}`;
+	const [ma, mi, pa] = parsed;
 	if (kind === "major") return `v${ma + 1}.0.0`;
 	if (kind === "minor") return `v${ma}.${mi + 1}.0`;
 	return `v${ma}.${mi}.${pa + 1}`;
@@ -169,7 +190,7 @@ async function main(): Promise<void> {
 		console.log(`HEAD is already ${version}; redeploying it.`);
 	} else {
 		tagNeeded = true;
-		version = explicit ? `v${explicit.replace(/^v/, "")}` : nextVersion(latest, kind);
+		version = explicit ? `v${explicit.replace(/^v/, "")}` : nextVersion(latest, pkgVersion, kind);
 		if (!/^v\d+\.\d+\.\d+$/.test(version)) die(`version must be vX.Y.Z (got ${version})`);
 	}
 	const needsCommit = `v${pkgVersion}` !== version;
