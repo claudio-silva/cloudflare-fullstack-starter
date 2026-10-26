@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { AppBindings } from "../types/context";
 import { authMiddleware } from "../middleware/auth";
 import { createDb } from "../db";
+import { fail } from "../lib/errors";
 
 /** Authenticated user routes, mounted at `/api`. */
 export const profile = new Hono<AppBindings>();
@@ -16,7 +17,7 @@ profile.get("/protected/ping", authMiddleware, (c) => {
 profile.delete("/profile", authMiddleware, async (c) => {
 	const user = c.get("user");
 	if (!user?.id) {
-		return c.json({ error: "User not authenticated" }, 401);
+		return fail(c, 401, "Your session has expired. Please sign in again.", { code: "unauthenticated" });
 	}
 
 	const db = createDb(c.env);

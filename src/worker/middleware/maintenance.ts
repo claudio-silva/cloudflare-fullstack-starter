@@ -1,5 +1,6 @@
 import type { AppContext } from "../types/context";
 import { config } from "../../config";
+import { MAINTENANCE_HEADER } from "../../shared/http-contract";
 
 /**
  * Take the app out of service from inside the Worker, driven by the
@@ -19,7 +20,7 @@ import { config } from "../../config";
  */
 
 /** Marks a maintenance response so the client can tell it from any other 503. */
-export const MAINTENANCE_HEADER = "X-Maintenance";
+export { MAINTENANCE_HEADER };
 
 /**
  * Paths that answer normally while the app is down.

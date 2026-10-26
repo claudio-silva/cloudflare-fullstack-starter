@@ -8,6 +8,10 @@ import { APP_COMMIT, APP_VERSION } from "../shared/app-version";
 import { createDb, databaseKind } from "./db";
 import { isSignInPath, recordLoginAttempt } from "./lib/login-log";
 import { maintenanceMiddleware } from "./middleware/maintenance";
+import { versionMiddleware } from "./middleware/version";
+import { clientErrors } from "./routes/client-errors";
+import { AppError, errorResponse } from "./lib/errors";
+import { CLIENT_ERRORS_PATH } from "../shared/http-contract";
 import { scheduled } from "./scheduled";
 import { migrateDatabase } from "./db/migrations";
 
@@ -31,6 +35,17 @@ addEventListener("unhandledrejection", (event) => {
 // Growth pattern: add one file per feature under ./routes and mount it here
 // with `app.route()`, instead of adding handlers to this file.
 const app = new Hono<AppBindings>();
+
+// First of all: every response, including maintenance and error responses,
+// carries the server's version, and every request gets an id.
+app.use("*", versionMiddleware);
+
+// Every error leaves the Worker in one shape, `ApiErrorBody` — what the user
+// is told, separate from what is logged. Throw `AppError` (or return `fail()`)
+// from a handler; anything else thrown is a bug and becomes a generic 500.
+// See src/worker/lib/errors.ts.
+app.onError((error, c) => errorResponse(c, error));
+app.notFound((c) => errorResponse(c, new AppError(404, "Not found.", { code: "not_found", log: `no route for ${c.req.method} ${c.req.path}` })));
 
 // Local development only: apply pending migrations on the first API request, so a fresh
 // checkout works with `npm run dev` and no separate migrate step. Preview/production
@@ -60,7 +75,7 @@ app.get("/api/", (c) => {
 // What an open tab polls to learn the app is back from maintenance. Unlike
 // `/api/` above it is NOT exempt from either mechanism, and must not become
 // so: a probe that answers during the window reports a recovery that has not
-// happened. See src/react-app/lib/maintenance.ts.
+// happened. See src/react-app/lib/http/maintenance.ts.
 app.get("/api/ping", (c) => c.body(null, 204, { "Cache-Control": "no-store" }));
 
 // Auth routes. Sign-in attempts are recorded after the fact, through
@@ -85,6 +100,7 @@ app.all("/api/auth/*", async (c) => {
 });
 
 app.route("/api/cli", cli);
+app.route(CLIENT_ERRORS_PATH, clientErrors);
 app.route("/api", profile);
 
 // Durable Object classes must be exported from the Worker entry.

@@ -5,6 +5,7 @@ import type { AppContext, AppUser } from "../types/context";
 import { createEmailSender, type EmailSender } from "../adapters/email";
 import { getVerificationEmailTemplate, getPasswordResetEmailTemplate } from "../utils/email-templates";
 import { config } from "../../config";
+import { fail } from "../lib/errors";
 
 type Environment = "local" | "preview" | "production" | "test";
 
@@ -148,7 +149,10 @@ export async function authMiddleware(c: AppContext, next: () => Promise<void>) {
 	const session = await auth.api.getSession({ headers: c.req.raw.headers });
 
 	if (!session) {
-		return c.json({ error: "Unauthorized" }, 401);
+		return fail(c, 401, "Your session has expired. Please sign in again.", {
+			code: "unauthenticated",
+			log: "no valid session",
+		});
 	}
 
 	c.set("user", session.user);
@@ -156,24 +160,15 @@ export async function authMiddleware(c: AppContext, next: () => Promise<void>) {
 	return next();
 }
 
+// Better Auth answers its own errors (wrong password and the like) in its own
+// format, for its client. Anything it throws is a bug or a misconfiguration,
+// and goes to app.onError like any other: logged, and a generic 500.
 export async function handleAuthRequest(c: AppContext) {
-	try {
-		const path = c.req.path;
-		const isSignUpPath = path.includes("/sign-up");
-		if (!config.auth.enableSignups && isSignUpPath) {
-			return c.json({ error: "Signups are disabled" }, 403);
-		}
-
-		const auth = createAuth(c);
-		const response = await auth.handler(c.req.raw);
-		return response;
-	} catch (error: unknown) {
-		return c.json(
-			{
-				error: "Authentication error",
-				message: error instanceof Error ? error.message : "Unknown error",
-			},
-			500,
-		);
+	const isSignUpPath = c.req.path.includes("/sign-up");
+	if (!config.auth.enableSignups && isSignUpPath) {
+		return fail(c, 403, "Sign-up is disabled.", { code: "signups_disabled" });
 	}
+
+	const auth = createAuth(c);
+	return auth.handler(c.req.raw);
 }

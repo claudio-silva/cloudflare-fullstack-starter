@@ -13,6 +13,7 @@ Vite ↔ wrangler bridge, [VITE_CLOUDFLARE_BRIDGE.md](VITE_CLOUDFLARE_BRIDGE.md)
 |---|---|
 | [Database migrations](#database-migrations) | Schema changes that do not take the app down |
 | [Maintenance mode](#maintenance-mode) | Stopping traffic, planned and unplanned |
+| [The HTTP layer](#the-http-layer) | Errors, lost connections and new versions handled once, not at every call |
 | [Versions and releases](#versions-and-releases) | Knowing what is actually running |
 | [Deploy modes](#deploy-modes) | The same pipeline from a laptop or from CI |
 | [Secrets and build variables](#secrets-and-build-variables) | Deploying without holding every secret |
@@ -103,7 +104,7 @@ normally throughout — the first is what the deploy polls to confirm the releas
 the second carries the migration the window exists for. A window that hid `/api/`
 would make every deploy inside one time out with the deploy having worked.
 
-**The client rides it out.** `src/react-app/lib/maintenance.ts` patches global
+**The client rides it out.** `src/react-app/lib/http/maintenance.ts` patches global
 `fetch`:
 
 - the **first** response marked `X-Maintenance` starts one polling loop, seeded
@@ -173,6 +174,177 @@ There is no `Retry-After` here — the redirect's headers are invisible to
 Needs the zone permission *Dynamic URL Redirects Write*; a Workers-scoped token
 fails with `Authentication error`. Set `mechanism: "none"` for `*.workers.dev`,
 which is not part of a zone.
+
+---
+
+## The HTTP layer
+
+Every API call can fail in the same handful of ways, and a call site that
+handles them itself handles them differently from the next one — or not at
+all. So the starter handles them in one place, on both sides, behind one
+contract (`src/shared/http-contract.ts`). Feature code deals only with the
+outcomes that belong to the feature.
+
+### The contract
+
+Every error response the Worker sends has one shape, `ApiErrorBody`:
+
+```json
+{ "error": "You can't edit someone else's post.", "code": "post_not_owned", "level": "warning", "requestId": "8f1c…" }
+```
+
+`error` is written for the person using the app and is shown as it is. The
+developer's version — the real cause — goes to the logs only. Handlers say
+both at once:
+
+```ts
+throw new AppError(403, "You can't edit someone else's post.", {
+  log: `user ${user.id} tried to edit post ${post.id}`,
+  code: "post_not_owned",
+});
+// or, without throwing:
+return fail(c, 404, "That post no longer exists.", { log: `post ${id} not found` });
+```
+
+`app.onError` turns anything thrown into that shape: an `AppError` as the
+handler meant it, Hono's `HTTPException` with its own status, and anything
+else — a bug — as a generic 500 whose cause is only logged. Outside
+production the cause also travels as `debug`, so a developer sees it in the
+browser without opening the logs. 4xx are logged as warnings and 5xx as
+errors, so an alert on error-level logs fires only for real failures.
+
+Every response carries `X-App-Version`; every API request from the app
+carries `X-Client-Version`. The server refuses nothing on the latter today: it
+is logged with every error, so a failure can be traced to a stale tab, and it
+is there for a "minimum client version" rule should an API ever have to change
+incompatibly.
+
+### In the browser: one interceptor, no `if (!res.ok)`
+
+`installHttpLayer()` (`src/react-app/lib/http/interceptor.ts`, called in
+`main.tsx`) patches global `fetch` — like an Angular interceptor, and for the
+same reason: libraries make their own requests. Same-origin calls under
+`/api/` go through it, except `/api/auth/`, whose errors Better Auth reports
+to its own forms.
+
+| Outcome | What happens |
+|---|---|
+| Maintenance (either mechanism) | held and replayed — see [Maintenance mode](#maintenance-mode) |
+| Network failure, or 502/503/504/52x from the edge | held behind one dialog — see below |
+| 4xx | the server's message as a toast (warning, or the server's `level`) |
+| 401 | the same, and the session is re-checked, which brings up sign-in |
+| 5xx | production: a generic message with a reference to quote; elsewhere, the real cause |
+
+After a failure it has shown, `fetch` **rejects** with `HandledHttpError`.
+The caller's code after `await fetch()` simply does not run, so call sites
+need no error handling for these cases; a `catch` is only for undoing
+something of their own, and should let `HandledHttpError` go (an uncaught
+one is silenced, not reported). A call that handles a status itself says so,
+and gets the response as usual:
+
+```ts
+const res = await fetch(`/api/posts/${id}`, { handles: [404] });
+if (res.status === 404) return showEmptyState();
+```
+
+`handles: [0]` takes network failures, `handles: "all"` everything.
+
+**Why reject rather than resolve with the error response:** a resolved error
+response must be checked at every call site, and the one that forgets carries
+on as if it had worked — typically by parsing the error body as data. A
+rejection fails safe.
+
+### Lost connection
+
+A network error, or a gateway status *without* our version header (the edge
+answering for an app it could not reach), opens one modal dialog that counts
+down to the next check of `/api/ping` (3, 5, 10, 20, then every 30 s). However
+many requests failed, there is one dialog and one check.
+
+- **Reads** (GET, HEAD) are sent again by themselves once the app answers.
+- **Writes** wait for the user to press *Send*. A write that failed on the way
+  back may already have been carried out, and only the user knows whether
+  sending it twice matters.
+- **Cancel** rejects every held request with `HandledHttpError`.
+
+Unlike the maintenance banner, this dialog is modal and offers a way out: a
+maintenance window is known to end, a lost connection is not.
+
+### New versions
+
+The first response whose `X-App-Version` differs from the version the bundle
+was built with opens a dialog: *Update now* reloads; *Later* leaves a banner
+across the top of the page with an *Update* button, and the dialog never comes
+back — the user may be presenting. Instead, while an update is pending, the
+next client-side navigation becomes a full page load (`history.pushState`,
+and `replaceState` when the path changes, become `location.assign` /
+`replace`; Back and Forward reload). That is the one moment nothing typed on
+the page can be lost. It also interrupts whatever the page was doing — a
+recording, a stream — which is accepted: the alternative is old code running
+indefinitely against a new API.
+
+Equality, not ordering, decides: a rollback is a version change too. A tab
+returning from the background after ten minutes asks once, since idle tabs make
+no requests to learn it from; a lazily loaded chunk that no longer exists
+(`vite:preloadError`) reloads the page, at most once every 30 s.
+
+**Why not save the form and reload by itself:** restoring inputs, focus,
+caret and scroll from `localStorage` works for plain forms and fails silently
+for everything else — controlled React inputs, component state, panels with
+their own scroll, rich editors — and writes whatever was typed, passwords
+included, to storage. A partial restore the user did not ask for is worse than
+a banner. A page that has a draft worth keeping should keep it explicitly.
+
+### Client error reports
+
+The browser's own failures — uncaught errors, unhandled rejections, stale
+chunks, 5xx responses, and error responses that did not come from the app at
+all (a proxy, a firewall) — are posted to `POST /api/client-errors` and
+written to the Worker logs with `source: "client"`, the page, the client
+version, user agent and country. Nothing is stored. Turn it off with
+`config.http.reportClientErrors`.
+
+The endpoint must be open, since the errors that matter most can happen before
+sign-in, so it is built to be useless to abuse:
+
+- **In the browser:** each distinct error is sent once per page load, at most
+  25 per page, in batches every 5 s (and with `sendBeacon` on page hide),
+  through the unpatched `fetch` so its own failures stay silent.
+- **Same origin only.** A request without our `Origin` is dropped, which stops
+  floods from visitors of a hostile page. It does not stop a script; the
+  following do.
+- **Bounded.** Body size is checked before parsing (32 KB), at most 10 reports
+  per request, every string truncated.
+- **Rate limited per IP.** With a [Rate Limiting binding](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/)
+  named `CLIENT_ERRORS_RATE_LIMITER`, the limit holds across Cloudflare;
+  without one, a per-isolate budget (20 per IP and 500 in total per minute)
+  still caps a burst:
+
+  ```toml
+  [[env.production.ratelimits]]
+  name = "CLIENT_ERRORS_RATE_LIMITER"
+  namespace_id = "1001"
+  simple = { limit = 20, period = 60 }
+  ```
+
+- **Always 204**, accepted or not, so probing it teaches nothing.
+
+### Localising
+
+The starter's own strings (`src/react-app/lib/i18n.ts`) are English defaults
+under stable keys, and the starter imposes no i18n library — choosing one is
+the app's decision. Plug in whatever the app uses, or change a few words
+without one:
+
+```ts
+setTranslator((key, params) => (i18n.exists(key) ? i18n.t(key, params) : undefined));
+overrideMessages({ "update.now": "Actualizar agora" });
+```
+
+A translator that returns `undefined` falls back to the default, so a partial
+translation never shows a raw key. Placeholders are `{name}`, ICU's simple
+argument. A server message is looked up as `error.<code>` first, so the
+server can keep writing English and the client translate by code.
 
 ---
 

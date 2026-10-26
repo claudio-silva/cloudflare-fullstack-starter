@@ -37,6 +37,11 @@ This starter removes that overhead **entirely**. Create a project from the templ
 | **Zero-downtime migrations** | Schema changes ship without taking the app down |
 | **Maintenance mode** | Planned or emergency, and users don't lose what they were doing |
 | **Sign-in log** | Who signed in, and who tried |
+| **Global error handling** | Every API error shown the same way, once — no error-handling code at call sites |
+| **Connection recovery** | A dropped connection holds requests behind one dialog and resumes them when it returns |
+| **Auto-update** | Open tabs learn about a new release and move to it without losing work |
+| **Client error reporting** | Browser errors land in your Worker logs, with abuse protection |
+| **Localisable** | Every built-in string can be translated, with or without an i18n library |
 | **Built-in Observability** | Monitor your Worker logs, metrics, traces, performance and health |
 | **CI/CD Ready** | GitHub Actions workflow validates every push: lint, type-check, tests, build and an E2E smoke test must pass.<br>You can also display the CI status badge in your README.md |
 | **Testing** | Vitest integration tests running in the Workers runtime against D1 (migrations applied), plus a Playwright E2E smoke test |

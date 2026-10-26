@@ -1,0 +1,98 @@
+/**
+ * The text the starter itself shows, and the one seam through which an app
+ * translates it.
+ *
+ * Deliberately not an i18n library. Choosing one (i18next, FormatJS, Lingui,
+ * Paraglide…) is the app's decision, and the starter's own strings must not
+ * make it first. So the starter ships English defaults under stable keys, and
+ * the app plugs in whatever it chose:
+ *
+ *   // i18next
+ *   setTranslator((key, params) => (i18n.exists(key) ? i18n.t(key, params) : undefined));
+ *
+ *   // no library: a single language, a few words changed
+ *   overrideMessages({ "update.now": "Actualizar agora", "update.later": "Mais tarde" });
+ *
+ * Placeholders are `{name}`, which is also ICU MessageFormat's simple
+ * argument, so the same strings work in FormatJS and Lingui as they are.
+ *
+ * A translator that returns `undefined` falls back to the default, so a
+ * partial translation never shows a raw key.
+ */
+
+export const defaultMessages = {
+	// Maintenance (lib/http/maintenance.ts)
+	"maintenance.title": "{app} is being updated",
+	"maintenance.body": "Please wait until the service is available again.",
+	"maintenance.countdown": "Checking again in {seconds}s…",
+	"maintenance.checking": "Checking…",
+
+	// Lost connection (lib/http/connection.ts)
+	"connection.title": "Can't reach {app}",
+	"connection.body": "Check your internet connection. What you were doing is on hold and will carry on when the connection returns.",
+	"connection.countdown": "Trying again in {seconds}s…",
+	"connection.checking": "Trying again…",
+	"connection.restored": "The connection is back. Send what was on hold?",
+	"connection.retry": "Try now",
+	"connection.send": "Send",
+	"connection.cancel": "Cancel",
+	"connection.cancelled": "The operation was cancelled.",
+
+	// Error responses (lib/http/interceptor.ts). `http.<status>` is used when the
+	// server gave no message of its own; `http.4xx` when there is no specific one.
+	"http.400": "The request could not be processed.",
+	"http.401": "Your session has expired. Please sign in again.",
+	"http.403": "You are not allowed to do that.",
+	"http.404": "Not found.",
+	"http.409": "That conflicts with a change made in the meantime. Reload and try again.",
+	"http.413": "That is too large to send.",
+	"http.429": "Too many requests. Please wait a moment and try again.",
+	"http.4xx": "The request could not be completed.",
+	"http.5xx": "The operation could not be completed. Please try again in a moment; if it keeps happening, contact support.",
+	"http.reference": "Reference: {id}",
+
+	// New version (lib/http/version.ts)
+	"update.title": "A new version of {app} is available",
+	"update.body": "Update now so everything keeps working as it should. If you are in the middle of something, you can update later.",
+	"update.now": "Update now",
+	"update.later": "Later",
+	"update.banner": "A new version of {app} is available.",
+	"update.bannerAction": "Update",
+} as const;
+
+export type MessageKey = keyof typeof defaultMessages;
+export type MessageParams = Record<string, string | number>;
+
+/**
+ * Returns the translation, or `undefined` to fall back to the default.
+ * `key` is a `MessageKey`, or `error.<code>` for a server error code.
+ */
+export type Translator = (key: string, params: MessageParams) => string | undefined;
+
+let translator: Translator | null = null;
+let overrides: Partial<Record<MessageKey, string>> = {};
+
+export function setTranslator(fn: Translator | null): void {
+	translator = fn;
+}
+
+export function overrideMessages(messages: Partial<Record<MessageKey, string>>): void {
+	overrides = { ...overrides, ...messages };
+}
+
+export function format(template: string, params: MessageParams = {}): string {
+	return template.replace(/\{(\w+)\}/g, (match, name: string) => (name in params ? String(params[name]) : match));
+}
+
+/** The text for one of the starter's own keys. */
+export function t(key: MessageKey, params: MessageParams = {}): string {
+	return translator?.(key, params) ?? format(overrides[key] ?? defaultMessages[key], params);
+}
+
+/**
+ * The text for a key the starter does not define (a server error code, say),
+ * with the caller's fallback when the app has no translation for it.
+ */
+export function translate(key: string, fallback: string, params: MessageParams = {}): string {
+	return translator?.(key, params) ?? format(fallback, params);
+}

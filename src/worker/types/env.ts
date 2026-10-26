@@ -26,4 +26,7 @@ export type AppEnv = {
 	// Shared secret used by management CLI (`npm run auth …`) to authenticate
 	// against `/api/cli/*`. Must be set in every environment.
 	CLI_API_KEY?: string;
+	// Optional Workers Rate Limiting binding for POST /api/client-errors
+	// (src/worker/routes/client-errors.ts). Without it a per-isolate budget applies.
+	CLIENT_ERRORS_RATE_LIMITER?: RateLimit;
 };

@@ -12,6 +12,8 @@ export type AppBindings = {
 	Variables: {
 		user: AppUser | null;
 		session: unknown;
+		/** Set by versionMiddleware: the Cloudflare ray id, or a generated one where there is none. */
+		requestId: string;
 	};
 };
 

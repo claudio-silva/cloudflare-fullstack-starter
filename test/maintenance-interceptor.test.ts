@@ -6,7 +6,7 @@ import {
 	parseRetryAfterMs,
 	MAINTENANCE_PROBE_PATH,
 	replayKey,
-} from "../src/react-app/lib/maintenance";
+} from "../src/react-app/lib/http/maintenance";
 import { isMaintenanceBypassed } from "../src/worker/middleware/maintenance";
 
 /**

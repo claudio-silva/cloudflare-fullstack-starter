@@ -26,7 +26,8 @@
  * slip past.
  */
 
-const MAINTENANCE_HEADER = "x-maintenance";
+import { MAINTENANCE_HEADER } from "../../../shared/http-contract";
+import { browser } from "./browser";
 
 /**
  * What the client polls to learn the app is back.
@@ -202,7 +203,7 @@ function isRedirectMaintenance(originalFetch: typeof fetch, path: string): Promi
  */
 function isSameOrigin(input: RequestInfo | URL): boolean {
 	const raw = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-	const base = (globalThis as { location?: { href: string } }).location?.href ?? "http://localhost/";
+	const base = browser.location?.href ?? "http://localhost/";
 	try {
 		return new URL(raw, base).origin === new URL(base).origin;
 	} catch {
@@ -230,7 +231,7 @@ export function replayKey(input: RequestInfo | URL, init?: RequestInit): string 
 	if (method !== "GET" && method !== "HEAD") return null;
 
 	const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-	const base = (globalThis as { location?: { href: string } }).location?.href ?? "http://localhost/";
+	const base = browser.location?.href ?? "http://localhost/";
 	// Headers count: the same URL asked for with a different Accept, say, can
 	// legitimately answer differently.
 	const headers = [...new Headers(init?.headers ?? (isRequest ? input.headers : undefined)).entries()]

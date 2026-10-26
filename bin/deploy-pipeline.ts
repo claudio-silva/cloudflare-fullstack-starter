@@ -23,7 +23,7 @@
  *
  * The window is a Worker var rather than the zone-level redirect because the
  * var keeps the URL, returns a real 503 with Retry-After, and lets the client
- * replay the request (src/react-app/lib/maintenance.ts). It needs a deploy to
+ * replay the request (src/react-app/lib/http/maintenance.ts). It needs a deploy to
  * flip, which is free here: we are deploying anyway. The zone redirect stays
  * for emergencies, where the Worker may be the thing that is broken.
  *

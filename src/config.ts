@@ -15,6 +15,13 @@ export const config = {
 	// Application name - displayed in UI, emails, and page titles
 	appName: "My App",
 
+	// The browser's HTTP layer (src/react-app/lib/http/, docs/MECHANISMS.md)
+	http: {
+		// Send the browser's uncaught errors and failed requests to the Worker
+		// logs (POST /api/client-errors), where `wrangler tail` and Workers Logs show them.
+		reportClientErrors: true,
+	},
+
 	// Auth settings
 	auth: {
 		// Toggle self-serve signups (hides link and route when false)

@@ -96,6 +96,16 @@ items.get("/", async (c) => {
 app.route("/api/items", items);
 ```
 
+### Errors (both sides)
+Return errors through `AppError` / `fail()` (`src/worker/lib/errors.ts`): a message written for the user, and the real cause in `log`, which is only logged:
+```typescript
+if (!post) return fail(c, 404, "That post no longer exists.", { log: `post ${id} not found`, code: "post_not_found" });
+throw new AppError(403, "You can't edit someone else's post.", { log: `user ${user.id} → post ${id}` });
+```
+In the browser, the HTTP layer (`src/react-app/lib/http/`) shows every API failure and then makes `fetch` **reject** with `HandledHttpError`. So call sites do not check `res.ok` or show error messages; code after `await fetch()` runs only on success. A call that handles a status itself lists it: `fetch(url, { handles: [404] })`. A `catch` that exists to undo local state must not show `HandledHttpError` again (`isHandledHttpError()`). See `docs/MECHANISMS.md`, *The HTTP layer*.
+
+User-facing strings of the starter's own UI live in `src/react-app/lib/i18n.ts` (`t()`); add new ones there with an English default.
+
 ### Using shadcn/ui Components
 Components are in `@/components/ui/`. Import directly:
 ```tsx
@@ -299,6 +309,8 @@ Use the bundled shadcn/ui components (`@/components/ui/`) first, or compositions
 - Don't hardcode URLs (use environment-based config)
 - Don't deploy to production without the user's explicit approval, and never with raw `wrangler deploy`: use `npm run deploy:production` (`bin/deploy-production`)
 - Don't call a service SDK/API directly from feature code when an adapter exists (go through `src/worker/adapters/`)
+- Don't show API errors at call sites (`if (!res.ok) toast.error(...)`): the HTTP layer already has; use `handles` for statuses the call deals with itself
+- Don't put internal details (SQL, ids of other users, stack traces) in an error's user message: they go in `log`
 
 ## Project-Specific Notes
 
