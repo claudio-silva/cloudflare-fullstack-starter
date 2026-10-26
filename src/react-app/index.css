@@ -154,6 +154,8 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* Room for the update banner (components/http/UpdatePrompt.tsx), 0 without it. */
+    padding-top: var(--app-banner-h, 0px);
     font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
     line-height: 1.5;
     font-weight: 400;

@@ -107,7 +107,7 @@ export function TopBar({ children }: TopBarProps) {
 	const { data: session } = authClient.useSession();
 
 	return (
-		<div className="fixed inset-0 flex flex-col bg-background text-foreground">
+		<div className="fixed inset-x-0 bottom-0 top-[var(--app-banner-h,0px)] flex flex-col bg-background text-foreground">
 			<header className="flex h-14 shrink-0 items-center border-b px-4">
 				{/* Logo and App Name */}
 				<Link to="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity shrink-0">

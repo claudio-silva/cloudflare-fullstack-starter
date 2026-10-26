@@ -90,6 +90,7 @@ Node 24 LTS, a generic `wrangler.toml` environment merge, a safer deploy pipelin
 34. **Build-time overrides for a deployment that is not the repository's own:** `D1_DATABASE_ID` replaces the `DB` binding's `database_id` in the build (and `bin/db.ts` then addresses the database by name, for Time Travel), and `APP_VERSION_FROM=starter` makes the build report `starter.version`. Both are build variables (`sync-build-vars`), never Worker secrets.
 35. **`sync-secrets` no longer pushes `DEPLOY_*` keys** (`DEPLOY_HOOK_URL`, `DEPLOY_MODE`, …) as Worker secrets; they are deploy settings.
 36. **New `.github/workflows/demo.yml`**: calls the `DEMO_DEPLOY_HOOK_URL` deploy hook when a release is published. It does nothing without that secret — delete it if you prefer.
+37. **Fixed: the update banner was hidden under `TopBar`**, which is fixed to the viewport. The banner is now fixed at the top and publishes its height as `--app-banner-h`, by which `body` (`index.css`) and the TopBar shell are offset. A fixed layout of your own should offset by it too.
 
 ### Required actions
 
