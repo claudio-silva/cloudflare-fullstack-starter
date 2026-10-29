@@ -30,6 +30,7 @@
 		"build:production": "tsc -b && vite build --mode production",
 		"preview": "npm run build && vite preview",
 		"lint": "eslint .",
+		"admin:remove": "tsx bin/remove-admin.ts",
 		"type-check": "tsc -b",
 		"test": "vitest run",
 		"test:watch": "vitest",

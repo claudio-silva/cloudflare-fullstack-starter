@@ -1,6 +1,7 @@
 import { ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { LogOut, Settings } from "lucide-react";
+import { ShieldCheck } from "lucide-react"; // [admin-area-line]
 import { Button } from "./ui/button";
 import {
 	DropdownMenu,
@@ -15,6 +16,7 @@ import { ModeToggle } from "./ModeToggle";
 import { Logo } from "./Logo";
 import { authClient } from "@/lib/auth/client";
 import { config } from "../../config";
+import { hasRole } from "../../shared/roles"; // [admin-area-line]
 
 /** URL to navigate to after logout. Defaults to "/" */
 const LOGOUT_REDIRECT_URL = "/";
@@ -87,6 +89,16 @@ function UserMenu() {
 					</div>
 				</DropdownMenuLabel>
 				<DropdownMenuSeparator />
+				{/* [admin-area] */}
+				{hasRole(user.role, "admin") && (
+					<DropdownMenuItem asChild>
+						<Link to="/admin" className="cursor-pointer">
+							<ShieldCheck className="mr-2 h-4 w-4" />
+							Administration
+						</Link>
+					</DropdownMenuItem>
+				)}
+				{/* [/admin-area] */}
 				<DropdownMenuItem asChild>
 					<Link to="/profile" className="cursor-pointer">
 						<Settings className="mr-2 h-4 w-4" />

@@ -47,6 +47,7 @@ src/
 │   │   ├── Logo.tsx        # Theme-aware logo component
 │   │   ├── ModeToggle.tsx  # Dark/light theme toggle
 │   │   └── theme-provider.tsx  # Theme context with URL param support
+│   ├── admin/              # Example admin area at /admin (layout, nav config, pages) — see docs/ADMIN.md
 │   ├── pages/              # Route pages
 │   │   ├── auth/           # SignUp, VerifyEmail, ForgotPassword, ResetPassword
 │   │   ├── Home.tsx        # Protected home
@@ -80,6 +81,14 @@ Wrap routes with `<ProtectedRoute>` to require authentication:
   </ProtectedRoute>
 } />
 ```
+
+### Roles
+Roles are in `src/shared/roles.ts` (`user` < `admin` < `superadmin`); `session.user.role` carries the role. Check with `hasRole(role, "admin")` (admin or higher) and protect API routes with `requireRole("admin")` (`src/worker/middleware/roles.ts`) after `authMiddleware`. A role check in the browser only decides what is shown; the Worker must check it too.
+
+<!-- [admin-area] -->
+### The admin area
+`/admin` is an example backoffice (admins and up, 403 otherwise) that a project may restyle or remove. To add a page there see `docs/ADMIN.md`; `npm run admin:remove` removes the whole area.
+<!-- [/admin-area] -->
 
 ### Adding API Endpoints
 Create one module per feature in `src/worker/routes/` and mount it in `src/worker/index.ts` with `app.route()`. Don't grow `index.ts` with handlers:

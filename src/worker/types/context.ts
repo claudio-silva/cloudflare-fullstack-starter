@@ -5,6 +5,8 @@ export type AppUser = {
 	id: string;
 	email: string;
 	name?: string | null;
+	/** See src/shared/roles.ts. */
+	role?: string | null;
 };
 
 export type AppBindings = {

@@ -313,6 +313,7 @@ If wrangler is logged in, you can do it from the command line:
 - Minimalistic app shell, so that you are free to create your own design and branding
 - Clean top header bar with logo and user menu
 - Avatar dropdown with user info, Profile, and Sign Out
+- Example admin area (`/admin`, in the avatar menu for admins): sidebar or top-bar menu, breadcrumbs, a dashboard, and user management as a CRUD example for superadmins. Restyle it, or remove it with `npm run admin:remove` ([docs/ADMIN.md](docs/ADMIN.md)) <!-- [admin-area-line] -->
 - Profile page (update name, email, password; delete account)
 - Dark/light theme toggle with FOUC prevention
 - Theme-aware logo component (auto-switches light/dark)
@@ -499,6 +500,7 @@ Everything that makes a deployment a demo lives on that deployment (Worker secre
 ```
 ├── src/
 │   ├── react-app/           # React frontend
+│   │   ├── admin/           # Example admin area (docs/ADMIN.md)
 │   │   ├── assets/          # Static assets (logo-light.svg, logo-dark.svg)
 │   │   ├── components/
 │   │   │   ├── auth/        # Auth components (LoginForm, ProtectedRoute, AuthOverlay)
@@ -566,12 +568,14 @@ npm run auth delete-user -- --all                          # delete ALL users (u
 # Both ask for confirmation; pass --yes in scripts and CI (without a terminal they refuse and exit 1)
 ```
 
-User roles:
+User roles, each including the ones before it:
 
 - `user` (default): standard account with no special privileges.
-- `admin`: full management access. The last admin cannot be demoted.
+- `admin`: administrator. The last admin (or superadmin) cannot be demoted.
+- `superadmin`: above admin.
 
-Additional roles can be added by the developer by extending the migration and the worker validation logic.
+Additional roles can be added in `src/shared/roles.ts`; check them with `hasRole()` in the browser and `requireRole()` in the Worker.
+In the example admin area, admins open it and superadmins also manage users: see [docs/ADMIN.md](docs/ADMIN.md). <!-- [admin-area-line] -->
 
 For remote environments, set `CLI_API_KEY` in your `.env.*` file (same value must be deployed to the Worker). You can pass the environment as a flag or as a positional argument:
 ```bash
@@ -859,6 +863,7 @@ For long-term retention or external analysis, you can forward logs via Cloudflar
 ### Template Internals
 - [What this starter gives you, and why](docs/MECHANISMS.md) — migrations, maintenance mode, versioning, deploy modes, secrets, sign-in log, backups, database portability
 - [Deployment, versions and migrations](docs/DEPLOYMENT.md) — what each deploy does, git-tag releases, expand/contract migrations, maintenance, Workers Builds and your own CI
+- [The admin area](docs/ADMIN.md) — roles, the example backoffice, adding pages, removing it <!-- [admin-area-line] -->
 - [Dependencies](docs/DEPENDENCIES.md) — why each third-party package is here, what was left out, and when to revisit
 - [Vite ↔ Cloudflare Bridge](docs/VITE_CLOUDFLARE_BRIDGE.md) — how the project bridges Vite's dev conventions with Cloudflare's deployment model (env config baking, secrets sync, cross-platform build scripts)
 

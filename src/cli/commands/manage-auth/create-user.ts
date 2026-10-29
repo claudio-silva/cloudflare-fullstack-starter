@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import { connectToDatabase, normalizeEnvironment } from "../../utils/db";
+import { ROLES, type Role } from "../../../shared/roles";
 import { printError, printSuccess, printWarning } from "../../utils/output";
 
 type EnvironmentOption = "local" | "preview" | "production";
@@ -9,7 +10,7 @@ type CreateUserOptions = {
 	pass: string;
 	env?: EnvironmentOption;
 	name?: string;
-	role?: "user" | "admin";
+	role?: Role;
 };
 
 export function createCreateUserCommand(): Command {
@@ -22,11 +23,11 @@ export function createCreateUserCommand(): Command {
 		.argument("[environment]", "Target environment (local, preview, production)")
 		.option("--env <environment>", "Target environment (local, preview, production)")
 		.option("--name <name>", "User display name")
-		.option("-r, --role <role>", "User role: user | admin (default: user)")
+		.option("-r, --role <role>", `User role: ${ROLES.join(" | ")} (default: user)`)
 		.action(async (environment: string | undefined, options: CreateUserOptions) => {
 			try {
 				const { user: email, pass: password, name, role } = options;
-				const allowedRoles = ["user", "admin"] as const;
+				const allowedRoles = ROLES;
 				const env = normalizeEnvironment(options.env, environment);
 				const db = await connectToDatabase(env);
 

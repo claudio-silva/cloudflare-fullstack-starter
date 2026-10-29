@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import { connectToDatabase, normalizeEnvironment } from "../../utils/db";
+import { ROLES, type Role } from "../../../shared/roles";
 import { printError, printSuccess, printWarning } from "../../utils/output";
 
 type EnvironmentOption = "local" | "preview" | "production";
@@ -9,7 +10,7 @@ type EditUserOptions = {
 	name?: string;
 	email?: string;
 	pass?: string;
-	role?: "user" | "admin";
+	role?: Role;
 	env?: EnvironmentOption;
 };
 
@@ -17,7 +18,7 @@ type UpdateData = {
 	name?: string;
 	email?: string;
 	password?: string;
-	role?: "user" | "admin";
+	role?: Role;
 };
 
 export function createEditUserCommand(): Command {
@@ -29,13 +30,13 @@ export function createEditUserCommand(): Command {
 		.option("-n, --name <name>", "New display name")
 		.option("-e, --email <email>", "New email address")
 		.option("-p, --pass <password>", "New password (plain text)")
-		.option("-r, --role <role>", "New role: user | admin")
+		.option("-r, --role <role>", `New role: ${ROLES.join(" | ")}`)
 		.argument("[environment]", "Target environment (local, preview, production)")
 		.option("--env <environment>", "Target environment (local, preview, production)")
 		.action(async (environment: string | undefined, options: EditUserOptions) => {
 			try {
 				const { user: currentEmail, name, email: newEmail, pass: password, role } = options;
-				const allowedRoles = ["user", "admin"] as const;
+				const allowedRoles = ROLES;
 				const env = normalizeEnvironment(options.env, environment);
 				if (!name && !newEmail && !password && !role) {
 					printError("Must specify at least one field to update (--name, --email, --pass, or --role)");

@@ -1,0 +1,93 @@
+import { env } from "cloudflare:workers";
+import { describe, expect, it } from "vitest";
+import { app } from "../src/worker/index";
+
+// The "test" environment stubs the session with a fixed user; the admin area
+// is about roles, so these run with real sign-ins ("local" keeps everything else as in dev).
+const local = { ...env, ENVIRONMENT: "local" };
+const json = { "content-type": "application/json" };
+const cliKey = { "x-api-key": env.CLI_API_KEY as string };
+
+let n = 0;
+async function userWithRole(role: string) {
+	const email = `admin-test-${Date.now()}-${n++}@example.com`;
+	const password = "password-123";
+	const res = await app.request("/api/cli/users", { method: "POST", headers: { ...json, ...cliKey }, body: JSON.stringify({ email, password, name: role, role }) }, local);
+	expect(res.status).toBeLessThan(300);
+	const { userId } = (await res.json()) as { userId: string };
+	const signIn = await app.request("/api/auth/sign-in/email", { method: "POST", headers: json, body: JSON.stringify({ email, password }) }, local);
+	expect(signIn.status).toBe(200);
+	const cookie = signIn.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ");
+	const call = (path: string, init: { method?: string; body?: unknown } = {}) =>
+		app.request(`/api/admin${path}`, { method: init.method ?? "GET", headers: { ...json, cookie }, body: init.body === undefined ? undefined : JSON.stringify(init.body) }, local);
+	return { id: userId, email, call };
+}
+
+describe("admin API", () => {
+	it("needs a session, then admin or higher, and superadmin for users", async () => {
+		expect((await app.request("/api/admin/users", {}, local)).status).toBe(401);
+		const user = await userWithRole("user");
+		const admin = await userWithRole("admin");
+		const superadmin = await userWithRole("superadmin");
+		expect((await user.call("/users")).status).toBe(403);
+		expect((await user.call("/anything")).status).toBe(403);
+		expect((await admin.call("/users")).status).toBe(403);
+		expect((await admin.call("/anything")).status).toBe(404);
+		expect((await superadmin.call("/users")).status).toBe(200);
+	});
+
+	it("the session carries the role", async () => {
+		const admin = await userWithRole("admin");
+		const res = await app.request("/api/auth/get-session", { headers: { cookie: (await signInCookie(admin.email)) } }, local);
+		expect(((await res.json()) as { user: { role: string } }).user.role).toBe("admin");
+	});
+
+	it("creates, lists, reads, updates and deletes a user", async () => {
+		const { call } = await userWithRole("superadmin");
+		const email = `crud-${Date.now()}@example.com`;
+
+		const bad = await call("/users", { method: "POST", body: { name: "", email: "nope", role: "user", emailVerified: true, password: "short" } });
+		expect(bad.status).toBe(400);
+
+		const created = await call("/users", { method: "POST", body: { name: "Crud", email: email.toUpperCase(), role: "user", emailVerified: true, password: "password-123" } });
+		expect(created.status).toBe(201);
+		const { id, email: stored } = (await created.json()) as { id: string; email: string };
+		expect(stored).toBe(email);
+		expect((await call("/users", { method: "POST", body: { name: "", email, role: "user", emailVerified: true, password: "password-123" } })).status).toBe(409);
+
+		const list = (await (await call(`/users?q=${encodeURIComponent(email)}`)).json()) as { users: { id: string }[]; total: number };
+		expect(list.total).toBe(1);
+		expect(list.users[0].id).toBe(id);
+
+		const detail = (await (await call(`/users/${id}`)).json()) as { signInMethods: string[] };
+		expect(detail.signInMethods).toEqual(["credential"]);
+
+		const updated = await call(`/users/${id}`, { method: "PATCH", body: { name: "Renamed", role: "admin" } });
+		expect(updated.status).toBe(200);
+		expect(await updated.json()).toMatchObject({ name: "Renamed", role: "admin" });
+
+		expect((await call(`/users/${id}`, { method: "DELETE" })).status).toBe(204);
+		expect((await call(`/users/${id}`)).status).toBe(404);
+	});
+
+	it("a superadmin cannot demote, deactivate or delete themselves", async () => {
+		const me = await userWithRole("superadmin");
+		expect((await me.call(`/users/${me.id}`, { method: "PATCH", body: { role: "user" } })).status).toBe(403);
+		expect((await me.call(`/users/${me.id}`, { method: "PATCH", body: { emailVerified: false } })).status).toBe(403);
+		expect((await me.call(`/users/${me.id}`, { method: "DELETE" })).status).toBe(403);
+		expect((await me.call(`/users/${me.id}`, { method: "PATCH", body: { name: "Still me" } })).status).toBe(200);
+	});
+
+	it("a demoted user loses their sessions", async () => {
+		const { call } = await userWithRole("superadmin");
+		const target = await userWithRole("admin");
+		expect((await target.call("/anything")).status).toBe(404);
+		expect((await call(`/users/${target.id}`, { method: "PATCH", body: { role: "user" } })).status).toBe(200);
+		expect((await target.call("/anything")).status).toBe(401);
+	});
+});
+
+async function signInCookie(email: string) {
+	const res = await app.request("/api/auth/sign-in/email", { method: "POST", headers: json, body: JSON.stringify({ email, password: "password-123" }) }, local);
+	return res.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ");
+}

@@ -1,5 +1,6 @@
 import { readFileSync, existsSync } from "node:fs";
 import type { MigrationCompatibility, JournalEntry, SchemaSnapshot } from "../../shared/migration-types";
+import type { Role } from "../../shared/roles";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -42,8 +43,8 @@ type CliUserDetails = CliUserSummary & {
 	activeSessions: number;
 };
 
-type CreateUserPayload = { email: string; password: string; name?: string; role?: "user" | "admin" };
-type EditUserPayload = { name?: string; email?: string; password?: string; role?: "user" | "admin" };
+type CreateUserPayload = { email: string; password: string; name?: string; role?: Role };
+type EditUserPayload = { name?: string; email?: string; password?: string; role?: Role };
 
 type BasicResponse = { success?: boolean; message?: string };
 type CreateUserResponse = BasicResponse & { userId?: string };
@@ -59,7 +60,7 @@ export type CliDatabaseClient = {
 	editUser: (email: string, updateData: EditUserPayload) => Promise<EditUserResponse>;
 	getUser: (email: string) => Promise<CliUserDetails>;
 	listUsers: (params?: { search?: string; limit?: number }) => Promise<CliUserSummary[]>;
-	setRole: (email: string, role: "user" | "admin") => Promise<BasicResponse>;
+	setRole: (email: string, role: Role) => Promise<BasicResponse>;
 	migrate: (only?: MigrationCompatibility[]) => Promise<MigrateResponse>;
 	migrations: () => Promise<MigrationStatus[]>;
 	pendingMigrations: () => Promise<PendingMigration[]>;

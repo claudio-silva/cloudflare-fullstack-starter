@@ -1,10 +1,12 @@
 import { Hono } from "hono";
 import type { Next } from "hono";
 import bcrypt from "bcryptjs";
-import { sql, type Kysely, type Updateable } from "kysely";
+import { sql, type Updateable } from "kysely";
 import type { Database } from "../types/database";
 import type { AppBindings, AppContext } from "../types/context";
 import { createDb, databaseKind, dbBool, dbNow, toIso } from "../db";
+import { createPasswordUser, deleteUser, revokeSessions, wouldRemoveLastAdmin } from "../lib/users";
+import { ROLES, hasRole, type Role } from "../../shared/roles";
 import { appliedMigrations, clearTable, describeSchema, exportRows, finishTable, importRows, restoreChunkRows, type EncodedRow } from "../db/backup";
 import { migrateDatabase, migrationStatus, pendingMigrations } from "../db/migrations";
 import { readJournal } from "../db/migrations/journal";
@@ -14,12 +16,11 @@ import { seeds } from "../db/seeds";
 import { createEmailSender } from "../adapters/email";
 import { config } from "../../config";
 
-async function deleteSessionsForUser(db: Kysely<Database>, userId: string): Promise<void> {
-	await db.deleteFrom("sessions").where("userId", "=", userId).execute();
-}
+const ALLOWED_ROLES = ROLES;
+type UserRole = Role;
 
-const ALLOWED_ROLES = ["user", "admin"] as const;
-type UserRole = (typeof ALLOWED_ROLES)[number];
+/** A role change that takes something away signs the user out everywhere. */
+const isDowngrade = (from: string, to: string) => from !== to && !hasRole(to, from as Role);
 
 const safeEqual = (a: string, b: string): boolean => {
 	if (a.length !== b.length) return false;
@@ -150,47 +151,7 @@ cli.post("/users", async (c) => {
 		return c.json({ error: "User already exists" }, 409);
 	}
 
-	const now = dbNow();
-	const userId = crypto.randomUUID();
-	// For a password account Better Auth stores the user's own id as accountId,
-	// and looks the credential up by it: any other value and the user exists
-	// but can never sign in.
-	const accountId = userId;
-
-	const hashedPassword = await bcrypt.hash(password, 10);
-
-	await db
-		.insertInto("users")
-		.values({
-			id: userId,
-			email,
-			name: name || null,
-			image: null,
-			emailVerified: dbBool(true),
-			createdAt: now,
-			updatedAt: now,
-			role: (role as UserRole) || "user",
-		})
-		.execute();
-
-	await db
-		.insertInto("accounts")
-		.values({
-			accountId,
-			id: crypto.randomUUID(),
-			userId,
-			providerId: "credential",
-			provider: "credential",
-			providerAccountId: email,
-			password: hashedPassword,
-			refreshToken: null,
-			accessToken: null,
-			accessTokenExpiresAt: null,
-			scope: null,
-			createdAt: now,
-			updatedAt: now,
-		})
-		.execute();
+	const userId = await createPasswordUser(db, { email, password, name, role: (role as UserRole) || "user" });
 
 	return c.json({ success: true, userId, message: "User created successfully" });
 });
@@ -259,15 +220,8 @@ cli.put("/users/:email", async (c) => {
 	}
 
 	// Prevent demoting the last admin
-	if (updateData.role && user.role === "admin" && updateData.role !== "admin") {
-		const adminCount = await db
-			.selectFrom("users")
-			.where("role", "=", "admin")
-			.select((eb) => eb.fn.count<number>("id").as("c"))
-			.executeTakeFirst();
-		if (Number(adminCount?.c ?? 0) <= 1) {
-			return c.json({ error: "Cannot demote the last admin" }, 400);
-		}
+	if (updateData.role && (await wouldRemoveLastAdmin(db, user, updateData.role))) {
+		return c.json({ error: "Cannot demote the last admin" }, 400);
 	}
 
 	if (updateData.password) {
@@ -289,9 +243,9 @@ cli.put("/users/:email", async (c) => {
 		await db.updateTable("users").set(updateFields).where("id", "=", user.id).execute();
 	}
 
-	// Revoke sessions when role is downgraded to user
-	if (updateData.role === "user") {
-		await deleteSessionsForUser(db, user.id);
+	// Revoke sessions when the role is downgraded
+	if (updateData.role && isDowngrade(user.role, updateData.role)) {
+		await revokeSessions(db, user.id);
 	}
 
 	return c.json({
@@ -313,19 +267,12 @@ cli.put("/users/:email/role", async (c) => {
 	if (!user) {
 		return c.json({ error: "User not found" }, 404);
 	}
-	if (user.role === "admin" && role !== "admin") {
-		const adminCount = await db
-			.selectFrom("users")
-			.where("role", "=", "admin")
-			.select((eb) => eb.fn.count<number>("id").as("c"))
-			.executeTakeFirst();
-		if (Number(adminCount?.c ?? 0) <= 1) {
-			return c.json({ error: "Cannot demote the last admin" }, 400);
-		}
+	if (await wouldRemoveLastAdmin(db, user, role)) {
+		return c.json({ error: "Cannot demote the last admin" }, 400);
 	}
 	await db.updateTable("users").set({ role, updatedAt: dbNow() }).where("id", "=", user.id).execute();
-	if (role === "user") {
-		await deleteSessionsForUser(db, user.id);
+	if (isDowngrade(user.role, role)) {
+		await revokeSessions(db, user.id);
 	}
 	return c.json({ success: true, message: `Role set to ${role}` });
 });
@@ -358,15 +305,12 @@ cli.delete("/users/:email", async (c) => {
 	if (!email) return c.json({ error: "Email is required" }, 400);
 	const db = createDb(c.env);
 
-	const user = await db.selectFrom("users").where("email", "=", email).select("id").executeTakeFirst();
+	const user = await db.selectFrom("users").where("email", "=", email).select(["id", "email"]).executeTakeFirst();
 	if (!user) {
 		return c.json({ error: "User not found" }, 404);
 	}
 
-	await db.deleteFrom("sessions").where("userId", "=", user.id).execute();
-	await db.deleteFrom("verifications").where("identifier", "=", email).execute();
-	await db.deleteFrom("accounts").where("userId", "=", user.id).execute();
-	await db.deleteFrom("users").where("id", "=", user.id).execute();
+	await deleteUser(db, user);
 
 	return c.json({ success: true, message: "User deleted successfully" });
 });

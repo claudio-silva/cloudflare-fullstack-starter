@@ -3,6 +3,7 @@ import type { AppBindings } from "../types/context";
 import { authMiddleware } from "../middleware/auth";
 import { createDb } from "../db";
 import { fail } from "../lib/errors";
+import { deleteUser } from "../lib/users";
 
 /** Authenticated user routes, mounted at `/api`. */
 export const profile = new Hono<AppBindings>();
@@ -23,10 +24,7 @@ profile.delete("/profile", authMiddleware, async (c) => {
 	const db = createDb(c.env);
 
 	// Delete all user data
-	await db.deleteFrom("sessions").where("userId", "=", user.id).execute();
-	await db.deleteFrom("verifications").where("identifier", "=", user.email).execute();
-	await db.deleteFrom("accounts").where("userId", "=", user.id).execute();
-	await db.deleteFrom("users").where("id", "=", user.id).execute();
+	await deleteUser(db, user);
 
 	return c.json({ success: true, message: "Account deleted successfully" });
 });

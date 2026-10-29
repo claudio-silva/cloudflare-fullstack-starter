@@ -3,6 +3,7 @@ import type { AppBindings } from "./types/context";
 import { handleAuthRequest } from "./middleware/auth";
 import { cli } from "./routes/cli";
 import { profile } from "./routes/profile";
+import { admin } from "./routes/admin"; // [admin-area-line]
 import { config } from "../config";
 import { APP_COMMIT, APP_VERSION } from "../shared/app-version";
 import { createDb, databaseKind } from "./db";
@@ -123,6 +124,7 @@ app.all("/api/auth/*", async (c) => {
 app.route("/api/cli", cli);
 app.route(CLIENT_ERRORS_PATH, clientErrors);
 app.route("/api/demo", demo);
+app.route("/api/admin", admin); // [admin-area-line]
 app.route("/api", profile);
 
 // Durable Object classes must be exported from the Worker entry.

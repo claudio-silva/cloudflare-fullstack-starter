@@ -9,6 +9,7 @@ import { SignUp } from "@/pages/auth/SignUp";
 import { VerifyEmail } from "@/pages/auth/VerifyEmail";
 import { ForgotPassword } from "@/pages/auth/ForgotPassword";
 import { ResetPassword } from "@/pages/auth/ResetPassword";
+import { AdminRoutes } from "@/admin/AdminRoutes"; // [admin-area-line]
 import { authClient } from "@/lib/auth/client";
 import { config } from "../config";
 import "./App.css";
@@ -69,6 +70,22 @@ function AppContent() {
 					</ProtectedRoute>
 				}
 			/>
+			{/* [admin-area] Admins and up; 403 otherwise. An example: see docs/ADMIN.md */}
+			<Route
+				path="/admin/*"
+				element={
+					<ProtectedRoute>
+						{shouldShowTopBar ? (
+							<TopBar>
+								<AdminRoutes />
+							</TopBar>
+						) : (
+							<AdminRoutes />
+						)}
+					</ProtectedRoute>
+				}
+			/>
+			{/* [/admin-area] */}
 			{/* 404 — public, so unknown URLs don't bounce through login */}
 			<Route path="*" element={<NotFound />} />
 		</Routes>

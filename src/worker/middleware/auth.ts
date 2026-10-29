@@ -97,7 +97,16 @@ export function createAuth(c: AppContext) {
 			db,
 			type: databaseKind,
 		},
-		user: { modelName: "users" },
+		user: {
+			modelName: "users",
+			// Exposed on the session (and to the browser) so the UI can show what
+			// the role allows; `input: false` keeps sign-up and updateUser from
+			// setting it. Read from the database on every session check, so a
+			// role change applies to the next request.
+			additionalFields: {
+				role: { type: "string", input: false, required: false, defaultValue: "user" },
+			},
+		},
 		session: {
 			modelName: "sessions",
 			expiresIn: 60 * 60 * 24 * 7,
@@ -154,7 +163,7 @@ export async function authMiddleware(c: AppContext, next: () => Promise<void>) {
 	const environment: Environment = (c.env.ENVIRONMENT as Environment) || "local";
 
 	if (environment === "test") {
-		c.set("user", { id: "test-user", email: "test@example.com", name: "Test User" } as AppUser);
+		c.set("user", { id: "test-user", email: "test@example.com", name: "Test User", role: "user" } as AppUser);
 		return next();
 	}
 
