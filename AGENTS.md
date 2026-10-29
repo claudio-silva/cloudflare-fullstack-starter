@@ -20,10 +20,10 @@ The `@cloudflare/vite-plugin` unifies frontend and backend in one dev server:
 - Single server at http://localhost:5173
 - API routes at `/api/*` handled by Hono
 - Hot reload works for both frontend and backend
-- **Never** try to run separate servers or configure proxies
+- One server for both: a separate frontend server or a proxy to the Worker is not needed
 
 ### API-Only Database Access
-**Never** import Kysely or access D1 directly in frontend code. Always use HTTP APIs:
+Frontend code reaches the database through the API only; Kysely and D1 live in the Worker:
 ```typescript
 // ✅ Correct - use API
 const response = await fetch('/api/users');
@@ -102,7 +102,7 @@ Return errors through `AppError` / `fail()` (`src/worker/lib/errors.ts`): a mess
 if (!post) return fail(c, 404, "That post no longer exists.", { log: `post ${id} not found`, code: "post_not_found" });
 throw new AppError(403, "You can't edit someone else's post.", { log: `user ${user.id} → post ${id}` });
 ```
-In the browser, call the API with `http()` (`import { http } from "@/lib/http"`), never bare `fetch`. The HTTP layer (`src/react-app/lib/http/`) shows every failure of a managed call and then makes it **reject** with `HandledHttpError`. So call sites do not check `res.ok` or show error messages; code after `await http()` runs only on success. A call that handles a status itself lists it: `http(url, { handles: [404] })`; `[0]` takes network failures, `"all"` everything. A `catch` that exists to undo local state must not show `HandledHttpError` again (`isHandledHttpError()`). Error responses are handled only for calls with a `handles` key other than `null` (which `http()` adds): a plain `fetch`, or `handles: null`, gets its statuses untouched. Lost connections and maintenance are ridden out for **every** same-origin request, aware or not: held, and sent again in order, writes included, with a stable `Idempotency-Key` — an endpoint where a duplicate would do harm should deduplicate on it. A library with its own offline strategy goes in `installHttpLayer({ exclude })`. For offline support, register `http.addOfflineHandler()` (answer from local data) and `http.beforeReconnect()` (send an outbox); read `http.online` / `http.state`, or listen to `app:online` / `app:offline`, rather than `navigator.onLine`. While requests are held the layer blocks the page (`inert` on everything outside `#http-layer`); a page of your own that is fixed to the viewport should offset by `--app-banner-h`. See `docs/MECHANISMS.md`, *The HTTP layer* and *Lost connection*.
+In the browser, call the API with `http()` (`import { http } from "@/lib/http"`) rather than bare `fetch`, which skips the error handling. The HTTP layer (`src/react-app/lib/http/`) shows every failure of a managed call and then makes it **reject** with `HandledHttpError`. So call sites do not check `res.ok` or show error messages; code after `await http()` runs only on success. A call that handles a status itself lists it: `http(url, { handles: [404] })`; `[0]` takes network failures, `"all"` everything. A `catch` that exists to undo local state must not show `HandledHttpError` again (`isHandledHttpError()`). Error responses are handled only for calls with a `handles` key other than `null` (which `http()` adds): a plain `fetch`, or `handles: null`, gets its statuses untouched. Lost connections and maintenance are ridden out for **every** same-origin request, aware or not: held, and sent again in order, writes included, with a stable `Idempotency-Key` — an endpoint where a duplicate would do harm should deduplicate on it. A library with its own offline strategy goes in `installHttpLayer({ exclude })`. For offline support, register `http.addOfflineHandler()` (answer from local data) and `http.beforeReconnect()` (send an outbox); read `http.online` / `http.state`, or listen to `app:online` / `app:offline`, rather than `navigator.onLine`. While requests are held the layer blocks the page (`inert` on everything outside `#http-layer`); a page of your own that is fixed to the viewport should offset by `--app-banner-h`. See `docs/MECHANISMS.md`, *The HTTP layer* and *Lost connection*.
 
 ### Localisation (i18n)
 User-facing strings of the starter's own UI — the HTTP layer's dialogs, banners and toasts among them — live in `src/react-app/lib/i18n.ts` and are read through `t(key, params)`. Add new ones there under a stable key with an English default. No i18n library is imposed: an app plugs its own in with `setTranslator()`, or changes a few words with `overrideMessages()`; a missing translation falls back to the default. Server messages are looked up as `error.<code>` first, so the server keeps writing English and the client translates by code. See `docs/MECHANISMS.md`, *Localising*.
@@ -110,17 +110,16 @@ User-facing strings of the starter's own UI — the HTTP layer's dialogs, banner
 ### Demo mode
 `DEMO_MODE` (a Worker secret, never committed) makes a deployment read-only: `src/worker/middleware/demo.ts` refuses every `/api/*` write except sign-in/out, client error reports and the CLI, and the email adapter sends nothing. A new write route needs nothing to be covered; a write that must stay possible in a demo goes in `ALLOWED_WRITES`. See `docs/MECHANISMS.md`, *Demo mode*.
 
-### Using shadcn/ui Components
-Components are in `@/components/ui/`. Import directly:
-```tsx
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-```
+### UI components (shadcn/ui)
+Installed components are in `@/components/ui/`; `docs/SHADCN_COMPONENTS.md` lists the whole catalogue, with the install command for the rest. When building something the catalogue has, use its component (installing it if needed) rather than writing an equivalent; use another library or a custom component when nothing in it fits.
 
-See `docs/SHADCN_COMPONENTS.md` for the full component list.
+To change a component, from lightest to heaviest: theme variables in `src/react-app/index.css`; a small adjustment (a variant, a size, a default class) in place, marked `// project:`; anything more as a new component outside `components/ui/`, composed from catalogue components or copied from one. Rather than rewriting an official component in place, give the reworked one its own name.
+
+### Dependencies
+Each package adds weight, attack surface and update work. Before adding, swapping or reintroducing one, read `docs/DEPENDENCIES.md` (why each is here, what was dropped and why), and record the decision under its *Project choices*.
 
 ### Database Queries (Backend Only)
-Get the connection from the single factory in `src/worker/db`; never construct Kysely in routes:
+Get the connection from the single factory in `src/worker/db`, rather than constructing Kysely in a route:
 ```typescript
 import { createDb } from "../db";
 
@@ -194,7 +193,7 @@ npm run tail:production        # Stream logs from production
 ### Add an API Endpoint
 1. Add a module in `src/worker/routes/` and mount it in `src/worker/index.ts` with `app.route()`
 2. Use `authMiddleware` if authentication required
-3. Access D1 via `c.env.DB`
+3. Get the database with `createDb(c.env)` (`src/worker/db`)
 
 ### Add Database Table
 1. `npm run db -- new-migration <snake_case_name>` scaffolds the file and registers it in `migrations/index.ts`; mirror the change in `baseline.ts` (append the name to `squashes`)
@@ -213,7 +212,7 @@ IPs are personal data, so the cron in `src/worker/scheduled.ts` prunes the table
 > The reasoning behind this and every other mechanism the starter provides is in
 > [docs/MECHANISMS.md](docs/MECHANISMS.md). Read it before changing any of them.
 
-Scaffold with `npm run db -- new-migration <snake_case_name>`; never hand-write the file or forget to register it.
+Scaffold with `npm run db -- new-migration <snake_case_name>`: it also registers the migration in `migrations/index.ts`, which a hand-written file would miss.
 
 Every migration declares **`compatibility`**, and that decides when the deploy runs it:
 
@@ -282,7 +281,7 @@ const environment = c.env.ENVIRONMENT;  // from wrangler.toml
 
 ## Platform Philosophy: Cloudflare-First, Not Cloudflare-Only
 
-Prefer Cloudflare services (D1, Email Service, R2, KV, Durable Objects, ...) whenever one fits: cost, simplicity and latency are the reasons this starter exists. But never force them: if the user prefers another provider, or is converting a project that already uses one, support it.
+Prefer Cloudflare services (D1, Email Service, R2, KV, Durable Objects, ...) whenever one fits: cost, simplicity and latency are the reasons this starter exists. But don't impose them: if the user prefers another provider, or is converting a project that already uses one, support it.
 
 Services that can reasonably be swapped sit behind an **adapter**: a small interface in `src/worker/adapters/<service>/types.ts`, one file per implementation, and a registry in `index.ts` that picks the implementation from `src/config.ts`. Feature code only imports the registry. Email is the reference example:
 
@@ -300,16 +299,12 @@ To add or replace a provider, follow `docs/EMAIL.md`.
 
 Projects built on this starter should edit few starter files so later upstream pulls stay cheap. Put project-specific values in `src/config.ts`, `wrangler.toml` vars/bindings and the `env/*.template` files, and add features as new files (routes, pages) rather than rewriting starter ones. `vite.config.ts` copies every key under `[env.*]` from `wrangler.toml` into the deploy config generically, so new bindings need no change there; see `docs/VITE_CLOUDFLARE_BRIDGE.md`. Scripts are package-manager agnostic (npm default, pnpm works).
 
-## UI Components
-
-Use the bundled shadcn/ui components (`@/components/ui/`) first, or compositions of them. Import an external component library or write a custom component only when nothing bundled covers the need or an external implementation is clearly better.
-
 ## Don'ts
 
 - Don't access database from frontend
 - Don't build a Kysely instance or name a dialect outside `src/worker/db/`
 - Don't run separate frontend/backend servers
-- Don't modify shadcn/ui component internals (extend with wrappers)
+- Don't rewrite a shadcn/ui component in place so it no longer matches the official one: small `// project:` edits are fine; a reworked component gets its own name outside `components/ui/`
 - Don't hardcode URLs (use environment-based config)
 - Don't deploy to production without the user's explicit approval, and never with raw `wrangler deploy`: use `npm run deploy:production` (`bin/deploy-production`)
 - Don't call a service SDK/API directly from feature code when an adapter exists (go through `src/worker/adapters/`)

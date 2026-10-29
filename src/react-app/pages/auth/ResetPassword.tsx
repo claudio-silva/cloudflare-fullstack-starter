@@ -44,6 +44,8 @@ export function ResetPassword() {
 		formState: { errors },
 	} = useForm<ResetPasswordFormData>({
 		resolver: zodResolver(resetPasswordSchema),
+		// Controlled inputs start as "", not undefined.
+		defaultValues: { password: "", confirmPassword: "" },
 	});
 
 	const onSubmit = async (data: ResetPasswordFormData) => {

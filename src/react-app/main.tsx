@@ -5,6 +5,7 @@ import { Toaster } from "sonner";
 import "./index.css";
 import App from "./App.tsx";
 import { ThemeProvider } from "./components/theme-provider";
+import { TooltipProvider } from "./components/ui/tooltip";
 import { HttpLayerUi } from "./components/http/HttpLayerUi";
 import { UpdateDialog } from "./components/http/UpdatePrompt";
 import { installHttpLayer } from "./lib/http/interceptor";
@@ -23,10 +24,13 @@ createRoot(document.getElementById("root")!).render(
 	<StrictMode>
 		<BrowserRouter>
 			<ThemeProvider defaultTheme="light" storageKey="app-theme">
-				<HttpLayerUi />
-				<App />
-				<UpdateDialog />
-				<Toaster position="top-center" richColors />
+				{/* shadcn's Tooltip needs one provider above it. */}
+				<TooltipProvider>
+					<HttpLayerUi />
+					<App />
+					<UpdateDialog />
+					<Toaster position="top-center" richColors />
+				</TooltipProvider>
 			</ThemeProvider>
 		</BrowserRouter>
 	</StrictMode>,

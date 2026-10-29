@@ -93,7 +93,7 @@ This starter removes that overhead **entirely**. Create a project from the templ
 | **Built-in Observability** | Monitor your Worker logs, metrics, traces, performance and health |
 | **CI/CD Ready** | GitHub Actions workflow validates every push: lint, type-check, tests, build and an E2E smoke test must pass.<br>You can also display the CI status badge in your README.md |
 | **Testing** | Vitest integration tests running in the Workers runtime against D1 (migrations applied), plus a Playwright E2E smoke test |
-| **Beautiful UI** | 50+ [shadcn/ui](https://ui.shadcn.com/) components, dark/light theme with FOUC prevention |
+| **Beautiful UI** | [shadcn/ui](https://ui.shadcn.com/) components (47 installed, the rest one command away), dark/light theme with FOUC prevention |
 | **Agent skill, release log and upgrade guide** | An installable skill plus [UPGRADING.md](UPGRADING.md) (breaking changes per release, staged upgrades) so agents can install, convert and upgrade without trial and error |
 | **AI-Assisted Installation and Development** | [AGENTS_SETUP.md](docs/AGENTS_SETUP.md) and [AGENTS.md](AGENTS.md) are included for easy installation and enhanced development assistance |
 
@@ -315,7 +315,7 @@ If wrangler is logged in, you can do it from the command line:
 - Dark/light theme toggle with FOUC prevention
 - Theme-aware logo component (auto-switches light/dark)
 - Theme can be passed via URL parameter for cross-app preference carry-over (e.g. from landing page to app)
-- 50+ shadcn/ui components ready to use
+- 47 shadcn/ui components installed, and a [catalogue](docs/SHADCN_COMPONENTS.md) of the rest with their install commands
 
 ## Errors, connectivity and updates
 
@@ -843,6 +843,7 @@ For long-term retention or external analysis, you can forward logs via Cloudflar
 ### Template Internals
 - [What this starter gives you, and why](docs/MECHANISMS.md) — migrations, maintenance mode, versioning, deploy modes, secrets, sign-in log, backups, database portability
 - [Deployment, versions and migrations](docs/DEPLOYMENT.md) — what each deploy does, git-tag releases, expand/contract migrations, maintenance, Workers Builds and your own CI
+- [Dependencies](docs/DEPENDENCIES.md) — why each third-party package is here, what was left out, and when to revisit
 - [Vite ↔ Cloudflare Bridge](docs/VITE_CLOUDFLARE_BRIDGE.md) — how the project bridges Vite's dev conventions with Cloudflare's deployment model (env config baking, secrets sync, cross-platform build scripts)
 
 ### External Resources

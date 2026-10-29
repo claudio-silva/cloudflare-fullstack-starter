@@ -37,7 +37,7 @@ For each feature, in dependency order (schema, auth, API, UI):
 
 - **Schema:** add an incremental migration in `src/worker/db/migrations/incremental/` (never edit applied ones), mirror it in `baseline.ts`, and update `src/worker/types/database.ts`. Follow the portable-SQL rules in `docs/DATABASES.md`.
 - **API:** one module per feature in `src/worker/routes/`, mounted in `src/worker/index.ts`; protect with `authMiddleware`.
-- **UI:** pages in `src/react-app/pages/`, routes in `App.tsx`. Use the bundled shadcn/ui components first.
+- **UI:** pages in `src/react-app/pages/`, routes in `App.tsx`. Use shadcn/ui components first: the installed ones and the rest of the catalogue (`docs/SHADCN_COMPONENTS.md`). Packages the project brings that the starter lacks or dropped go under *Project choices* in `docs/DEPENDENCIES.md`.
 - **Services:** put swappable services behind adapters.
 - **Tests:** add a Vitest test per ported endpoint (`test/`), and extend the Playwright smoke test for key journeys.
 - Verify and commit after each feature.

@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from "react";
 import { useTheme } from "./theme-context";
 import LogoLight from "@/assets/logo-light.svg";
 import LogoDark from "@/assets/logo-dark.svg";
@@ -19,9 +20,10 @@ interface LogoProps {
  */
 export function Logo({ className = "h-8 w-auto", alt = "Logo", showTitle = false }: LogoProps) {
 	const { theme } = useTheme();
+	const systemDark = useSystemDark();
 
 	// Determine which logo to show based on theme
-	const isDark = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+	const isDark = theme === "dark" || (theme === "system" && systemDark);
 	const logoSrc = isDark ? LogoDark : LogoLight;
 
 	if (showTitle) {
@@ -36,8 +38,17 @@ export function Logo({ className = "h-8 w-auto", alt = "Logo", showTitle = false
 	return <img src={logoSrc} alt={alt} className={className} />;
 }
 
+const darkQuery = "(prefers-color-scheme: dark)";
 
-
-
-
-
+/** Whether the system prefers dark, followed live: a render must not read it directly. */
+function useSystemDark(): boolean {
+	return useSyncExternalStore(
+		(onChange) => {
+			const media = window.matchMedia(darkQuery);
+			media.addEventListener("change", onChange);
+			return () => media.removeEventListener("change", onChange);
+		},
+		() => window.matchMedia(darkQuery).matches,
+		() => false,
+	);
+}

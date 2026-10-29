@@ -45,6 +45,8 @@ export function SignUp() {
 		formState: { errors },
 	} = useForm<SignUpFormData>({
 		resolver: zodResolver(signUpSchema),
+		// Controlled inputs start as "", not undefined.
+		defaultValues: { name: "", email: "", password: "", confirmPassword: "" },
 	});
 
 	const onSubmit = async (data: SignUpFormData) => {
