@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowDown, ArrowUp, ArrowUpDown, ListChecks, Plus, Search, Trash2, Users, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, EllipsisVertical, ListChecks, Plus, Search, Trash2, Users, X } from "lucide-react";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -10,8 +10,8 @@ import {
 	AlertDialogFooter,
 	AlertDialogHeader,
 	AlertDialogTitle,
-	AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Toggle } from "@/components/ui/toggle";
@@ -38,8 +38,12 @@ import { formatDate } from "./format";
 import { RoleBadge, StatusBadge, UserAvatar } from "./user-ui";
 
 const PAGE_SIZE = 20;
-/** The row-number column: 40px wide, whatever the content. */
-const ORDINAL = "w-[40px] min-w-[40px] max-w-[40px] px-0 text-center";
+/** The row-number column: 50px wide, whatever the content, shaded like the column headings, with a rule on its right. */
+const ORDINAL = "w-[50px] min-w-[50px] max-w-[50px] border-r border-border bg-(--admin-table-head) px-0 text-center";
+/** Darker than shadcn's default, so a checkbox shows against the shaded headings. */
+const CHECKBOX = "border-neutral-500 dark:border-neutral-400";
+/** The row menu's column. */
+const MENU_COL = "w-[50px] min-w-[50px] max-w-[50px] px-0 text-center";
 
 /**
  * The listing half of the CRUD example. Search, sort and page live in the URL,
@@ -60,6 +64,8 @@ export function UserList() {
 	const [selecting, setSelecting] = useState(false);
 	const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set());
 	const [deleting, setDeleting] = useState(false);
+	/** The users the open confirmation would delete: the selection, or one row's user. */
+	const [toDelete, setToDelete] = useState<string[] | null>(null);
 
 	const update = (changes: Record<string, string | null>) =>
 		setParams(
@@ -118,12 +124,13 @@ export function UserList() {
 		setSelected(new Set());
 	};
 
-	const deleteSelected = async () => {
+	const deleteUsers = async (ids: string[]) => {
+		setToDelete(null);
 		setDeleting(true);
 		let done = 0;
 		try {
 			// One at a time: the server's rules (yourself, the last admin) apply to each.
-			for (const id of selected) {
+			for (const id of ids) {
 				await http(`/api/admin/users/${id}`, { method: "DELETE" });
 				done++;
 			}
@@ -132,6 +139,7 @@ export function UserList() {
 			if (!isHandledHttpError(error)) toast.error("The users could not be deleted.");
 		} finally {
 			setDeleting(false);
+			toggleSelecting(false);
 			setReloads((n) => n + 1);
 		}
 	};
@@ -152,49 +160,37 @@ export function UserList() {
 			}
 		>
 			<Card className="gap-0 overflow-hidden py-0">
-				<div className="flex flex-wrap items-center justify-between gap-3 border-b bg-(--admin-toolbar) px-4 py-2">
+				<div className="flex items-center gap-3 border-b bg-(--admin-toolbar) py-2 pr-4">
+					{/* Over the row-number column. */}
+					<div className="flex w-[50px] shrink-0 justify-center">
+						<Toggle variant="outline" size="sm" pressed={selecting} onPressedChange={toggleSelecting} aria-label="Select users" className="bg-background px-2">
+							<ListChecks />
+						</Toggle>
+					</div>
 					<InputGroup className="max-w-sm bg-background dark:bg-background">
 						<InputGroupAddon>
 							<Search />
 						</InputGroupAddon>
 						<InputGroupInput placeholder="Search by name or email" value={search} onChange={(e) => onSearch(e.target.value)} />
 					</InputGroup>
-					<div className="flex items-center gap-2">
+					<div className="ml-auto flex items-center gap-3">
+						{selecting && (
+							<Button
+								variant="ghost"
+								size="sm"
+								disabled={selected.size === 0 || deleting}
+								onClick={() => setToDelete([...selected])}
+							>
+								{deleting ? <Spinner /> : <Trash2 />}
+								Delete
+							</Button>
+						)}
 						{data && (
-							<span className="mr-2 text-sm text-muted-foreground">
-								{selecting && selected.size > 0 ? `${selected.size} selected` : `${data.total} ${data.total === 1 ? "user" : "users"}`}
+							<span className="text-sm text-muted-foreground">
+								{selecting && selected.size > 0 ? `${selected.size} selected of ` : ""}
+								{data.total} {data.total === 1 ? "user" : "users"}
 							</span>
 						)}
-						<Toggle variant="outline" size="sm" pressed={selecting} onPressedChange={toggleSelecting} aria-label="Select users" className="bg-background">
-							<ListChecks />
-							Select
-						</Toggle>
-						<AlertDialog>
-							<AlertDialogTrigger asChild>
-								<Button variant="destructive" size="sm" disabled={!selecting || selected.size === 0 || deleting}>
-									{deleting ? <Spinner /> : <Trash2 />}
-									Delete
-								</Button>
-							</AlertDialogTrigger>
-							<AlertDialogContent>
-								<AlertDialogHeader>
-									<AlertDialogTitle>Delete {selected.size === 1 ? "this user" : `${selected.size} users`}?</AlertDialogTitle>
-									<AlertDialogDescription>
-										Their accounts and everything attached to them are removed, and they are signed out. This cannot be undone.
-									</AlertDialogDescription>
-								</AlertDialogHeader>
-								<AlertDialogFooter>
-									<AlertDialogCancel className={ACTION_BUTTON}>
-										<X />
-										Cancel
-									</AlertDialogCancel>
-									<AlertDialogAction variant="destructive" onClick={deleteSelected} className={ACTION_BUTTON}>
-										<Trash2 />
-										Delete
-									</AlertDialogAction>
-								</AlertDialogFooter>
-							</AlertDialogContent>
-						</AlertDialog>
 					</div>
 				</div>
 				<CardContent className="px-0">
@@ -216,6 +212,7 @@ export function UserList() {
 									{selecting && (
 										<TableHead className="w-10">
 											<Checkbox
+												className={CHECKBOX}
 												checked={allSelected ? true : selected.size > 0 ? "indeterminate" : false}
 												onCheckedChange={toggleAll}
 												disabled={rows.length === 0}
@@ -234,10 +231,13 @@ export function UserList() {
 										</SortHeader>
 									</TableHead>
 									<TableHead className="hidden sm:table-cell">Status</TableHead>
-									<TableHead className="hidden pr-4 md:table-cell">
+									<TableHead className="hidden md:table-cell">
 										<SortHeader field="createdAt" {...sortProps}>
 											Created
 										</SortHeader>
+									</TableHead>
+									<TableHead className={MENU_COL}>
+										<span className="sr-only">Actions</span>
 									</TableHead>
 								</TableRow>
 							</TableHeader>
@@ -250,10 +250,11 @@ export function UserList() {
 												data-state={selected.has(user.id) ? "selected" : undefined}
 												onClick={() => (selecting ? toggleRow(user.id) : navigate(`/admin/users/${user.id}`))}
 											>
-												<TableCell className={`${ORDINAL} text-muted-foreground`}>{(data.page - 1) * data.pageSize + i + 1}</TableCell>
+												<TableHead scope="row" className={`${ORDINAL} font-normal text-muted-foreground`}>{(data.page - 1) * data.pageSize + i + 1}</TableHead>
 												{selecting && (
 													<TableCell className="w-10" onClick={(e) => e.stopPropagation()}>
 														<Checkbox
+															className={CHECKBOX}
 															checked={selected.has(user.id)}
 															onCheckedChange={() => toggleRow(user.id)}
 															aria-label={`Select ${user.name || user.email}`}
@@ -264,14 +265,7 @@ export function UserList() {
 													<div className="flex items-center gap-3">
 														<UserAvatar name={user.name} email={user.email} />
 														<div className="min-w-0">
-															{/* The link makes the row reachable from the keyboard too. */}
-															<Link
-																to={`/admin/users/${user.id}`}
-																className="block truncate font-medium hover:underline"
-																onClick={(e) => e.stopPropagation()}
-															>
-																{user.name || user.email}
-															</Link>
+															<div className="truncate font-medium">{user.name || user.email}</div>
 															{user.name && <div className="truncate text-xs text-muted-foreground">{user.email}</div>}
 														</div>
 													</div>
@@ -282,14 +276,29 @@ export function UserList() {
 												<TableCell className="hidden sm:table-cell">
 													<StatusBadge active={user.emailVerified} />
 												</TableCell>
-												<TableCell className="hidden pr-4 text-muted-foreground md:table-cell">{formatDate(user.createdAt)}</TableCell>
+												<TableCell className="hidden text-muted-foreground md:table-cell">{formatDate(user.createdAt)}</TableCell>
+												<TableCell className={MENU_COL} onClick={(e) => e.stopPropagation()}>
+													<DropdownMenu>
+														<DropdownMenuTrigger asChild>
+															<Button variant="ghost" size="icon" className="size-8" aria-label={`Actions for ${user.name || user.email}`}>
+																<EllipsisVertical />
+															</Button>
+														</DropdownMenuTrigger>
+														<DropdownMenuContent align="end">
+															<DropdownMenuItem variant="destructive" onSelect={() => setToDelete([user.id])}>
+																<Trash2 />
+																Delete
+															</DropdownMenuItem>
+														</DropdownMenuContent>
+													</DropdownMenu>
+												</TableCell>
 											</TableRow>
 										))
 									: Array.from({ length: 5 }, (_, i) => (
 											<TableRow key={i}>
-												<TableCell className={ORDINAL}>
+												<TableHead scope="row" className={ORDINAL}>
 													<Skeleton className="mx-auto h-4 w-4" />
-												</TableCell>
+												</TableHead>
 												{selecting && (
 													<TableCell className="w-10">
 														<Skeleton className="size-4" />
@@ -310,6 +319,7 @@ export function UserList() {
 												<TableCell className="hidden md:table-cell">
 													<Skeleton className="h-4 w-24" />
 												</TableCell>
+												<TableCell className={MENU_COL} />
 											</TableRow>
 										))}
 							</TableBody>
@@ -364,6 +374,26 @@ export function UserList() {
 					</div>
 				)}
 			</Card>
+			<AlertDialog open={toDelete !== null} onOpenChange={(open) => !open && setToDelete(null)}>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>Delete {toDelete?.length === 1 ? "this user" : `${toDelete?.length ?? 0} users`}?</AlertDialogTitle>
+						<AlertDialogDescription>
+							Their accounts and everything attached to them are removed, and they are signed out. This cannot be undone.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel className={ACTION_BUTTON}>
+							<X />
+							Cancel
+						</AlertDialogCancel>
+						<AlertDialogAction variant="destructive" onClick={() => toDelete && deleteUsers(toDelete)} className={ACTION_BUTTON}>
+							<Trash2 />
+							Delete
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
 		</AdminPage>
 	);
 }
