@@ -30,6 +30,7 @@
 		"build:production": "tsc -b && vite build --mode production",
 		"preview": "npm run build && vite preview",
 		"lint": "eslint .",
+		"type-check": "tsc -b",
 		"test": "vitest run",
 		"test:watch": "vitest",
 		"test:db:up": "docker compose -f docker-compose.test.yml up -d --wait",

@@ -45,7 +45,7 @@ Run all of these and make sure they pass:
 ```bash
 npm ci          # lockfile must be in sync, clean install
 npm run lint    # eslint .
-npx tsc --noEmit
+npm run type-check
 npm run build   # tsc -b && vite build
 ```
 If a dependency bump surfaces NEW type errors (e.g. a Hono/Kysely upgrade tightening

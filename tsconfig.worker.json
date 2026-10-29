@@ -4,5 +4,5 @@
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.worker.tsbuildinfo",
     "types": ["vite/client", "./worker-configuration.d.ts"]
   },
-  "include": ["src/worker", "src/shared"]
+  "include": ["src/worker", "src/shared", "src/config.ts"]
 }
