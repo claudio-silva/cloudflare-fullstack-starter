@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import type { Kysely } from "kysely";
 import type { Database } from "../types/database";
 import { dbBool, dbNow } from "../db";
+import { recordSessionEnds } from "./login-log";
 import { ROLES, hasRole, type Role } from "../../shared/roles";
 
 /**
@@ -94,7 +95,9 @@ export async function deleteUser(db: Db, user: { id: string; email: string }): P
 
 /** Signs the user out everywhere. */
 export async function revokeSessions(db: Db, userId: string): Promise<void> {
+	const sessions = await db.selectFrom("sessions").select(["userId", "ipAddress", "userAgent", "expiresAt"]).where("userId", "=", userId).execute();
 	await db.deleteFrom("sessions").where("userId", "=", userId).execute();
+	await recordSessionEnds(db, sessions, "session-revoked");
 }
 
 /**

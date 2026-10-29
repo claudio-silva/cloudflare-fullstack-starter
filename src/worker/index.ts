@@ -7,7 +7,7 @@ import { admin } from "./routes/admin"; // [admin-area-line]
 import { config } from "../config";
 import { APP_COMMIT, APP_VERSION } from "../shared/app-version";
 import { createDb, databaseKind } from "./db";
-import { isSignInPath, isSignOutPath, recordLoginAttempt, recordSignOut } from "./lib/login-log";
+import { isRevokingPath, isSignInPath, isSignOutPath, recordLoginAttempt, recordSessionEnds, recordSignOut, sessionsOf } from "./lib/login-log";
 import { maintenanceMiddleware } from "./middleware/maintenance";
 import { versionMiddleware } from "./middleware/version";
 import { clientErrors } from "./routes/client-errors";
@@ -109,8 +109,21 @@ app.all("/api/auth/*", async (c) => {
 		isSignOutPath(c.req.path) && c.req.method === "POST"
 			? (await createAuth(c).api.getSession({ headers: c.req.raw.headers }).catch(() => null))?.user
 			: undefined;
+	// Revoking other sessions: the ones missing afterwards are the ones that ended.
+	const revoking =
+		isRevokingPath(c.req.path) && c.req.method === "POST"
+			? (await createAuth(c).api.getSession({ headers: c.req.raw.headers }).catch(() => null))?.user
+			: undefined;
+	const sessionsBefore = revoking ? await sessionsOf(createDb(c.env), revoking.id).catch(() => []) : [];
 	const response = await handleAuthRequest(c);
+	const ended = async () => {
+		if (!revoking || response.status >= 400) return;
+		const db = createDb(c.env);
+		const still = new Set((await sessionsOf(db, revoking.id)).map((s) => s.id));
+		await recordSessionEnds(db, sessionsBefore.filter((s) => !still.has(s.id)), "session-revoked");
+	};
 	const record =
+		revoking ? ended() :
 		isSignInPath(c.req.path) && c.req.method === "POST"
 			? recordLoginAttempt(c, response.status < 400)
 			: signingOut && response.status < 400

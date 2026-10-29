@@ -1,6 +1,8 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { app } from "../src/worker/index";
+import { pruneExpiredAuthRows } from "../src/worker/lib/expired-auth-rows";
+import { createDb } from "../src/worker/db";
 import { describeBrowser } from "../src/shared/admin-users";
 
 // The "test" environment stubs the session with a fixed user; the admin area
@@ -124,10 +126,43 @@ describe("admin API", () => {
 		expect(kinds).toContain("sign-out");
 		expect(kinds).toContain("failed");
 
+		// Sorted by event, ascending and descending; the count is in the detail.
+		const sortedKinds = async (dir: string) =>
+			((await (await call(`/users/${target.id}/activity?sort=kind&dir=${dir}`)).json()) as { events: { kind: string }[] }).events.map((e) => e.kind);
+		expect(await sortedKinds("asc")).toEqual([...kinds].sort());
+		expect(await sortedKinds("desc")).toEqual([...kinds].sort().reverse());
+
 		const row = await find();
 		expect((row as Row & { lastSignInAt: string | null }).lastSignInAt).not.toBeNull();
-		const detail = (await (await call(`/users/${target.id}`)).json()) as { lastSignOutAt: string | null };
+		const detail = (await (await call(`/users/${target.id}`)).json()) as { lastSignOutAt: string | null; activityCount: number };
 		expect(detail.lastSignOutAt).not.toBeNull();
+		expect(detail.activityCount).toBe(kinds.length);
+
+		// Sorted by idle time, users without a session come last in either direction.
+		for (const dir of ["asc", "desc"]) {
+			const users = ((await (await call(`/users?sort=idleSeconds&dir=${dir}&pageSize=100`)).json()) as { users: Row[] }).users;
+			const idle = users.map((u) => (u as Row & { idleSeconds: number | null }).idleSeconds);
+			expect(idle.slice(idle.findIndex((v) => v === null)).every((v) => v === null)).toBe(true);
+		}
+	});
+});
+
+describe("session endings in the log", () => {
+	it("records revoked and expired sessions", async () => {
+		const { call } = await userWithRole("superadmin");
+		const target = await userWithRole("user");
+		const kinds = async () => ((await (await call(`/users/${target.id}/activity`)).json()) as { events: { kind: string }[] }).events.map((e) => e.kind);
+
+		// An admin setting a password signs the user out everywhere: their session is revoked.
+		expect((await call(`/users/${target.id}`, { method: "PATCH", body: { password: "new-password-123" } })).status).toBe(200);
+		expect(await kinds()).toContain("session-revoked");
+
+		// A session past its expiry is recorded by the cron before it is deleted.
+		await signInCookie(target.email, "new-password-123");
+		const db = createDb(local);
+		await db.updateTable("sessions").set({ expiresAt: new Date(Date.now() - 60_000).toISOString() }).where("userId", "=", target.id).execute();
+		await pruneExpiredAuthRows(local);
+		expect(await kinds()).toContain("session-expired");
 	});
 });
 
@@ -150,7 +185,7 @@ describe("describeBrowser", () => {
 	});
 });
 
-async function signInCookie(email: string) {
-	const res = await app.request("/api/auth/sign-in/email", { method: "POST", headers: json, body: JSON.stringify({ email, password: "password-123" }) }, local);
+async function signInCookie(email: string, password = "password-123") {
+	const res = await app.request("/api/auth/sign-in/email", { method: "POST", headers: json, body: JSON.stringify({ email, password }) }, local);
 	return res.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ");
 }

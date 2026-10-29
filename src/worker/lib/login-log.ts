@@ -1,4 +1,6 @@
 import type { AppContext } from "../types/context";
+import type { Kysely } from "kysely";
+import type { Database } from "../types/database";
 import { createDb, databaseKind, dbBool, dbNow } from "../db";
 
 /**
@@ -18,6 +20,18 @@ const SIGN_IN_PATHS = ["/sign-in", "/callback", "/oauth"];
 
 export function isSignOutPath(path: string): boolean {
 	return path.endsWith("/sign-out");
+}
+
+/** Auth endpoints that end other sessions of the signed-in user. */
+const REVOKING_PATHS = ["/revoke-session", "/revoke-sessions", "/revoke-other-sessions", "/change-password"];
+
+export function isRevokingPath(path: string): boolean {
+	return REVOKING_PATHS.some((p) => path.endsWith(p));
+}
+
+/** The user's live sessions: compare before and after a revoking request to see which ended. */
+export async function sessionsOf(db: Kysely<Database>, userId: string) {
+	return db.selectFrom("sessions").select(["id", "userId", "ipAddress", "userAgent", "expiresAt"]).where("userId", "=", userId).execute();
 }
 
 export function isSignInPath(path: string): boolean {
@@ -46,6 +60,43 @@ export async function recordLoginAttempt(c: AppContext, success: boolean): Promi
 /** The user must be read before the sign-out, which deletes the session. */
 export async function recordSignOut(c: AppContext, user: { id: string; email: string }): Promise<void> {
 	await insertEvent(c, { email: user.email, userId: user.id, success: true, event: "sign-out" });
+}
+
+type EndedSession = { userId: string; ipAddress: string | null; userAgent: string | null; expiresAt: Date | string };
+
+/**
+ * A session that ended without the user signing out: it ran past its expiry
+ * ("session-expired", dated at the expiry) or was revoked (a password or role
+ * change, an admin, "sign out everywhere"). Written from the session's own
+ * address and browser, so the entry describes the device that lost access.
+ * Never throws: the log must not break what ended the session.
+ */
+export async function recordSessionEnds(db: Kysely<Database>, sessions: EndedSession[], event: "session-expired" | "session-revoked"): Promise<void> {
+	if (sessions.length === 0) return;
+	try {
+		const ids = [...new Set(sessions.map((s) => s.userId))];
+		const users = await db.selectFrom("users").select(["id", "email"]).where("id", "in", ids).execute();
+		const emails = new Map(users.map((u) => [u.id, u.email]));
+		const stamp = (value: Date | string) => (databaseKind === "sqlite" ? new Date(value).toISOString() : new Date(value));
+		await db
+			.insertInto("login_events")
+			.values(
+				sessions.map((s) => ({
+					id: crypto.randomUUID(),
+					user_id: s.userId,
+					email: emails.get(s.userId) ?? "",
+					success: dbBool(true, databaseKind),
+					ip: s.ipAddress?.slice(0, 64) ?? null,
+					user_agent: s.userAgent?.slice(0, 512) ?? null,
+					country: null,
+					created_at: event === "session-expired" ? stamp(s.expiresAt) : dbNow(databaseKind),
+					event,
+				})),
+			)
+			.execute();
+	} catch (error) {
+		console.error("[auth] could not record the session ending", error);
+	}
 }
 
 async function insertEvent(

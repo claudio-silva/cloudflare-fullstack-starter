@@ -1,5 +1,6 @@
 import { betterAuth } from "better-auth";
 import bcrypt from "bcryptjs";
+import { recordSessionEnds } from "../lib/login-log";
 import { createDb, databaseKind } from "../db";
 import type { AppContext, AppUser } from "../types/context";
 import { createEmailSender, type EmailSender } from "../adapters/email";
@@ -109,11 +110,26 @@ export function createAuth(c: AppContext) {
 		},
 		session: {
 			modelName: "sessions",
-			expiresIn: 60 * 60 * 24 * 7,
+			// Sessions expire after 24 hours without use: every touch (see updateAge)
+			// pushes the expiry a day ahead, so an active user stays signed in.
+			expiresIn: 60 * 60 * 24,
 			// A session is touched at most this often, and that touch is the user's
 			// "last seen" (the admin area shows Active / Idle from it). A day would
 			// leave it a day stale; a minute costs one small write per active session.
 			updateAge: 60,
+		},
+		// Better Auth deletes an expired session when it is looked up again, which
+		// the cron cannot see afterwards: record it here (see lib/login-log.ts).
+		databaseHooks: {
+			session: {
+				delete: {
+					before: async (session) => {
+						if (new Date(session.expiresAt).getTime() < Date.now()) {
+							await recordSessionEnds(db, [{ userId: session.userId, ipAddress: session.ipAddress ?? null, userAgent: session.userAgent ?? null, expiresAt: session.expiresAt }], "session-expired");
+						}
+					},
+				},
+			},
 		},
 		account: { modelName: "accounts" },
 		verification: { modelName: "verifications" },

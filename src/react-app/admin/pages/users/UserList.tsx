@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowDown, ArrowUp, ArrowUpDown, EllipsisVertical, ListChecks, Plus, Search, Trash2, Users, X } from "lucide-react";
+import { EllipsisVertical, ListChecks, Plus, Search, Trash2, Users, X } from "lucide-react";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -24,6 +24,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { toast } from "sonner";
 import { http, isHandledHttpError } from "@/lib/http";
 import { USER_SORT_FIELDS, type AdminUserList, type UserSortField } from "../../../../shared/admin-users";
+import { SortHeader } from "../../components/SortHeader";
 import { AdminPage } from "../../components/AdminPage";
 import { PageBar } from "../../components/PageBar";
 import { ACTION_BUTTON, ORDINAL } from "../../styles";
@@ -249,7 +250,11 @@ export function UserList() {
 											Last sign-in
 										</SortHeader>
 									</TableHead>
-									<TableHead className={IDLE_COL}>Idle</TableHead>
+									<TableHead className={IDLE_COL}>
+										<SortHeader field="idleSeconds" {...sortProps}>
+											Idle
+										</SortHeader>
+									</TableHead>
 									<TableHead className={CREATED_COL}>
 										<SortHeader field="createdAt" {...sortProps}>
 											Created
@@ -376,17 +381,5 @@ export function UserList() {
 				</AlertDialogContent>
 			</AlertDialog>
 		</AdminPage>
-	);
-}
-
-type SortHeaderProps = { field: UserSortField; sort: UserSortField | null; dir: "asc" | "desc"; onSort: (field: UserSortField) => void; children: ReactNode };
-
-function SortHeader({ field, sort, dir, onSort, children }: SortHeaderProps) {
-	const Icon = sort !== field ? ArrowUpDown : dir === "asc" ? ArrowUp : ArrowDown;
-	return (
-		<Button variant="ghost" size="sm" className="-ml-3 h-8" onClick={() => onSort(field)}>
-			{children}
-			<Icon className={sort === field ? "" : "text-muted-foreground/60"} />
-		</Button>
 	);
 }

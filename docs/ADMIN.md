@@ -186,11 +186,13 @@ sessions (`userStatus()` in `src/shared/admin-users.ts`):
 | Disabled (red dot) | not `emailVerified`; wins over the other two |
 | — (no pill) | no live session |
 
-The column sorts too (active, idle, disabled, then those with no session), as does **Last sign-in**. Both come from the sessions and the log, not from a column, so those sorts are done in the Worker over everyone who matches the search, then paged. Empty values ("—": no session, no sign-in yet) always sort last, in either direction.
+The column sorts too (active, idle, disabled, then those with no session), as do **Last sign-in** and **Idle**. Both come from the sessions and the log, not from a column, so those sorts are done in the Worker over everyone who matches the search, then paged. Empty values ("—": no session, no sign-in yet) always sort last, in either direction.
 
 Every sortable heading cycles through three states: ascending, descending, and no sort (back to newest first, with no arrow). The **Idle** column is the time since the user's latest session was used.
 
 The Activity tab's **Browser** column is `describeBrowser()` (`src/shared/admin-users.ts`), a small User-Agent reading ("Chrome · Desktop"; Mobile and Tablet too). It is deliberately not a library or a fingerprint: an iPad in desktop mode reports itself as a Mac. If you need exact devices, record what the page knows (`navigator.userAgentData`, `maxTouchPoints`) in a header of the sign-in request and store it in `login_events`.
+
+Sessions expire after 24 hours without use (`session.expiresIn` in `middleware/auth.ts`); each use, at most once a minute, pushes the expiry a day ahead, so someone working in the app stays signed in. An absolute 24 hours from sign-in would need `disableSessionRefresh`, which would also stop "last seen" from updating.
 
 "Last seen" is the latest `sessions.updatedAt` of the user's unexpired sessions.
 Better Auth touches it at most once per `session.updateAge`, which the starter
@@ -201,10 +203,11 @@ minute, at the price of one small write per active session per minute.
 
 Two tabs. **Profile** has the form (the password is typed twice) and a panel
 with the status, in-session flag, idle time, last sign-in and last sign-out.
-**Activity** pages through the sign-ins, failed attempts and sign-outs from
+**Activity** (with the number of entries beside its name, when not zero) pages through the sign-ins, failed attempts, sign-outs and sessions that ended
+without one (**Session expired**, **Session revoked**) from
 `login_events` (`GET /api/admin/users/:id/activity?page=&pageSize=`), 10 a
 page, in a table styled like the user list; they are pruned after `AUTH_LOG_RETENTION_DAYS`. Sign-outs are
-recorded since migration `0006_login_event_kind`; earlier rows are sign-ins.
+recorded since migration `0006_login_event_kind`; earlier rows are sign-ins. A session is recorded as expired when Better Auth finds it past its expiry or when the daily cron removes it (dated at the expiry), and as revoked when a password or role change, an admin, the CLI or "sign out of other devices" ends it (`recordSessionEnds()` in `lib/login-log.ts`); both events carry the address and browser of the session itself.
 
 ## Removing it
 

@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { LogIn, LogOut, ShieldAlert } from "lucide-react";
+import { Ban, Clock, LogIn, LogOut, ShieldAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { http, isHandledHttpError } from "@/lib/http";
-import { describeBrowser, type ActivityEvent, type AdminUserActivity } from "../../../../shared/admin-users";
+import { describeBrowser, type ActivityEvent, type ActivitySortField, type AdminUserActivity } from "../../../../shared/admin-users";
+import { SortHeader } from "../../components/SortHeader";
+import { nextSort, type SortDir } from "../../sort";
 import { PageBar } from "../../components/PageBar";
 import { ORDINAL } from "../../styles";
 import { formatDateTime } from "./format";
@@ -16,17 +18,20 @@ const PAGE_SIZE = 10;
 const KINDS = {
 	"sign-in": { label: "Sign-in", icon: LogIn, variant: "outline" },
 	"sign-out": { label: "Sign-out", icon: LogOut, variant: "outline" },
+	"session-expired": { label: "Session expired", icon: Clock, variant: "outline" },
+	"session-revoked": { label: "Session revoked", icon: Ban, variant: "outline" },
 	failed: { label: "Failed sign-in", icon: ShieldAlert, variant: "destructive" },
 } as const;
 
-/** The user's sign-ins, failed attempts and sign-outs, newest first (`login_events`), laid out like the user list. */
+/** The user's sign-ins, failed attempts, sign-outs and ended sessions, newest first (`login_events`), laid out like the user list. */
 export function UserActivity({ userId }: { userId: string }) {
 	const [page, setPage] = useState(1);
+	const [order, setOrder] = useState<{ sort: ActivitySortField | null; dir: SortDir }>({ sort: null, dir: "asc" });
 	const [activity, setActivity] = useState<AdminUserActivity | null>(null);
 
 	useEffect(() => {
 		let current = true;
-		http(`/api/admin/users/${userId}/activity?page=${page}&pageSize=${PAGE_SIZE}`)
+		http(`/api/admin/users/${userId}/activity?page=${page}&pageSize=${PAGE_SIZE}${order.sort ? `&sort=${order.sort}&dir=${order.dir}` : ""}`)
 			.then(async (res) => (await res.json()) as AdminUserActivity)
 			.then((data) => {
 				if (current) setActivity(data);
@@ -37,14 +42,19 @@ export function UserActivity({ userId }: { userId: string }) {
 		return () => {
 			current = false;
 		};
-	}, [userId, page]);
+	}, [userId, page, order]);
 
+	const toggleSort = (field: ActivitySortField) => {
+		setOrder(nextSort(order, field));
+		setPage(1);
+	};
+	const sortProps = { sort: order.sort, dir: order.dir, onSort: toggleSort } as const;
 	const pages = activity ? Math.max(1, Math.ceil(activity.total / activity.pageSize)) : 1;
 
 	return (
 		<Card className="gap-0 overflow-hidden py-0">
 			<div className="flex items-center justify-between gap-4 border-b bg-(--admin-toolbar) px-4 py-3">
-				<span className="text-sm text-muted-foreground">Sign-ins, failed attempts and sign-outs. Older entries are removed after the retention period.</span>
+				<span className="text-sm text-muted-foreground">Sign-ins, failed attempts, sign-outs and sessions that expired or were revoked. Older entries are removed after the retention period.</span>
 				{activity && (
 					<span className="shrink-0 text-sm text-muted-foreground">
 						{activity.total} {activity.total === 1 ? "event" : "events"}
@@ -56,11 +66,31 @@ export function UserActivity({ userId }: { userId: string }) {
 					<TableHeader className="bg-(--admin-table-head)">
 						<TableRow>
 							<TableHead className={`${ORDINAL} font-bold`}>#</TableHead>
-							<TableHead className="w-[170px]">When</TableHead>
-							<TableHead className="w-[160px]">Event</TableHead>
-							<TableHead className="w-[140px]">IP address</TableHead>
-							<TableHead className="w-[80px]">Country</TableHead>
-							<TableHead>Browser</TableHead>
+							<TableHead className="w-[170px]">
+								<SortHeader field="createdAt" {...sortProps}>
+									When
+								</SortHeader>
+							</TableHead>
+							<TableHead className="w-[160px]">
+								<SortHeader field="kind" {...sortProps}>
+									Event
+								</SortHeader>
+							</TableHead>
+							<TableHead className="w-[140px]">
+								<SortHeader field="ip" {...sortProps}>
+									IP address
+								</SortHeader>
+							</TableHead>
+							<TableHead className="w-[80px]">
+								<SortHeader field="country" {...sortProps}>
+									Country
+								</SortHeader>
+							</TableHead>
+							<TableHead>
+								<SortHeader field="browser" {...sortProps}>
+									Browser
+								</SortHeader>
+							</TableHead>
 						</TableRow>
 					</TableHeader>
 					<TableBody>

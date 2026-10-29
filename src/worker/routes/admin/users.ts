@@ -13,7 +13,10 @@ import {
 	createUserSchema,
 	updateUserSchema,
 	userStatus,
+	ACTIVITY_SORT_FIELDS,
+	describeBrowser,
 	type ActivityEvent,
+	type ActivitySortField,
 	type AdminUser,
 	type AdminUserActivity,
 	type AdminUserDetail,
@@ -139,12 +142,20 @@ adminUsers.get("/", async (c) => {
 
 	// The status and the last sign-in come from sessions and the log, not from a
 	// column: sort by them after computing them, for everyone who matches, then cut the page.
-	if (sort === "status" || sort === "lastSignInAt") {
+	if (sort === "status" || sort === "lastSignInAt" || sort === "idleSeconds") {
 		const all = await present(c, await filtered.select(USER_COLUMNS).orderBy("createdAt", "desc").orderBy("id").execute());
 		const sign = dir === "asc" ? 1 : -1;
 		// Empty values (shown as "—") come last in either direction.
 		const key = (u: AdminUser): number | null =>
-			sort === "status" ? (u.status === "offline" ? null : STATUS_RANK[u.status]) : u.lastSignInAt ? Date.parse(u.lastSignInAt) : null;
+			sort === "status"
+				? u.status === "offline"
+					? null
+					: STATUS_RANK[u.status]
+				: sort === "idleSeconds"
+					? u.idleSeconds
+					: u.lastSignInAt
+						? Date.parse(u.lastSignInAt)
+						: null;
 		all.sort((a, b) => {
 			const ka = key(a);
 			const kb = key(b);
@@ -173,13 +184,15 @@ adminUsers.get("/:id", async (c) => {
 	const user = await findUser(c, c.req.param("id"));
 	const lastSignOutQuery = () =>
 		db.selectFrom("login_events").select("created_at").where("user_id", "=", user.id).where("success", "=", dbBool(true)).where("event", "=", "sign-out").orderBy("created_at", "desc").limit(1).executeTakeFirst();
-	const [accounts, sessions, lastSignOut, [detail]] = await Promise.all([
+	const [accounts, sessions, lastSignOut, [detail], events] = await Promise.all([
 		db.selectFrom("accounts").select("providerId").where("userId", "=", user.id).execute(),
 		db.selectFrom("sessions").select((eb) => eb.fn.countAll<number>().as("n")).where("userId", "=", user.id).executeTakeFirst(),
 		lastSignOutQuery(),
 		present(c, [user]),
+		createDb(c.env).selectFrom("login_events").select((eb) => eb.fn.countAll<number>().as("n")).where("user_id", "=", user.id).executeTakeFirst(),
 	]);
 	return c.json<AdminUserDetail>({
+		activityCount: Number(events?.n ?? 0),
 		...detail,
 		signInMethods: accounts.map((a) => a.providerId),
 		activeSessions: Number(sessions?.n ?? 0),
@@ -187,31 +200,44 @@ adminUsers.get("/:id", async (c) => {
 	});
 });
 
-/** `GET /:id/activity?page=1&pageSize=10`: the user's sign-ins (failed ones too) and sign-outs, newest first. Pruned like the rest of `login_events`. */
+/** `GET /:id/activity?page=1&pageSize=10&sort=&dir=`: the user's sign-ins (failed ones too) and sign-outs, newest first unless sorted. Pruned like the rest of `login_events`. */
 adminUsers.get("/:id/activity", async (c) => {
 	const user = await findUser(c, c.req.param("id"));
 	const page = Math.max(1, Number(c.req.query("page")) || 1);
 	const pageSize = Math.min(100, Math.max(1, Number(c.req.query("pageSize")) || 10));
-	const loginEvents = createDb(c.env).selectFrom("login_events").where("user_id", "=", user.id);
-	const [rows, count] = await Promise.all([
-		loginEvents
-			.select(["id", "success", "event", "ip", "country", "user_agent", "created_at"])
-			.orderBy("created_at", "desc")
-			.orderBy("id")
-			.limit(pageSize)
-			.offset((page - 1) * pageSize)
-			.execute(),
-		loginEvents.select((eb) => eb.fn.countAll<number>().as("total")).executeTakeFirst(),
-	]);
-	const events: ActivityEvent[] = rows.map((r) => ({
+	const sortParam = c.req.query("sort") as ActivitySortField;
+	const sort = ACTIVITY_SORT_FIELDS.includes(sortParam) ? sortParam : "createdAt";
+	const sign = c.req.query("sort") && c.req.query("dir") === "asc" ? 1 : -1;
+	const rows = await createDb(c.env)
+		.selectFrom("login_events")
+		.select(["id", "success", "event", "ip", "country", "user_agent", "created_at"])
+		.where("user_id", "=", user.id)
+		.orderBy("created_at", "desc")
+		.orderBy("id")
+		.execute();
+	const all: ActivityEvent[] = rows.map((r) => ({
 		id: r.id,
-		kind: r.event === "sign-out" ? "sign-out" : r.success ? "sign-in" : "failed",
+		kind: r.event === "sign-in" || !r.event ? (r.success ? "sign-in" : "failed") : r.event,
 		ip: r.ip,
 		country: r.country,
 		userAgent: r.user_agent,
 		createdAt: toIso(r.created_at) ?? "",
 	}));
-	return c.json<AdminUserActivity>({ events, total: Number(count?.total ?? 0), page, pageSize });
+	// Sorted here, not in SQL: the browser is read from the User-Agent, and the log is short (pruned). Empty values come last.
+	if (c.req.query("sort") && sort !== "createdAt") {
+		const key = (e: ActivityEvent): string | null =>
+			sort === "kind" ? e.kind : sort === "ip" ? e.ip : sort === "country" ? e.country : e.userAgent ? describeBrowser(e.userAgent) : null;
+		all.sort((a, b) => {
+			const ka = key(a);
+			const kb = key(b);
+			if (ka === null || kb === null) return ka === kb ? 0 : ka === null ? 1 : -1;
+			return sign * ka.localeCompare(kb);
+		});
+	} else if (c.req.query("sort") && sign === 1) {
+		all.reverse();
+	}
+	const events = all.slice((page - 1) * pageSize, page * pageSize);
+	return c.json<AdminUserActivity>({ events, total: all.length, page, pageSize });
 });
 
 adminUsers.post("/", async (c) => {

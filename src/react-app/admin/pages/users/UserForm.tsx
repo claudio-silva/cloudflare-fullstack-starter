@@ -26,6 +26,7 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { authClient } from "@/lib/auth/client";
 import { http, isHandledHttpError } from "@/lib/http";
@@ -180,6 +181,11 @@ export function UserForm() {
 					<TabsTrigger value="activity" className={TAB_TRIGGER}>
 						<History />
 						Activity
+						{user!.activityCount > 0 && (
+							<Badge variant="secondary" className="ml-1 h-5 min-w-5 rounded-full bg-foreground/10 px-1.5 text-xs text-foreground">
+								{user!.activityCount}
+							</Badge>
+						)}
 					</TabsTrigger>
 				</TabsList>
 			)}

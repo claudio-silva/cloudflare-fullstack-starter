@@ -63,21 +63,26 @@ export type AdminUserDetail = AdminUser & {
 	signInMethods: string[];
 	activeSessions: number;
 	lastSignOutAt: string | null;
+	/** Entries in the activity log (the Activity tab's pill). */
+	activityCount: number;
 };
 
 export type ActivityEvent = {
 	id: string;
 	/** `failed` is a sign-in attempt that did not succeed. */
-	kind: "sign-in" | "sign-out" | "failed";
+	kind: "sign-in" | "sign-out" | "failed" | "session-expired" | "session-revoked";
 	ip: string | null;
 	country: string | null;
 	userAgent: string | null;
 	createdAt: string;
 };
 
+export const ACTIVITY_SORT_FIELDS = ["createdAt", "kind", "ip", "country", "browser"] as const;
+export type ActivitySortField = (typeof ACTIVITY_SORT_FIELDS)[number];
+
 export type AdminUserActivity = { events: ActivityEvent[]; total: number; page: number; pageSize: number };
 
-export const USER_SORT_FIELDS = ["name", "email", "role", "status", "lastSignInAt", "createdAt"] as const;
+export const USER_SORT_FIELDS = ["name", "email", "role", "status", "lastSignInAt", "idleSeconds", "createdAt"] as const;
 export type UserSortField = (typeof USER_SORT_FIELDS)[number];
 
 export type AdminUserList = {
