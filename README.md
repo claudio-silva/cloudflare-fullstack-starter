@@ -53,7 +53,15 @@ A great starting point for your next **MVP** or **SaaS** app.
 
 Cloudflare gives you remarkable power at the edge, but **it isn’t a traditional hosting platform**. Most mainstream web frameworks don’t run on Workers out of the box, and adapting them to Cloudflare’s request-driven runtime can be challenging. That early friction slows down the part you actually care about: *building something new*.
 
-Agentic coding helps, but unfamiliar runtimes are still a weak spot. When developing for platforms like Cloudflare, **agents rarely succeed on the first attempt**. They burn cycles building boilerplate, fixing type and lint errors, debugging auth flows, smoothing out theme flicker, tweaking configs, juggling multi-environment setups and many other small details — all the fragile infrastructure work that slows real development. And **every new project** means **repeating the same setup steps**.
+Agentic coding helps, but unfamiliar runtimes are still a weak spot. When developing for platforms like Cloudflare, **agents rarely succeed on the first attempt**. They burn cycles on:
+
+- building boilerplate;
+- fixing type and lint errors;
+- debugging auth flows and smoothing out theme flicker;
+- tweaking configs and juggling multi-environment setups;
+- and many other small details — all the fragile infrastructure work that slows real development.
+
+And **every new project** means **repeating the same setup steps**.
 
 This starter removes that overhead **entirely**. Create a project from the template — or have your coding agent set it up — and you begin with a fully working, production-ready foundation. You can focus on building the distinctive parts of your app **right away**.
 
@@ -91,7 +99,14 @@ This starter removes that overhead **entirely**. Create a project from the templ
 
 ## Cloudflare-first, not Cloudflare-only
 
-The starter uses Cloudflare services wherever one fits (D1, Email Service, Durable Objects, ...), because that is where the cost, simplicity and latency advantages are. It never forces you to: services that people commonly swap sit behind small adapters (email today), and database access goes through one connection factory ([docs/DATABASES.md](docs/DATABASES.md)), so you can use another provider, or convert a project that already depends on one, without rewriting the app.
+The starter uses a Cloudflare service wherever one fits — D1, Email Service, Durable Objects, … — because that is where the cost, simplicity and latency advantages are.
+
+It never forces you to:
+
+- **Services people commonly swap** sit behind small adapters (email, today).
+- **Database access** goes through one connection factory ([docs/DATABASES.md](docs/DATABASES.md)).
+
+So you can use another provider, or convert a project that already depends on one, without rewriting the app.
 
 ## Why Cloudflare?
 
@@ -193,7 +208,11 @@ The same key must also be deployed to the Worker — the deploy scripts sync it 
 
 ### 5. Set `BETTER_AUTH_SECRET` (preview/production)
 
-Better Auth signs sessions and tokens with this secret. It is **required** in preview and production (the Worker refuses to run auth without it) and optional locally. Use a different value per environment:
+Better Auth signs sessions and tokens with this secret.
+
+- **Required** in preview and production: the Worker refuses to run auth without it.
+- **Optional** locally.
+- Use a different value per environment:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
@@ -265,15 +284,28 @@ If wrangler is logged in, you can do it from the command line:
 - CLI user management (create, list, view, edit, delete, activate) for local and remote environments, with positional env shorthand (`npm run auth list-users production`)
 
 ### Database Features
-- Portable migrations (TypeScript, Kysely) applied per-environment via `npm run db:migrate:*`; new databases get a single baseline, existing ones the pending incremental migrations; local dev migrates automatically
-- **Expand / contract / breaking** — each migration declares how it relates to the running version, which decides whether it runs before the deploy, after it, or inside a maintenance window; `safeSince` stops a removal from running while the live release still uses it. `npm run db -- new-migration <name>` scaffolds one
-- **Idempotent and journaled** — `ensureTable`, `ensureColumn`, `ensureIndex` and `ensureNoColumn` skip what is already applied, so re-running a failed migration is the recovery; `migration_journal` records what each run did (`npm run db -- journal`)
-- **Safe migrate** — automatically takes a pre-migration backup before applying schema changes (`--safe`)
-- **Backup** — export the whole database (auth **and** your own tables) of any environment to a timestamped `.backup.jsonl` file in `.wrangler/backups/`; works on D1, PostgreSQL and MySQL
-- **Restore** — replace the database contents from a backup file; a safety backup of the current data is taken first (`--no-safety-backup` to skip, `--yes` to skip the prompt). The schema must be at the same migration level as the backup
-- **Backup management** — list and clean up old backups per-environment, with `--dry-run` and `--all` options
-- **Time Travel** — inspect and restore to any historical state of a remote D1 database using Cloudflare's built-in time-travel (point-in-time restore by timestamp or bookmark)
-- **Seeds** — run idempotent TypeScript seeds (`src/worker/db/seeds/`) against any environment, separately from migrations
+
+**Migrations**
+- **Portable** — written in TypeScript with Kysely, applied per environment with `npm run db:migrate:*`. Local development migrates automatically.
+- **Baseline + incremental** — a new database gets a single baseline; an existing one gets only its pending migrations.
+- **Expand / contract / breaking** — each migration declares how it relates to the running version, which decides when it runs:
+  - `expand`: before the deploy;
+  - `contract`: after it — and never while the live release still uses what it removes (`safeSince`);
+  - `breaking`: inside a maintenance window.
+- **Idempotent and journaled** — `ensureTable`, `ensureColumn`, `ensureIndex` and `ensureNoColumn` skip what is already applied, so re-running a failed migration is the recovery. `migration_journal` records what each run did (`npm run db -- journal`).
+- **Safe migrate** — `--safe` takes a backup before applying anything.
+- `npm run db -- new-migration <name>` scaffolds one.
+
+**Backups**
+- **Backup** — the whole database of any environment (auth tables **and** your own) to a timestamped `.backup.jsonl` file in `.wrangler/backups/`. Works on D1, PostgreSQL and MySQL.
+- **Restore** — replaces the database contents from a backup file.
+  - A safety backup of the current data is taken first (`--no-safety-backup` to skip; `--yes` to skip the prompt).
+  - The schema must be at the same migration level as the backup.
+- **Backup management** — list and clean up old backups per environment (`--dry-run`, `--all`).
+- **Time Travel** — inspect or restore a remote D1 database at any earlier point, by timestamp or bookmark, with Cloudflare's built-in point-in-time restore.
+
+**Seeds**
+- Idempotent TypeScript seeds (`src/worker/db/seeds/`), run against any environment, separately from migrations.
 
 ### UI Features
 - Minimalistic app shell, so that you are free to create your own design and branding
@@ -436,7 +468,19 @@ So that you see the failures your users see, next to the server's.
 
 ## Localisation (i18n)
 
-The starter's own user-facing strings — dialogs, banners, toasts, the messages above — are English defaults under stable keys in `src/react-app/lib/i18n.ts`, read through `t()`. No i18n library is imposed: plug in the one your app uses with `setTranslator()`, or change a few words without one with `overrideMessages()`. A missing translation falls back to the English default, never to a raw key, and server messages can be translated on the client by their `code` (`error.<code>`). → [Localising](docs/MECHANISMS.md#localising)
+The starter's own user-facing strings — dialogs, banners, toasts, the messages above — are English defaults under stable keys in `src/react-app/lib/i18n.ts`, read through `t()`.
+
+No i18n library is imposed:
+
+- **With a library:** plug in the one your app uses with `setTranslator()`.
+- **Without one:** change a few words with `overrideMessages()`.
+
+And:
+
+- A missing translation falls back to the English default, never to a raw key.
+- Server messages can be translated on the client by their `code` (key `error.<code>`).
+
+→ [Localising](docs/MECHANISMS.md#localising)
 
 ## Demo mode
 
@@ -446,7 +490,7 @@ Setting the `DEMO_MODE` secret on a deployed Worker turns it into a public showc
 - **No email:** the email adapter becomes a no-op, so the app can never be used to send mail.
 - **The account is offered on the sign-in page** (`DEMO_EMAIL` / `DEMO_PASSWORD`), and sign-in attempts are rate-limited per IP.
 
-Everything that makes a deployment a demo lives on that deployment (Worker secrets, build variables), never in the repository: a project created from the template is not a demo and has nothing to switch off. → [Demo mode](docs/MECHANISMS.md#demo-mode)
+Everything that makes a deployment a demo lives on that deployment (Worker secrets, build variables), never in the repository. A project created from the template is not a demo, and has nothing to switch off. → [Demo mode](docs/MECHANISMS.md#demo-mode)
 
 ## Project Structure
 
@@ -628,7 +672,7 @@ The default Cloudflare Email Service adapter uses the `EMAIL` binding in `wrangl
 - **Add or update a secret** — edit the relevant `.env.<env>` file and run `npm run sync-secrets -- <env>`. Only what changed is synced; you never need `wrangler secret put`.
 - **Add a Cloudflare binding** (D1, KV, R2, …) — add it under `[env.*]` in `wrangler.toml` and it reaches the deploy on its own. Nothing to mirror anywhere.
 
-A deploy runs this sequence, on your machine or in CI — the same script either way:
+**What a deploy does** — on your machine or in CI, the same script either way:
 
 ```
 maintenance on   (only when a pending migration is `breaking`)
@@ -639,9 +683,14 @@ maintenance on   (only when a pending migration is `breaking`)
 maintenance off
 ```
 
-Almost every schema change is additive and needs no window at all. Each migration declares whether it is `expand`, `contract` or `breaking`, and that is what decides the order — a single fixed order cannot be right for both directions.
+- Each migration declares whether it is `expand`, `contract` or `breaking`, and that decides the order: a single fixed order cannot be right for both directions.
+- Almost every schema change is additive (`expand`) and needs no maintenance window at all.
 
-Releases, deploy modes and maintenance are summarised under [Deploy](#deploy). **[docs/MECHANISMS.md](docs/MECHANISMS.md) is the one to read** — what this starter gives you and why each piece is the way it is: migrations that do not take the app down, maintenance mode, versioning, secrets, the sign-in log, database portability. The mechanics of deploying are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+**Where to read more**
+
+- [Deploy](#deploy), below — releases, deploy modes and maintenance, in summary.
+- **[docs/MECHANISMS.md](docs/MECHANISMS.md) — the one to read.** What this starter gives you and why each piece is the way it is: migrations that do not take the app down, maintenance mode, versioning, secrets, the sign-in log, database portability.
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — the mechanics of deploying.
 
 ### How Environment Variables Work
 
@@ -670,7 +719,21 @@ Releases, deploy modes, migrations and maintenance are summarised here; the reas
 
 ### Releases and versions
 
-`npm run deploy:production` cuts a release: it bumps `version` in `package.json`, commits `Release vX.Y.Z`, tags it and deploys. A new project starts at **`0.0.1`** (pre-alpha), and its first release is that version as it is; after that each release bumps the latest tag (`--minor`, `--major` or `-v X.Y.Z` to choose), unless you have set a higher version in `package.json` by hand — that one is released as it is. The version and commit are baked into the build and served by `GET /api/`. Preview deploys report `X.Y.Z+preview.<sha>`.
+`npm run deploy:production` cuts a release:
+
+1. bumps `version` in `package.json`;
+2. commits `Release vX.Y.Z` and tags it;
+3. deploys.
+
+**Which version it releases**
+
+- A new project starts at **`0.0.1`** (pre-alpha). Its first release is that version, unbumped.
+- After that, each release bumps the latest tag: a patch by default, or `--minor`, `--major`, `-v X.Y.Z`.
+- A version you set by hand in `package.json`, higher than the latest tag, is released as it is.
+
+**Choosing the bump** — by compatibility, not size. A new major (before 1.0.0, a new minor) makes every open tab reload at once; anything else lets users postpone the update. See [Automatic update of open tabs](#automatic-update-of-open-tabs).
+
+**Where to see it** — the version and commit are baked into the build and served by `GET /api/`. Preview deploys report `X.Y.Z+preview.<sha>`.
 
 ### Deploy modes
 
@@ -680,7 +743,9 @@ Releases, deploy modes, migrations and maintenance are summarised here; the reas
 | `workers-builds` | Cloudflare Workers Builds, connected to your GitHub or GitLab.com repo |
 | `external-ci` | Your own CI (self-hosted GitLab, GitHub Actions, …), triggered by the release tag |
 
-In the CI modes `deploy:production` pushes the tag, promotes the deployment branch and waits for the Worker to report the new version. `--local` deploys from your machine whatever the mode. To switch CI deploys off for a while — a runner that is down, a frozen period — set the mode to `manual` and commit: each CI deploy job stops at its first step, green, without installing or building.
+- **In the CI modes**, `deploy:production` pushes the tag, promotes the deployment branch and waits for the Worker to report the new version.
+- **`--local`** deploys from your machine, whatever the mode.
+- **To switch CI deploys off for a while** — a runner that is down, a frozen period — set the mode to `manual` and commit. Each CI deploy job then stops at its first step, green, without installing or building.
 
 ### Maintenance
 
@@ -691,7 +756,7 @@ In the CI modes `deploy:production` pushes the tag, promotes the deployment bran
 | Users see | A 503 in place (page that reloads itself, or JSON) | Your maintenance page, at its own URL |
 | Works if the Worker is broken | No | Yes |
 
-In both cases the open app does not fail: its requests are held, an overlay tells the user to wait, and they are replayed when the app answers again.
+In both cases the open app does not fail: its requests are held, a banner tells the user to wait, and the requests are replayed when the app answers again. See [Offline and lost connection](#offline-and-lost-connection).
 
 ### Commands
 
@@ -702,7 +767,10 @@ npm run maintenance -- status --env production   # on | off | status
 npm run db -- logins --env production            # who has signed in, and how many
 ```
 
-Each command handles secrets, the environment-specific build, deployment and database migrations in one step. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) (versions, migrations, deploy modes, maintenance, CI) and [docs/VITE_CLOUDFLARE_BRIDGE.md](docs/VITE_CLOUDFLARE_BRIDGE.md) for how environment config is handled under the hood.
+Each deploy command handles secrets, the environment-specific build, deployment and database migrations in one step.
+
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — versions, migrations, deploy modes, maintenance, CI.
+- [docs/VITE_CLOUDFLARE_BRIDGE.md](docs/VITE_CLOUDFLARE_BRIDGE.md) — how environment config is handled under the hood.
 
 ## Customization
 
@@ -727,7 +795,13 @@ Also update prod and preview domain URLs in `.env.<env-name>.example` and `.env.
 4. Add navigation as appropriate for your app design
 
 ### Email
-Email goes through an adapter chosen by `config.email.provider` in `src/config.ts`. The default is Cloudflare Email Service via the `EMAIL` (`send_email`) binding declared in `wrangler.toml`; `npm run init` derives a sender such as `noreply@myapp.com` from `--app-domain https://app.myapp.com` and updates both `src/config.ts` and the binding allow-lists. Other providers plug in by implementing one small interface. Domain onboarding, provider switching, adding adapters and the optional inbound handler are covered in [docs/EMAIL.md](docs/EMAIL.md).
+Email goes through an adapter, chosen by `config.email.provider` in `src/config.ts`.
+
+- **Default: Cloudflare Email Service**, through the `EMAIL` (`send_email`) binding declared in `wrangler.toml`. No API key needed.
+- **Sender address:** `npm run init` derives one from your domain — `--app-domain https://app.myapp.com` gives `noreply@myapp.com` — and writes it to both `src/config.ts` and the binding's allow-lists.
+- **Other providers** plug in by implementing one small interface.
+
+[docs/EMAIL.md](docs/EMAIL.md) covers domain onboarding, switching providers, adding adapters and the optional inbound handler.
 
 ## Observability Features
 
