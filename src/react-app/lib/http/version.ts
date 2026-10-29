@@ -1,5 +1,6 @@
 import { config } from "../../../config";
 import { APP_VERSION } from "../../../shared/app-version";
+import { isBreakingChange } from "../../../shared/http-contract";
 import { browser } from "./browser";
 import { createStore } from "./store";
 
@@ -21,10 +22,12 @@ import { createStore } from "./store";
  *    tab reloads by itself. The banner counts down, and in the last minute
  *    tells the user to save what they have not saved.
  *
- * When a release changes the API in a way older tabs cannot use, the server
- * refuses them outright (`config.http.minClientVersion`: a 426 with
- * `code: "client_outdated"`). That is `requireUpdate()`: the dialog comes
- * back without "Postpone", since the page cannot do anything more anyway.
+ * Which of the two is decided by the version numbers (`isBreakingChange`): a
+ * new major — or, before 1.0.0, a new minor — is a release whose API this tab
+ * cannot be trusted with, and so is a rollback across one. Then there is no
+ * postponing (`requireUpdate()`): the dialog shows without "Postpone", and the
+ * server refuses the tab's API requests with a 426 (`code:
+ * "client_incompatible"`), which leads here too if no response said so first.
  *
  * Idle tabs make no requests, so returning to a tab that has been in the
  * background for a while asks the server once (`checkOnReturn`).
@@ -35,7 +38,7 @@ import { createStore } from "./store";
 
 /**
  * `available`: a new version, not yet answered. `pending`: postponed, until
- * `deadline` (epoch ms). `required`: the server no longer accepts this one.
+ * `deadline` (epoch ms). `required`: a version this one cannot work with.
  */
 export type UpdateStatus = "current" | "available" | "pending" | "required";
 export type UpdateState = { status: UpdateStatus; serverVersion: string | null; deadline: number | null };
@@ -53,11 +56,13 @@ let lastSeenAt = Date.now();
 export function noteServerVersion(version: string | null): void {
 	lastSeenAt = Date.now();
 	if (!version || version === CLIENT_VERSION) return;
+	// A breaking release overrides a postponed one: there is no waiting it out.
+	if (isBreakingChange(CLIENT_VERSION, version)) return requireUpdate(version);
 	if (updateStore.get().status !== "current") return;
 	updateStore.set({ status: "available", serverVersion: version, deadline: null });
 }
 
-/** The server refused this version (426 `client_outdated`): only updating is left. */
+/** The server's version is incompatible with this one: only updating is left. */
 export function requireUpdate(serverVersion: string | null = null): void {
 	const current = updateStore.get();
 	if (current.status === "required") return;

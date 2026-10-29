@@ -7,7 +7,15 @@ import { noteServerVersion, postponeUpdate, resetVersionState, updateStore } fro
 import { flushReports, pendingReports, reportClientError, resetReporter } from "../src/react-app/lib/http/reporter";
 import { setTranslator } from "../src/react-app/lib/i18n";
 import { APP_VERSION } from "../src/shared/app-version";
-import { APP_VERSION_HEADER, CLIENT_OUTDATED_CODE, CLIENT_VERSION_HEADER, type ApiErrorBody } from "../src/shared/http-contract";
+
+/** A later version on the same compatibility line as this build: a soft update. */
+const compatible = (bump: number) => {
+	const [major, minor] = APP_VERSION.split(".").map(Number);
+	return major === 0 ? `0.${minor}.${100 + bump}` : `${major}.${minor + 1 + bump}.0`;
+};
+/** A version this build cannot work with: a hard update. */
+const incompatible = "999.0.0";
+import { APP_VERSION_HEADER, CLIENT_INCOMPATIBLE_CODE, CLIENT_VERSION_HEADER, type ApiErrorBody } from "../src/shared/http-contract";
 
 /**
  * The browser half of the HTTP contract (src/react-app/lib/http/). What has
@@ -488,14 +496,14 @@ describe("versions", () => {
 	});
 
 	it("offers the update once, and after 'Later' never again", async () => {
-		let version = "99.0.0";
+		let version = compatible(0);
 		install(fakeNetwork(() => json(200, {}, { [APP_VERSION_HEADER]: version })));
 
 		await http("/api/posts");
-		expect(updateStore.get()).toEqual({ status: "available", serverVersion: "99.0.0", deadline: null });
+		expect(updateStore.get()).toEqual({ status: "available", serverVersion: compatible(0), deadline: null });
 
 		postponeUpdate();
-		version = "99.0.1";
+		version = compatible(1);
 		await http("/api/posts");
 		expect(updateStore.get().status).toBe("pending");
 	});
@@ -505,7 +513,7 @@ describe("versions", () => {
 		const reload = vi.fn();
 		vi.stubGlobal("location", { reload });
 		try {
-			noteServerVersion("99.0.0");
+			noteServerVersion(compatible(0));
 			postponeUpdate(10);
 			expect(updateStore.get()).toMatchObject({ status: "pending", deadline: Date.now() + 600_000 });
 			vi.advanceTimersByTime(599_999);
@@ -517,9 +525,20 @@ describe("versions", () => {
 		}
 	});
 
+	it("requires the update, with no way to postpone, when the server is a major version away", async () => {
+		let version = compatible(0);
+		install(fakeNetwork(() => json(200, {}, { [APP_VERSION_HEADER]: version })));
+		await http("/api/posts");
+		postponeUpdate();
+		// A breaking release overrides one already postponed.
+		version = incompatible;
+		await http("/api/posts");
+		expect(updateStore.get()).toMatchObject({ status: "required", serverVersion: incompatible, deadline: null });
+	});
+
 	it("requires the update when the server refuses this version, with no toast and no way to postpone", async () => {
 		const reload = vi.fn();
-		install(fakeNetwork(() => appError(426, { error: "This page is out of date.", code: CLIENT_OUTDATED_CODE })));
+		install(fakeNetwork(() => appError(426, { error: "This page is out of date.", code: CLIENT_INCOMPATIBLE_CODE })));
 
 		const error = await rejection(http("/api/posts"));
 		expect(error).toBeInstanceOf(HandledHttpError);

@@ -7,13 +7,13 @@ import { AppError, errorResponse, fail } from "../src/worker/lib/errors";
 import { versionMiddleware } from "../src/worker/middleware/version";
 import { resetClientErrorBudget } from "../src/worker/routes/client-errors";
 import { APP_VERSION } from "../src/shared/app-version";
-import { config } from "../src/config";
 import {
 	APP_VERSION_HEADER,
 	CLIENT_ERRORS_PATH,
-	CLIENT_OUTDATED_CODE,
+	CLIENT_INCOMPATIBLE_CODE,
 	CLIENT_VERSION_HEADER,
-	compareVersions,
+	compatibilityLine,
+	isBreakingChange,
 	type ApiErrorBody,
 } from "../src/shared/http-contract";
 import type { AppBindings } from "../src/worker/types/context";
@@ -116,12 +116,7 @@ describe("the real app's error responses", () => {
 	});
 });
 
-describe("minimum client version", () => {
-	const settings = config.http as { minClientVersion: string | null };
-	afterEach(() => {
-		settings.minClientVersion = null;
-	});
-
+describe("incompatible clients", () => {
 	const versionApp = () => {
 		const a = new Hono<AppBindings>();
 		a.use("*", versionMiddleware);
@@ -131,34 +126,30 @@ describe("minimum client version", () => {
 	const ask = (path: string, version?: string) =>
 		versionApp().request(path, { method: "POST", headers: version ? { [CLIENT_VERSION_HEADER]: version } : {} }, env);
 
-	it("refuses API requests from older tabs with a 426 the browser recognises", async () => {
-		settings.minClientVersion = "2.0.0";
-		const res = await ask("/api/posts", "1.9.9");
+	it("refuses API requests from a tab of another major, with a 426 the browser recognises", async () => {
+		const res = await ask("/api/posts", "999.0.0");
 		expect(res.status).toBe(426);
 		expect(res.headers.get(APP_VERSION_HEADER)).toBe(APP_VERSION);
-		expect(await res.json()).toMatchObject({ code: CLIENT_OUTDATED_CODE, error: expect.any(String) });
+		expect(await res.json()).toMatchObject({ code: CLIENT_INCOMPATIBLE_CODE, error: expect.any(String) });
 	});
 
-	it("lets through current tabs, callers that do not say their version, error reports and pages", async () => {
-		settings.minClientVersion = "2.0.0";
-		expect((await ask("/api/posts", "2.0.0")).status).toBe(200);
+	it("lets through compatible tabs, callers that do not say their version, error reports and pages", async () => {
+		expect((await ask("/api/posts", APP_VERSION)).status).toBe(200);
 		expect((await ask("/api/posts")).status).toBe(200);
-		expect((await ask(CLIENT_ERRORS_PATH, "1.0.0")).status).toBe(200);
-		expect((await ask("/dashboard", "1.0.0")).status).toBe(200);
+		expect((await ask("/api/posts", "unknown")).status).toBe(200);
+		expect((await ask(CLIENT_ERRORS_PATH, "999.0.0")).status).toBe(200);
+		expect((await ask("/dashboard", "999.0.0")).status).toBe(200);
 	});
 
-	it("refuses nothing without a minimum", async () => {
-		expect((await ask("/api/posts", "0.0.1")).status).toBe(200);
-	});
-
-	it("orders versions as releases, and never calls an unreadable one older", () => {
-		expect(compareVersions("1.9.9", "2.0.0")).toBeLessThan(0);
-		expect(compareVersions("1.10.0", "1.9.0")).toBeGreaterThan(0);
-		expect(compareVersions("2.0.0-rc.1", "2.0.0")).toBeLessThan(0);
-		expect(compareVersions("2.0.0-rc.10", "2.0.0-rc.9")).toBeGreaterThan(0);
-		expect(compareVersions("v2.0.0", "2.0.0")).toBe(0);
-		expect(compareVersions("0.0.0-dev", "2.0.0")).toBeLessThan(0);
-		expect(compareVersions("abc123", "2.0.0")).toBeNull();
+	it("takes a new major, or a new minor before 1.0.0, as breaking — in either direction", () => {
+		expect(isBreakingChange("1.9.9", "2.0.0")).toBe(true);
+		expect(isBreakingChange("2.0.0", "1.9.9")).toBe(true);
+		expect(isBreakingChange("2.0.0", "2.7.3")).toBe(false);
+		expect(isBreakingChange("0.3.9", "0.4.0")).toBe(true);
+		expect(isBreakingChange("0.3.1", "0.3.9")).toBe(false);
+		expect(isBreakingChange("2.0.0-rc.1", "2.0.0")).toBe(false);
+		expect(compatibilityLine("v1.2.3+preview.ab12cd3")).toBe("1");
+		expect(isBreakingChange("abc123", "2.0.0")).toBe(false);
 	});
 });
 

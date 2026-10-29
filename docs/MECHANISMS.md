@@ -226,9 +226,8 @@ errors, so an alert on error-level logs fires only for real failures.
 
 Every response carries `X-App-Version`; every API request from the app
 carries `X-Client-Version`. The latter is logged with every error, so a
-failure can be traced to a stale tab, and `config.http.minClientVersion`
-refuses tabs older than a release whose API they can no longer use (see
-[New versions](#new-versions)).
+failure can be traced to a stale tab, and a tab a major version away from the
+server is refused (see [New versions](#new-versions)).
 
 ### In the browser: one interceptor, no `if (!res.ok)`
 
@@ -244,7 +243,7 @@ For **every same-origin request**, whether or not its caller knows the layer:
 | Maintenance (either mechanism) | held and replayed — see [Maintenance mode](#maintenance-mode) |
 | Network failure, or 502/503/504/52x from the edge | answered by an offline handler, or held and sent again — see [Lost connection](#lost-connection) |
 | Any API response | `X-App-Version` checked — see [New versions](#new-versions) |
-| 426 `client_outdated` | this tab must update: a dialog without *Postpone* — see [New versions](#new-versions) |
+| 426 `client_incompatible` | this tab must update: a dialog without *Postpone* — see [New versions](#new-versions) |
 
 Holding a request changes *when* its caller hears back, never *what* it hears,
 so it is safe for code and libraries that know nothing about it. Statuses are
@@ -444,39 +443,52 @@ of this layer.
 
 ### New versions
 
-The first response whose `X-App-Version` differs from the version the bundle
-was built with opens a dialog: *Update now* reloads; *Postpone* leaves a banner
-across the top of the page with an *Update now* button, and the dialog never
-comes back — the user may be presenting. Instead, while an update is pending,
-the next client-side navigation becomes a full page load (`history.pushState`,
-and `replaceState` when the path changes, become `location.assign` /
-`replace`; Back and Forward reload). That is the one moment nothing typed on
-the page can be lost. It also interrupts whatever the page was doing — a
-recording, a stream — which is accepted: the alternative is old code running
-indefinitely against a new API.
+A tab learns the server's version from every response's `X-App-Version`. What
+happens next depends on how far apart the two versions are.
+
+**Soft update — same major.** The first response whose version differs from
+the one the bundle was built with opens a dialog: *Update now* reloads;
+*Postpone* leaves a banner across the top of the page with an *Update now*
+button, and the dialog never comes back — the user may be presenting. Instead,
+while an update is pending, the next client-side navigation becomes a full page
+load (`history.pushState`, and `replaceState` when the path changes, become
+`location.assign` / `replace`; Back and Forward reload). That is the one moment
+nothing typed on the page can be lost. It also interrupts whatever the page was
+doing — a recording, a stream — which is accepted: the alternative is old code
+running indefinitely against a new API.
 
 Postponing is not forever. The banner counts down `config.http.updateGraceMinutes`
 (10 by default) — *"It will update itself in 9:41"* — and when it reaches zero
 the tab reloads by itself. In the last minute the countdown gives way to *"N
-seconds left before the update. Save any pending changes now!"*. There is no second dialog for
-that minute: the banner is already in view, and a dialog would stand between
-the user and the very thing it asks them to save. A background tab's timer may
-fire late, never early.
+seconds left before the update. Save any pending changes now!"*. There is no
+second dialog for that minute: the banner is already in view, and a dialog
+would stand between the user and the very thing it asks them to save. A
+background tab's timer may fire late, never early.
 
-**When the old version must stop at once.** A release that changes the API in
-a way older tabs cannot use raises `config.http.minClientVersion` to its own
-version. The Worker (`versionMiddleware`) then answers every API request whose
-`X-Client-Version` is older with a **426** and `code: "client_outdated"`, and
-the browser shows the update dialog *without* Postpone — Escape does nothing —
-over a blocked page; the call rejects with `HandledHttpError` and no toast. Not
+**Hard update — another major.** By semver, a new major is an incompatible
+release, so the tab cannot be trusted to work with the server at all: the
+dialog shows *without* Postpone — Escape does nothing — over a blocked page,
+and it replaces any update already postponed. Before 1.0.0 the minor counts as
+the major (`0.3.x` → `0.4.0` is breaking), as semver has it. Either direction
+counts: a rollback across a major breaks as surely as the release did.
+
+The browser only learns the server's version from a response, by which time
+that request has been processed. So the Worker (`versionMiddleware`) also
+refuses, before anything else runs, every API request whose `X-Client-Version`
+is a major away, with a **426** and `code: "client_incompatible"`; the call
+rejects with `HandledHttpError`, no toast, and the same dialog shows. Not
 refused: requests that do not say their version (other clients, libraries the
 layer does not stamp), error reports from old tabs, and anything outside
-`/api/`. Versions are ordered as releases (`1.10.0` > `1.9.0`, `2.0.0-rc.1` <
-`2.0.0`); one that cannot be read is never taken for an older one. Leave it at
-`null` — refusing nothing — unless a release needs it: it reloads every open
-tab of the previous versions, unsaved work and all.
+`/api/`. A version that cannot be read is never taken for an incompatible one.
 
-Equality, not ordering, decides: a rollback is a version change too. A tab
+**So the version number is the switch.** Release an API change that older tabs
+cannot use with `npm run deploy:production -- --major`, and every open tab
+reloads at once, unsaved work and all; release everything else as a minor or
+patch. The cost is the other way round: a major released for any other reason
+(a redesign, say) reloads every tab just the same.
+
+Within a major, equality, not ordering, decides: a rollback is a version
+change too. A tab
 returning from the background after ten minutes asks once, since idle tabs make
 no requests to learn it from; a lazily loaded chunk that no longer exists
 (`vite:preloadError`) reloads the page, at most once every 30 s.

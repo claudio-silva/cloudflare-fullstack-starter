@@ -13,28 +13,34 @@ export const APP_VERSION_HEADER = "X-App-Version";
 export const CLIENT_VERSION_HEADER = "X-Client-Version";
 
 /**
- * The `code` of the 426 the Worker sends to a tab older than
- * `config.http.minClientVersion`: the tab must reload before it may continue.
+ * The `code` of the 426 the Worker sends to a tab built for an incompatible
+ * version (`isBreakingChange`): the tab must reload before it may continue.
  */
-export const CLIENT_OUTDATED_CODE = "client_outdated";
+export const CLIENT_INCOMPATIBLE_CODE = "client_incompatible";
 
 /**
- * Orders two release versions (`major.minor.patch`, optionally `-prerelease`):
- * negative when `a` is older. `null` when either cannot be read, so a version
- * nobody can order is never taken for an old one.
+ * The part of a release version that changes only with an incompatible
+ * release, by semver: the major, or for `0.x`, where everything may change,
+ * the minor too. `null` when the version cannot be read.
+ *
+ *   2.4.1 → "2"     0.3.7 → "0.3"     1.0.0-rc.2+preview.ab12 → "1"
  */
-export function compareVersions(a: string, b: string): number | null {
-	const parse = (v: string) => /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+.*)?$/.exec(v.trim());
-	const x = parse(a);
-	const y = parse(b);
-	if (!x || !y) return null;
-	for (let i = 1; i <= 3; i++) {
-		const d = Number(x[i]) - Number(y[i]);
-		if (d !== 0) return d;
-	}
-	// A prerelease comes before its release: 1.4.0-rc.1 < 1.4.0.
-	if (!x[4] || !y[4]) return (x[4] ? -1 : 0) + (y[4] ? 1 : 0);
-	return x[4].localeCompare(y[4], "en", { numeric: true });
+export function compatibilityLine(version: string): string | null {
+	const match = /^v?(\d+)\.(\d+)\.\d+(?:[-+].*)?$/.exec(version.trim());
+	if (!match) return null;
+	const [, major, minor] = match;
+	return Number(major) === 0 ? `0.${Number(minor)}` : String(Number(major));
+}
+
+/**
+ * Whether code built as `a` and code built as `b` cannot be trusted to work
+ * together — a major apart, in either direction, since a rollback breaks as
+ * surely as a release. A version that cannot be read never counts as one.
+ */
+export function isBreakingChange(a: string, b: string): boolean {
+	const x = compatibilityLine(a);
+	const y = compatibilityLine(b);
+	return x !== null && y !== null && x !== y;
 }
 
 /** On maintenance responses, to tell them from any other 503. */

@@ -2,7 +2,7 @@ import { toast } from "sonner";
 import { config } from "../../../config";
 import {
 	APP_VERSION_HEADER,
-	CLIENT_OUTDATED_CODE,
+	CLIENT_INCOMPATIBLE_CODE,
 	CLIENT_VERSION_HEADER,
 	INTERNAL_ERROR_CODE,
 	type AlertLevel,
@@ -33,7 +33,7 @@ import { checkOnReturn, CLIENT_VERSION, noteServerVersion, reloadOnStaleChunks, 
  * | Maintenance (either mechanism)             | held and replayed — lib/http/maintenance.ts         |
  * | Network failure, 502/503/504/52x from edge | answered by an offline handler, or held and sent again — lib/http/connectivity.ts |
  * | Any API response                           | `X-App-Version` checked — lib/http/version.ts       |
- * | 426 `client_outdated`                      | this tab must update: a dialog without "Postpone"   |
+ * | 426 `client_incompatible`                  | this tab must update: a dialog without "Postpone"   |
  *
  * Holding a request changes when its caller hears back, never what it hears.
  * Statuses are another matter: a library may well handle a 403 or a 409 of
@@ -254,7 +254,7 @@ export function installHttpLayer(options: HttpLayerOptions = {}): () => void {
 		if (api && !local) noteServerVersion(response.headers.get(APP_VERSION_HEADER));
 		if (api && !local && response.status === 426) {
 			const body = await readErrorBody(response);
-			if (body?.code === CLIENT_OUTDATED_CODE) {
+			if (body?.code === CLIENT_INCOMPATIBLE_CODE) {
 				// The update dialog says it all: no toast, no report.
 				requireUpdate(response.headers.get(APP_VERSION_HEADER));
 				if (aware && !named(426)) throw new HandledHttpError(body.error, 426, body);

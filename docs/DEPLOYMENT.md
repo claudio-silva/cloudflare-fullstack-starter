@@ -149,6 +149,8 @@ npm run deploy:production -- --release-only   # bump, tag and push; deploy nothi
 
 It runs from a clean `main` that equals `origin/main`. If `HEAD` already carries a tag, that version is redeployed instead of bumped. A new project starts at `0.0.1` (pre-alpha) and its first release is that version, unbumped. After that each release bumps the latest tag — unless `package.json` is ahead of it, which means someone set the version by hand (say `1.0.0` for the first stable release), and that version is released as it is. **Never run it against production without the owner's approval.**
 
+**Choose the bump by compatibility, not by size.** Open tabs read the version: a minor or patch is a soft update (the user may postpone it for `config.http.updateGraceMinutes`), a new major — before 1.0.0, a new minor — is a hard one: every open tab is told to reload at once and its API requests are refused until it does. Use `--major` exactly when the API changes in a way older tabs cannot use. See `docs/MECHANISMS.md`, *New versions*.
+
 Where the tag sits in the sequence differs by mode, and both placements are deliberate:
 
 - **`manual`** — deploy first, tag after it succeeds. There is no trigger to arm, so a failed release should not leave a tag claiming a version that never went live.

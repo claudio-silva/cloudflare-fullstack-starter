@@ -50,7 +50,9 @@ function usage(): void {
 	console.log(`Usage: npm run deploy:production -- [options]
 
   --patch | --minor | --major   Bump kind (default: --patch); ignored while package.json
-                                is ahead of the latest tag, which is released as-is
+                                is ahead of the latest tag, which is released as-is.
+                                A new major (before 1.0.0, a new minor) reloads every
+                                open tab at once: use it for incompatible API changes
   --version, -v X.Y.Z           Use this exact version
   --local                       Build and deploy from this machine, whatever the mode
   --release-only                Bump, tag and push; do not deploy or trigger CI

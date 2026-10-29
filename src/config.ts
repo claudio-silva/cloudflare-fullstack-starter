@@ -24,10 +24,6 @@ export const config = {
 		// left on the old version before the tab updates itself. A banner counts
 		// them down; navigating to another page updates sooner.
 		updateGraceMinutes: 10,
-		// Tabs older than this version get a 426 from every API request and a
-		// dialog that only offers to update. Raise it in the release whose API
-		// the previous ones can no longer use; `null` refuses none.
-		minClientVersion: null as string | null,
 	},
 
 	// Auth settings
