@@ -93,7 +93,13 @@ export function parseRetryAfterMs(value: string | null, maxMs: number): number |
 	return Math.min(Math.max(date - Date.now(), 0), maxMs);
 }
 
-export type MaintenanceState = { active: boolean; since: number | null; nextAttemptIn: number };
+export type MaintenanceState = {
+	active: boolean;
+	since: number | null;
+	nextAttemptIn: number;
+	/** Requests waiting for the window to end. None: everything was answered locally, or nothing was asked. */
+	waiting: number;
+};
 
 type Listener = (state: MaintenanceState) => void;
 
@@ -101,10 +107,11 @@ let installed = false;
 let active = false;
 let since: number | null = null;
 let nextAttemptIn = 0;
+let waiting = 0;
 const listeners = new Set<Listener>();
 
 function snapshot(): MaintenanceState {
-	return { active, since, nextAttemptIn };
+	return { active, since, nextAttemptIn, waiting };
 }
 
 function emit(): void {
@@ -289,6 +296,22 @@ function sendReplay(originalFetch: typeof fetch, input: RequestInfo | URL, init?
 	});
 }
 
+const isRequest = (input: RequestInfo | URL): input is Request => typeof input === "object" && !(input instanceof URL);
+
+/**
+ * The shared wait, given up by one caller that aborts — a timeout of its
+ * own, or an offline handler that answered for it — without ending it for the others.
+ */
+function untilAborted<T>(wait: Promise<T>, signal: AbortSignal | null | undefined): Promise<T> {
+	if (!signal) return wait;
+	if (signal.aborted) return Promise.reject(signal.reason);
+	return new Promise<T>((resolve, reject) => {
+		const onAbort = () => reject(signal.reason);
+		signal.addEventListener("abort", onAbort, { once: true });
+		wait.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+	});
+}
+
 let recovery: Promise<boolean> | null = null;
 
 /**
@@ -349,7 +372,15 @@ export function installMaintenanceInterceptor(options: MaintenanceOptions = {}):
 			// waits, so a server that is already struggling is not asked again
 			// until the single polling loop says it has recovered.
 			if (active) {
-				const recovered = await awaitRecovery(originalFetch, opts);
+				waiting += 1;
+				emit();
+				let recovered: boolean;
+				try {
+					recovered = await untilAborted(awaitRecovery(originalFetch, opts), init?.signal ?? (isRequest(input) ? input.signal : null));
+				} finally {
+					waiting -= 1;
+					emit();
+				}
 				held = true;
 				// Gave up: one last real attempt, and its result — 503, error or
 				// success — goes to the caller untouched. Its own error handling
@@ -388,6 +419,7 @@ export function installMaintenanceInterceptor(options: MaintenanceOptions = {}):
 		installed = false;
 		active = false;
 		since = null;
+		waiting = 0;
 		recovery = null;
 		diagnosis = null;
 		replays.clear();

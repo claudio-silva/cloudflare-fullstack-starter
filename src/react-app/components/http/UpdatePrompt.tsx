@@ -15,7 +15,7 @@ import { useUpdateState } from "./hooks";
 
 /**
  * Asked once, the first time the server reports a different version
- * (lib/http/version.ts). After "Postpone", `UpdateBanner` (HttpBanners.tsx) takes over.
+ * (lib/http/version.ts). After "Postpone", `UpdateBanner` (HttpLayerUi.tsx) takes over.
  */
 export function UpdateDialog() {
 	const { status } = useUpdateState();

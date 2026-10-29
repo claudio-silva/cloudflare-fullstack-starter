@@ -13,7 +13,7 @@ import { exchange, installConnectivity, isUnreachable, OFFLINE_HEADER, runBefore
 import { HandledHttpError, isHandledHttpError } from "./handled-error";
 import { installMaintenanceInterceptor, MAINTENANCE_PROBE_PATH, type MaintenanceOptions } from "./maintenance";
 import { installErrorReporter, reportClientError } from "./reporter";
-import { configureUi, getUi, type HttpUi } from "./ui";
+import { configureUi, DEFAULT_UI, getUi, type HttpUi } from "./ui";
 import { checkOnReturn, CLIENT_VERSION, noteServerVersion, reloadOnStaleChunks } from "./version";
 
 /**
@@ -292,7 +292,7 @@ export function installHttpLayer(options: HttpLayerOptions = {}): () => void {
 		uninstallMaintenance();
 		removeEventListener("unhandledrejection", silenceHandled);
 		stopChecking();
-		configureUi({ connectivity: true, maintenance: true, update: true, errors: true });
+		configureUi(DEFAULT_UI);
 		installed = false;
 	};
 }

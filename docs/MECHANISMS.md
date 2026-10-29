@@ -137,10 +137,11 @@ it answers 200 throughout, and every held request is "recovered" straight into
 another 503. The probe has to be down exactly when the app is, so `/api/ping`
 is exempt from neither mechanism — and must not become so.
 
-Call sites never learn any of this happened. `<MaintenanceBanner />` (in
-`components/http/HttpBanners.tsx`) shows a banner — not a modal, and with no
-retry button, because the request is already being retried and a button would
-only add a second one.
+Call sites never learn any of this happened. A banner says what is going on
+(`MaintenanceBanner` in `components/http/HttpLayerUi.tsx`), with no retry
+button, because the request is already being retried and a button would only
+add a second one. While requests are waiting on the window, the page is
+blocked — see [Blocking the page](#blocking-the-page).
 
 Every same-origin request is held, whether or not its caller knows the HTTP
 layer (see below) — except those with `handles: "all"` and the paths in
@@ -311,7 +312,39 @@ are `http.retryNow()`, `http.cancelHeld()`, `updateNow()` and
 `postponeUpdate()`. `onError` receives every error the layer reports, with or
 without the toast. Turning a banner off changes nothing about what the layer
 does: requests are still held while offline, so an app that hides the
-connectivity banner must say so itself, and offer Cancel.
+connectivity banner must say so itself, offer Cancel, and block the page
+(`useBlocked()` says when).
+
+### Blocking the page
+
+Trouble with requests comes in two kinds, and they are shown differently:
+
+- **Blocking: requests are being held** — no connection, or a maintenance
+  window. Letting the user carry on would only pile up requests that cannot
+  be answered, in an app that has stopped responding to what they do. So the
+  page is dimmed and made unusable until it is over: no clicks, no typing, no
+  focus. Offline with nothing held — every request answered by an offline
+  handler — is not blocking: the app works.
+- **Not blocking: a new version.** The app keeps working, at some risk of
+  misbehaving; a banner says so and offers to update.
+
+A blocked page is shown in one of two ways, `installHttpLayer({ ui: {
+blockWith } })`:
+
+| `blockWith` | What the user sees |
+|---|---|
+| `"banner"` (default) | the banner across the top, over a page dimmed to 50 % black |
+| `"dialog"` | the same content in a dialog in the middle of the dimmed page |
+
+Either way the page underneath is made **`inert`**: every child of `<body>`
+except the layer's own (`#http-layer`) — the app, and also dialogs and toasts
+portalled there, including any opened while blocked. That is what the browser
+offers for exactly this: inert content takes no clicks and no focus, and
+whatever had focus loses it. Focus goes to *Try now*, so Enter tries again;
+Tab and Shift+Tab go round the layer's own buttons; a click on the dimmed
+page keeps focus where it is. When the block lifts, focus returns to where
+it was. The banners stay above everything, and stay clickable even with a
+Radix modal open (which sets `pointer-events: none` on `<body>`).
 
 ### Lost connection
 

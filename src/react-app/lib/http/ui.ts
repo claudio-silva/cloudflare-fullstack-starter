@@ -18,9 +18,17 @@ export type HttpUi = {
 	update: boolean;
 	/** The toasts for error responses. `onError` is called either way. */
 	errors: boolean;
+	/**
+	 * How the page is blocked while requests are held (offline, maintenance):
+	 * `"banner"`, the banner over a dimmed page; `"dialog"`, a dialog in the
+	 * middle of a dimmed page. See components/http/HttpLayerUi.tsx.
+	 */
+	blockWith: "banner" | "dialog";
 };
 
-let ui: HttpUi = { connectivity: true, maintenance: true, update: true, errors: true };
+export const DEFAULT_UI: HttpUi = { connectivity: true, maintenance: true, update: true, errors: true, blockWith: "banner" };
+
+let ui: HttpUi = DEFAULT_UI;
 
 export function configureUi(next: Partial<HttpUi>): void {
 	ui = { ...ui, ...next };

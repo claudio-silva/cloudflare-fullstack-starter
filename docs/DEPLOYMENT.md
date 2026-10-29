@@ -105,7 +105,7 @@ All carry `X-Maintenance: 1` and `Retry-After: 60`. `/api/` and `/api/cli/*` ans
 
 Recovery is judged by polling `GET /api/ping`, **not** `/api/`. `/api/` is exempt from maintenance so the deploy can read the version, which means it answers 200 all through a window.
 
-A banner (`<MaintenanceBanner />`) tells the user what is happening, and the app's offline handlers, if any, answer in the meantime. Call sites never learn that any of it occurred.
+A banner tells the user what is happening and, while requests are waiting, the page is blocked; the app's offline handlers, if any, answer in the meantime. Call sites never learn that any of it occurred.
 
 Patching global `fetch` rather than exporting a wrapper is deliberate, for the reason Angular uses an HTTP interceptor: libraries make their own requests. Better Auth's would otherwise slip past.
 

@@ -5,7 +5,7 @@ import { Toaster } from "sonner";
 import "./index.css";
 import App from "./App.tsx";
 import { ThemeProvider } from "./components/theme-provider";
-import { HttpBanners } from "./components/http/HttpBanners";
+import { HttpLayerUi } from "./components/http/HttpLayerUi";
 import { UpdateDialog } from "./components/http/UpdatePrompt";
 import { installHttpLayer } from "./lib/http/interceptor";
 import { authClient } from "./lib/auth/client";
@@ -23,7 +23,7 @@ createRoot(document.getElementById("root")!).render(
 	<StrictMode>
 		<BrowserRouter>
 			<ThemeProvider defaultTheme="light" storageKey="app-theme">
-				<HttpBanners />
+				<HttpLayerUi />
 				<App />
 				<UpdateDialog />
 				<Toaster position="top-center" richColors />

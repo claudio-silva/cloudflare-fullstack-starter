@@ -147,6 +147,27 @@ describe("maintenance interceptor", () => {
 		expect(seen.at(-1)).toBe(false);
 	});
 
+	// What decides whether the page is blocked: requests waiting, not the window alone.
+	it("counts the requests waiting on the window, and lets one that aborts go", async () => {
+		const server = fakeServer({ downForProbes: 0, gated: true });
+		vi.stubGlobal("fetch", server.fetchImpl);
+		uninstall = installMaintenanceInterceptor({ pollScheduleMs: [1], maxWaitMs: 5_000 });
+
+		const controller = new AbortController();
+		const a = fetch("/api/a");
+		const b = fetch("/api/b", { signal: controller.signal }).catch((error: unknown) => error);
+		await vi.waitFor(() => expect(getMaintenanceState().waiting).toBe(2));
+
+		controller.abort(new DOMException("Answered locally", "AbortError"));
+		expect(await b).toMatchObject({ name: "AbortError" });
+		expect(getMaintenanceState()).toMatchObject({ active: true, waiting: 1 });
+
+		server.release();
+		expect((await a).status).toBe(200);
+		expect(getMaintenanceState()).toMatchObject({ active: false, waiting: 0 });
+		expect(server.calls.filter((c) => c.url === "/api/b")).toHaveLength(1);
+	});
+
 	it("passes a 503 that is not ours straight through", async () => {
 		const plain503 = vi.fn(async () => new Response("upstream exploded", { status: 503 }));
 		vi.stubGlobal("fetch", plain503);
