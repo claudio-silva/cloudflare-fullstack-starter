@@ -31,6 +31,14 @@ updates:
         patterns:
           - "*"
     # Major bumps stay as individual PRs so they get reviewed deliberately.
+    ignore:
+      # Node types follow the Node line we run on (24 LTS, `.nvmrc`), not the latest.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+      # TypeScript 7 is not supported by typescript-eslint yet (peer `<6.1.0`).
+      # Remove once it is.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
 
   # ---- GitHub Actions used by workflows ----
   - package-ecosystem: "github-actions"
