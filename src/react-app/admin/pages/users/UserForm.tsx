@@ -175,7 +175,7 @@ export function UserForm() {
 				<TabsList variant="line" className={TAB_LIST}>
 					<TabsTrigger value="details" className={TAB_TRIGGER}>
 						<ClipboardList />
-						Details
+						Profile
 					</TabsTrigger>
 					<TabsTrigger value="activity" className={TAB_TRIGGER}>
 						<History />

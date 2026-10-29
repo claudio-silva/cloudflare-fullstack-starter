@@ -193,11 +193,11 @@ minute, at the price of one small write per active session per minute.
 
 ### The user page
 
-Two tabs. **Details** has the form (the password is typed twice) and a panel
+**Profile** has the form (the password is typed twice) and a panel
 with the status, in-session flag, idle time, last sign-in and last sign-out.
-**Activity** lists the last 50 sign-ins, failed attempts and sign-outs from
-`login_events` (`GET /api/admin/users/:id/activity`), which are recorded
-for every user, and pruned after `AUTH_LOG_RETENTION_DAYS`. Sign-outs are
+**Activity** pages through the sign-ins, failed attempts and sign-outs from
+`login_events` (`GET /api/admin/users/:id/activity?page=&pageSize=`), 10 a
+page, in a table styled like the user list; they are pruned after `AUTH_LOG_RETENTION_DAYS`. Sign-outs are
 recorded since migration `0006_login_event_kind`; earlier rows are sign-ins.
 
 ## Removing it

@@ -52,7 +52,9 @@ export function AdminPage({ title, description, actions, breadcrumbs = [], child
 												<BreadcrumbPage>{crumb.title}</BreadcrumbPage>
 											) : crumb.path ? (
 												<BreadcrumbLink asChild>
-													<Link to={crumb.path}>{crumb.title}</Link>
+													<Link to={crumb.path} className="rounded-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
+														{crumb.title}
+													</Link>
 												</BreadcrumbLink>
 											) : (
 												<span>{crumb.title}</span>

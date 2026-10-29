@@ -19,34 +19,25 @@ import { Spinner } from "@/components/ui/spinner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
-import {
-	Pagination,
-	PaginationContent,
-	PaginationItem,
-	PaginationLink,
-	PaginationNext,
-	PaginationPrevious,
-} from "@/components/ui/pagination";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
 import { http, isHandledHttpError } from "@/lib/http";
 import type { AdminUserList, UserSortField } from "../../../../shared/admin-users";
 import { AdminPage } from "../../components/AdminPage";
-import { ACTION_BUTTON } from "../../styles";
+import { PageBar } from "../../components/PageBar";
+import { ACTION_BUTTON, ORDINAL } from "../../styles";
 import { formatDate } from "./format";
 import { RoleBadge, StatusBadge, UserAvatar } from "./user-ui";
 
 const PAGE_SIZE = 20;
-/** The row-number column: 50px wide, whatever the content, shaded like the column headings, with a rule on its right. */
-const ORDINAL = "w-[50px] min-w-[50px] max-w-[50px] border-r border-border bg-(--admin-table-head) px-0 text-center";
 /** Darker than shadcn's default, so a checkbox shows against the shaded headings. */
 const CHECKBOX = "border-neutral-500 dark:border-neutral-400";
 /** The row menu's column. */
 /** Fixed to the widest content each can hold: "Superadmin", "Disabled", a long date. */
 const ROLE_COL = "w-[110px] min-w-[110px] whitespace-nowrap";
 const STATUS_COL = "hidden w-[110px] min-w-[110px] whitespace-nowrap sm:table-cell";
-const CREATED_COL = "hidden w-[110px] min-w-[110px] whitespace-nowrap md:table-cell";
+const CREATED_COL = "hidden w-[90px] min-w-[90px] whitespace-nowrap md:table-cell";
 /** As wide as the row-number column, with the box in the middle. */
 const SELECT_COL = "w-[50px] min-w-[50px] max-w-[50px] px-0";
 const MENU_COL = "w-[50px] min-w-[50px] max-w-[50px] px-0 text-center";
@@ -332,53 +323,7 @@ export function UserList() {
 						</Table>
 					)}
 				</CardContent>
-				{pages > 1 && (
-					<div className="flex items-center justify-between gap-4 border-t bg-(--admin-table-foot) px-4 py-2">
-						<span className="text-sm text-muted-foreground">
-							Page {page} of {pages}
-						</span>
-						<Pagination className="mx-0 w-auto">
-							<PaginationContent>
-								<PaginationItem>
-									<PaginationPrevious
-										href="#"
-										aria-disabled={page <= 1}
-										className={page <= 1 ? "pointer-events-none opacity-50" : ""}
-										onClick={(e) => {
-											e.preventDefault();
-											update({ page: page > 2 ? String(page - 1) : null });
-										}}
-									/>
-								</PaginationItem>
-								{pageWindow(page, pages).map((n) => (
-									<PaginationItem key={n} className="hidden sm:list-item">
-										<PaginationLink
-											href="#"
-											isActive={n === page}
-											onClick={(e) => {
-												e.preventDefault();
-												update({ page: n > 1 ? String(n) : null });
-											}}
-										>
-											{n}
-										</PaginationLink>
-									</PaginationItem>
-								))}
-								<PaginationItem>
-									<PaginationNext
-										href="#"
-										aria-disabled={page >= pages}
-										className={page >= pages ? "pointer-events-none opacity-50" : ""}
-										onClick={(e) => {
-											e.preventDefault();
-											update({ page: String(page + 1) });
-										}}
-									/>
-								</PaginationItem>
-							</PaginationContent>
-						</Pagination>
-					</div>
-				)}
+				{pages > 1 && <PageBar page={page} pages={pages} onPage={(n) => update({ page: n > 1 ? String(n) : null })} />}
 			</Card>
 			<AlertDialog open={toDelete !== null} onOpenChange={(open) => !open && setToDelete(null)}>
 				<AlertDialogContent>
@@ -414,10 +359,4 @@ function SortHeader({ field, sort, dir, onSort, children }: SortHeaderProps) {
 			<Icon className={sort === field ? "" : "text-muted-foreground/60"} />
 		</Button>
 	);
-}
-
-/** Up to five page numbers around the current one. */
-function pageWindow(page: number, pages: number): number[] {
-	const start = Math.max(1, Math.min(page - 2, pages - 4));
-	return Array.from({ length: Math.min(5, pages) }, (_, i) => start + i);
 }

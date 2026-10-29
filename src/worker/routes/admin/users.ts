@@ -149,18 +149,22 @@ adminUsers.get("/:id", async (c) => {
 	});
 });
 
-const ACTIVITY_LIMIT = 50;
-
-/** The user's sign-ins (failed ones too) and sign-outs, newest first. Pruned like the rest of `login_events`. */
+/** `GET /:id/activity?page=1&pageSize=10`: the user's sign-ins (failed ones too) and sign-outs, newest first. Pruned like the rest of `login_events`. */
 adminUsers.get("/:id/activity", async (c) => {
 	const user = await findUser(c, c.req.param("id"));
-	const rows = await createDb(c.env)
-		.selectFrom("login_events")
-		.select(["id", "success", "event", "ip", "country", "user_agent", "created_at"])
-		.where("user_id", "=", user.id)
-		.orderBy("created_at", "desc")
-		.limit(ACTIVITY_LIMIT)
-		.execute();
+	const page = Math.max(1, Number(c.req.query("page")) || 1);
+	const pageSize = Math.min(100, Math.max(1, Number(c.req.query("pageSize")) || 10));
+	const loginEvents = createDb(c.env).selectFrom("login_events").where("user_id", "=", user.id);
+	const [rows, count] = await Promise.all([
+		loginEvents
+			.select(["id", "success", "event", "ip", "country", "user_agent", "created_at"])
+			.orderBy("created_at", "desc")
+			.orderBy("id")
+			.limit(pageSize)
+			.offset((page - 1) * pageSize)
+			.execute(),
+		loginEvents.select((eb) => eb.fn.countAll<number>().as("total")).executeTakeFirst(),
+	]);
 	const events: ActivityEvent[] = rows.map((r) => ({
 		id: r.id,
 		kind: r.event === "sign-out" ? "sign-out" : r.success ? "sign-in" : "failed",
@@ -169,7 +173,7 @@ adminUsers.get("/:id/activity", async (c) => {
 		userAgent: r.user_agent,
 		createdAt: toIso(r.created_at) ?? "",
 	}));
-	return c.json<AdminUserActivity>({ events, limit: ACTIVITY_LIMIT });
+	return c.json<AdminUserActivity>({ events, total: Number(count?.total ?? 0), page, pageSize });
 });
 
 adminUsers.post("/", async (c) => {
