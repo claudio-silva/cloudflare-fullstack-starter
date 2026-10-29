@@ -193,7 +193,7 @@ minute, at the price of one small write per active session per minute.
 
 ### The user page
 
-**Profile** has the form (the password is typed twice) and a panel
+Two tabs. **Profile** has the form (the password is typed twice) and a panel
 with the status, in-session flag, idle time, last sign-in and last sign-out.
 **Activity** pages through the sign-ins, failed attempts and sign-outs from
 `login_events` (`GET /api/admin/users/:id/activity?page=&pageSize=`), 10 a
