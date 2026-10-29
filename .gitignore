@@ -36,7 +36,6 @@ dist-ssr
 test-results/
 playwright-report/
 pnpm-lock.yaml
-pnpm-workspace.yaml
 
 # Worktrees created by Claude Code (claude --worktree, isolated subagents)
 .claude/worktrees/

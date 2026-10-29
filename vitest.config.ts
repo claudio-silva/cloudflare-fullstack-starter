@@ -25,7 +25,8 @@ export default defineConfig({
 						miniflare: {
 							// Extra empty D1 databases for isolated migration tests.
 							d1Databases: ["DB2", "DB3"],
-							bindings: { ENVIRONMENT: "test", CLI_API_KEY: "test-cli-key" },
+							// Pinned: wrangler also loads .env.local, whose APP_BASE_URL follows the dev server's port.
+							bindings: { ENVIRONMENT: "test", CLI_API_KEY: "test-cli-key", APP_BASE_URL: "http://localhost:5173" },
 						},
 					}),
 				],

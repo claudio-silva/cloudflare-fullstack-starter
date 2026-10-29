@@ -96,6 +96,12 @@ Each entry below has the same shape:
 - **Rejected:** compiling `bin/` first (an extra step for every script).
 - **Revisit when:** Node runs TypeScript directly for everything `bin/` uses. `tsx` could then go.
 
+### Install scripts: `esbuild` and `workerd` only
+
+- **Choice:** the two packages whose install script fetches their platform binary are allowed to run it. `fsevents` (optional, macOS) has one but ships prebuilt, so it is not. pnpm, which runs no install script it was not told to, reads this from `pnpm-workspace.yaml` (`allowBuilds` for pnpm 11, `onlyBuiltDependencies` for pnpm 10). npm, the default, runs them all.
+- **Why:** an install script is code that runs on every machine and CI job with the user's rights. Listing them keeps the list short and visible.
+- **Revisit when:** a dependency added later has an install script: pnpm refuses to install until it is approved or denied there (`pnpm approve-builds`).
+
 ### End-to-end tests: Playwright, Chromium only
 
 - **Choice:** `@playwright/test` with a single `chromium` project (`playwright.config.ts`).

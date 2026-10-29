@@ -20,8 +20,17 @@ if [ "$(git rev-parse --path-format=absolute --git-dir)" = "$(git rev-parse --pa
 fi
 SRC="${PASEO_SOURCE_CHECKOUT_PATH:-$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")}"
 
+# Dependencies, with the package manager the source checkout uses: pnpm when it
+# has a pnpm-lock.yaml (gitignored in the starter, so copied), npm otherwise.
 # Installed once; again only when the lockfile has changed since.
-if [ ! -d node_modules ] || [ package-lock.json -nt node_modules/.package-lock.json ]; then npm ci; fi
+if [ -f pnpm-lock.yaml ] || [ -f "$SRC/pnpm-lock.yaml" ]; then
+	[ -f pnpm-lock.yaml ] || cp "$SRC/pnpm-lock.yaml" pnpm-lock.yaml
+	PM=pnpm LOCK=pnpm-lock.yaml STAMP=node_modules/.modules.yaml INSTALL=(pnpm install --frozen-lockfile)
+else
+	PM=npm LOCK=package-lock.json STAMP=node_modules/.package-lock.json INSTALL=(npm ci)
+fi
+if [ ! -d node_modules ] || [ "$LOCK" -nt "$STAMP" ]; then "${INSTALL[@]}"; fi
+echo "✓ dependencies ($PM). Use $PM in this worktree: the other package manager would reinstall node_modules."
 
 # Local settings: the source checkout's, or the template's.
 if [ ! -f .env.local ]; then

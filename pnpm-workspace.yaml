@@ -1,0 +1,17 @@
+# Read only by pnpm; npm (the default) ignores it.
+# pnpm runs no install script it was not told to. These are the dependencies
+# that have one: esbuild and workerd fetch their platform binary, fsevents
+# ships prebuilt and needs nothing.
+
+# pnpm 11
+allowBuilds:
+  esbuild: true
+  workerd: true
+  fsevents: false
+
+# pnpm 10
+onlyBuiltDependencies:
+  - esbuild
+  - workerd
+ignoredBuiltDependencies:
+  - fsevents

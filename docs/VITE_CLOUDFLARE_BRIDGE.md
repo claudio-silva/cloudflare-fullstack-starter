@@ -178,5 +178,5 @@ Minimal adaptation when the starter lives at `app/` in a pnpm workspace:
 
 - Run scripts from the package: `pnpm --filter ./app dev`, or `pnpm -C app db:migrate`.
 - The `.env.*` files, `wrangler.toml`, `src/worker/db/` (migrations and seeds) all live inside `app/`.
-- `package-lock.json` is irrelevant there; delete it and use the workspace `pnpm-lock.yaml`. Allow build scripts for `esbuild`, `workerd` and `sharp` in `pnpm-workspace.yaml` (`onlyBuiltDependencies`).
+- `package-lock.json` is irrelevant there; delete it and use the workspace `pnpm-lock.yaml`. Move the build-script approvals of `app/pnpm-workspace.yaml` (`allowBuilds` for `esbuild`, `workerd`, `fsevents`) into the workspace's own `pnpm-workspace.yaml` and delete the one in `app/`: pnpm reads only the workspace root's.
 - Keep project-specific changes to `src/config.ts`, `wrangler.toml` vars and the env templates so later `git subtree pull`s stay cheap; add features as new files under `src/worker/routes/`.
