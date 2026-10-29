@@ -266,7 +266,7 @@ A network failure, or a gateway error from the edge, takes the app **offline**; 
 
 ### Automatic update of open tabs
 
-Every response carries the server's version (`X-App-Version`). When it changes — a release, or a rollback — open tabs offer to update: *Update now* reloads, *Postpone* leaves a banner, and the next in-app navigation becomes a full page load, the one moment nothing typed can be lost. Tabs returning from the background check once, and a lazily loaded chunk that no longer exists reloads the page. → [New versions](docs/MECHANISMS.md#new-versions)
+Every response carries the server's version (`X-App-Version`). When it changes — a release, or a rollback — open tabs offer to update: *Update now* reloads, *Postpone* leaves a banner counting down to an automatic update (`config.http.updateGraceMinutes`, 10 by default; in the last minute it asks the user to save instead), and the next in-app navigation becomes a full page load sooner, the one moment nothing typed can be lost. A release whose API older tabs cannot use raises `config.http.minClientVersion`: their requests get a 426 and the dialog comes back without *Postpone*. Tabs returning from the background check once, and a lazily loaded chunk that no longer exists reloads the page. → [New versions](docs/MECHANISMS.md#new-versions)
 
 ### Client error reporting
 

@@ -12,6 +12,31 @@ export const APP_VERSION_HEADER = "X-App-Version";
 /** On every API request from the app: the version of the code that asked. */
 export const CLIENT_VERSION_HEADER = "X-Client-Version";
 
+/**
+ * The `code` of the 426 the Worker sends to a tab older than
+ * `config.http.minClientVersion`: the tab must reload before it may continue.
+ */
+export const CLIENT_OUTDATED_CODE = "client_outdated";
+
+/**
+ * Orders two release versions (`major.minor.patch`, optionally `-prerelease`):
+ * negative when `a` is older. `null` when either cannot be read, so a version
+ * nobody can order is never taken for an old one.
+ */
+export function compareVersions(a: string, b: string): number | null {
+	const parse = (v: string) => /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+.*)?$/.exec(v.trim());
+	const x = parse(a);
+	const y = parse(b);
+	if (!x || !y) return null;
+	for (let i = 1; i <= 3; i++) {
+		const d = Number(x[i]) - Number(y[i]);
+		if (d !== 0) return d;
+	}
+	// A prerelease comes before its release: 1.4.0-rc.1 < 1.4.0.
+	if (!x[4] || !y[4]) return (x[4] ? -1 : 0) + (y[4] ? 1 : 0);
+	return x[4].localeCompare(y[4], "en", { numeric: true });
+}
+
 /** On maintenance responses, to tell them from any other 503. */
 export const MAINTENANCE_HEADER = "X-Maintenance";
 

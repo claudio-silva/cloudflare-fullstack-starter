@@ -55,11 +55,15 @@ export const defaultMessages = {
 	"update.title": "A new version of the app is available.",
 	"update.body": "To make sure the app works correctly, you should update it now.",
 	"update.unsaved": "If you are writing something you have not saved yet, click {later} and save your work now.",
-	"update.postponed": "If you postpone, update the app as soon as you can, to avoid it malfunctioning.",
+	"update.postponed": "If you postpone, {app} will update itself in {minutes} minutes.",
 	"update.now": "Update now",
 	"update.later": "Postpone",
 	"update.banner": "A new version of {app} is available.",
-	"update.bannerAction": "Update",
+	"update.bannerCountdown": "It will update itself in {time}.",
+	"update.bannerSoon": "{seconds} seconds left before the update. Save any pending changes now!",
+	"update.bannerAction": "Update now",
+	"update.requiredTitle": "{app} has been updated.",
+	"update.requiredBody": "This page is running an older version that no longer works with the server. Update it to continue.",
 } as const;
 
 export type MessageKey = keyof typeof defaultMessages;

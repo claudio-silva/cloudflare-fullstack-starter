@@ -2,6 +2,7 @@ import { toast } from "sonner";
 import { config } from "../../../config";
 import {
 	APP_VERSION_HEADER,
+	CLIENT_OUTDATED_CODE,
 	CLIENT_VERSION_HEADER,
 	INTERNAL_ERROR_CODE,
 	type AlertLevel,
@@ -14,7 +15,7 @@ import { HandledHttpError, isHandledHttpError } from "./handled-error";
 import { installMaintenanceInterceptor, MAINTENANCE_PROBE_PATH, type MaintenanceOptions } from "./maintenance";
 import { installErrorReporter, reportClientError } from "./reporter";
 import { configureUi, DEFAULT_UI, getUi, type HttpUi } from "./ui";
-import { checkOnReturn, CLIENT_VERSION, noteServerVersion, reloadOnStaleChunks } from "./version";
+import { checkOnReturn, CLIENT_VERSION, noteServerVersion, reloadOnStaleChunks, requireUpdate } from "./version";
 
 /**
  * The app's HTTP layer: one place where every API call's low-level outcomes
@@ -32,6 +33,7 @@ import { checkOnReturn, CLIENT_VERSION, noteServerVersion, reloadOnStaleChunks }
  * | Maintenance (either mechanism)             | held and replayed — lib/http/maintenance.ts         |
  * | Network failure, 502/503/504/52x from edge | answered by an offline handler, or held and sent again — lib/http/connectivity.ts |
  * | Any API response                           | `X-App-Version` checked — lib/http/version.ts       |
+ * | 426 `client_outdated`                      | this tab must update: a dialog without "Postpone"   |
  *
  * Holding a request changes when its caller hears back, never what it hears.
  * Statuses are another matter: a library may well handle a 403 or a 409 of
@@ -250,6 +252,14 @@ export function installHttpLayer(options: HttpLayerOptions = {}): () => void {
 
 		const local = response.headers.has(OFFLINE_HEADER);
 		if (api && !local) noteServerVersion(response.headers.get(APP_VERSION_HEADER));
+		if (api && !local && response.status === 426) {
+			const body = await readErrorBody(response);
+			if (body?.code === CLIENT_OUTDATED_CODE) {
+				// The update dialog says it all: no toast, no report.
+				requireUpdate(response.headers.get(APP_VERSION_HEADER));
+				if (aware && !named(426)) throw new HandledHttpError(body.error, 426, body);
+			}
+		}
 		if (!aware || response.status < 400 || named(response.status)) return response;
 
 		const fromApp = response.headers.has(APP_VERSION_HEADER) || local;

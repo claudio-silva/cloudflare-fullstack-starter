@@ -3,11 +3,11 @@ import { describeError, installHttpLayer } from "../src/react-app/lib/http/inter
 import { http } from "../src/react-app/lib/http/http";
 import { HandledHttpError } from "../src/react-app/lib/http/handled-error";
 import { configureConnectivity, connectivityStore, OFFLINE_HEADER } from "../src/react-app/lib/http/connectivity";
-import { postponeUpdate, resetVersionState, updateStore } from "../src/react-app/lib/http/version";
+import { noteServerVersion, postponeUpdate, resetVersionState, updateStore } from "../src/react-app/lib/http/version";
 import { flushReports, pendingReports, reportClientError, resetReporter } from "../src/react-app/lib/http/reporter";
 import { setTranslator } from "../src/react-app/lib/i18n";
 import { APP_VERSION } from "../src/shared/app-version";
-import { APP_VERSION_HEADER, CLIENT_VERSION_HEADER, type ApiErrorBody } from "../src/shared/http-contract";
+import { APP_VERSION_HEADER, CLIENT_OUTDATED_CODE, CLIENT_VERSION_HEADER, type ApiErrorBody } from "../src/shared/http-contract";
 
 /**
  * The browser half of the HTTP contract (src/react-app/lib/http/). What has
@@ -492,12 +492,44 @@ describe("versions", () => {
 		install(fakeNetwork(() => json(200, {}, { [APP_VERSION_HEADER]: version })));
 
 		await http("/api/posts");
-		expect(updateStore.get()).toEqual({ status: "available", serverVersion: "99.0.0" });
+		expect(updateStore.get()).toEqual({ status: "available", serverVersion: "99.0.0", deadline: null });
 
 		postponeUpdate();
 		version = "99.0.1";
 		await http("/api/posts");
 		expect(updateStore.get().status).toBe("pending");
+	});
+
+	it("after 'Postpone', updates by itself when the grace period runs out", () => {
+		vi.useFakeTimers();
+		const reload = vi.fn();
+		vi.stubGlobal("location", { reload });
+		try {
+			noteServerVersion("99.0.0");
+			postponeUpdate(10);
+			expect(updateStore.get()).toMatchObject({ status: "pending", deadline: Date.now() + 600_000 });
+			vi.advanceTimersByTime(599_999);
+			expect(reload).not.toHaveBeenCalled();
+			vi.advanceTimersByTime(1);
+			expect(reload).toHaveBeenCalledOnce();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("requires the update when the server refuses this version, with no toast and no way to postpone", async () => {
+		const reload = vi.fn();
+		install(fakeNetwork(() => appError(426, { error: "This page is out of date.", code: CLIENT_OUTDATED_CODE })));
+
+		const error = await rejection(http("/api/posts"));
+		expect(error).toBeInstanceOf(HandledHttpError);
+		expect(updateStore.get().status).toBe("required");
+		expect(toasts.warning).not.toHaveBeenCalled();
+		expect(toasts.error).not.toHaveBeenCalled();
+
+		vi.stubGlobal("location", { reload });
+		postponeUpdate();
+		expect(updateStore.get()).toMatchObject({ status: "required", deadline: null });
 	});
 
 	it("does nothing while the server runs the same version", async () => {

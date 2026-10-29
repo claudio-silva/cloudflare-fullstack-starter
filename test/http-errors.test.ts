@@ -7,7 +7,15 @@ import { AppError, errorResponse, fail } from "../src/worker/lib/errors";
 import { versionMiddleware } from "../src/worker/middleware/version";
 import { resetClientErrorBudget } from "../src/worker/routes/client-errors";
 import { APP_VERSION } from "../src/shared/app-version";
-import { APP_VERSION_HEADER, CLIENT_ERRORS_PATH, CLIENT_VERSION_HEADER, type ApiErrorBody } from "../src/shared/http-contract";
+import { config } from "../src/config";
+import {
+	APP_VERSION_HEADER,
+	CLIENT_ERRORS_PATH,
+	CLIENT_OUTDATED_CODE,
+	CLIENT_VERSION_HEADER,
+	compareVersions,
+	type ApiErrorBody,
+} from "../src/shared/http-contract";
 import type { AppBindings } from "../src/worker/types/context";
 
 // In workerd, `console.warn` stays a wrapper after vi.spyOn: assert on the spy itself.
@@ -105,6 +113,52 @@ describe("the real app's error responses", () => {
 		const res = await app.request("/api/protected/ping", {}, { ...env, ENVIRONMENT: "local" });
 		expect(res.status).toBe(401);
 		expect(await res.json()).toMatchObject({ code: "unauthenticated", error: expect.any(String) });
+	});
+});
+
+describe("minimum client version", () => {
+	const settings = config.http as { minClientVersion: string | null };
+	afterEach(() => {
+		settings.minClientVersion = null;
+	});
+
+	const versionApp = () => {
+		const a = new Hono<AppBindings>();
+		a.use("*", versionMiddleware);
+		a.all("*", (c) => c.text("ok"));
+		return a;
+	};
+	const ask = (path: string, version?: string) =>
+		versionApp().request(path, { method: "POST", headers: version ? { [CLIENT_VERSION_HEADER]: version } : {} }, env);
+
+	it("refuses API requests from older tabs with a 426 the browser recognises", async () => {
+		settings.minClientVersion = "2.0.0";
+		const res = await ask("/api/posts", "1.9.9");
+		expect(res.status).toBe(426);
+		expect(res.headers.get(APP_VERSION_HEADER)).toBe(APP_VERSION);
+		expect(await res.json()).toMatchObject({ code: CLIENT_OUTDATED_CODE, error: expect.any(String) });
+	});
+
+	it("lets through current tabs, callers that do not say their version, error reports and pages", async () => {
+		settings.minClientVersion = "2.0.0";
+		expect((await ask("/api/posts", "2.0.0")).status).toBe(200);
+		expect((await ask("/api/posts")).status).toBe(200);
+		expect((await ask(CLIENT_ERRORS_PATH, "1.0.0")).status).toBe(200);
+		expect((await ask("/dashboard", "1.0.0")).status).toBe(200);
+	});
+
+	it("refuses nothing without a minimum", async () => {
+		expect((await ask("/api/posts", "0.0.1")).status).toBe(200);
+	});
+
+	it("orders versions as releases, and never calls an unreadable one older", () => {
+		expect(compareVersions("1.9.9", "2.0.0")).toBeLessThan(0);
+		expect(compareVersions("1.10.0", "1.9.0")).toBeGreaterThan(0);
+		expect(compareVersions("2.0.0-rc.1", "2.0.0")).toBeLessThan(0);
+		expect(compareVersions("2.0.0-rc.10", "2.0.0-rc.9")).toBeGreaterThan(0);
+		expect(compareVersions("v2.0.0", "2.0.0")).toBe(0);
+		expect(compareVersions("0.0.0-dev", "2.0.0")).toBeLessThan(0);
+		expect(compareVersions("abc123", "2.0.0")).toBeNull();
 	});
 });
 

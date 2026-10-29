@@ -247,20 +247,46 @@ function BlockingDialog({ reason }: { reason: Exclude<Blocked, null> }) {
 }
 
 /**
- * After "Postpone" (lib/http/version.ts): stays until the user updates — or
- * until the next navigation, which updates by itself. Does not block: the app
- * works, at some risk.
+ * After "Postpone" (UpdatePrompt.tsx): a countdown to the automatic update,
+ * which in its last minute becomes a request to save what is unsaved.
  */
 export function UpdateBanner() {
-	const { status } = useUpdateState();
-	if (status !== "pending" || !getUi().update) return null;
+	const { status, deadline } = useUpdateState();
+	const left = useSecondsUntil(status === "pending" ? deadline : null);
+	if (status !== "pending" || !getUi().update || left === null) return null;
+	const time = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
 	return (
 		// Dark, desaturated blue with white text: clearly not part of the page.
 		<Banner tone={UPDATE_TONE}>
-			<span>{t("update.banner", { app: config.appName })}</span>
+			{/* A timer, not a live region: read on request, not announced every second. */}
+			<span role="timer" className="tabular-nums">
+				{t("update.banner", { app: config.appName })}{" "}
+				{left > 60 ? (
+					t("update.bannerCountdown", { time })
+				) : (
+					<strong className="font-semibold">{t("update.bannerSoon", { seconds: left })}</strong>
+				)}
+			</span>
 			<Button size="sm" className="h-7 bg-white text-[hsl(215_32%_27%)] hover:bg-white/90" onClick={updateNow}>
 				{t("update.bannerAction")}
 			</Button>
 		</Banner>
 	);
+}
+
+/** Whole seconds left until `deadline` (epoch ms), ticking; `null` without one. */
+function useSecondsUntil(deadline: number | null): number | null {
+	const [now, setNow] = useState(Date.now);
+	useEffect(() => {
+		if (deadline === null) return;
+		const tick = () => setNow(Date.now());
+		// `now` may date from long before the deadline was set: refresh it at once.
+		const first = setTimeout(tick, 0);
+		const timer = setInterval(tick, 1000);
+		return () => {
+			clearTimeout(first);
+			clearInterval(timer);
+		};
+	}, [deadline]);
+	return deadline === null ? null : Math.max(0, Math.ceil((deadline - now) / 1000));
 }

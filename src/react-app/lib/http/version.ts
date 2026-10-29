@@ -1,3 +1,4 @@
+import { config } from "../../../config";
 import { APP_VERSION } from "../../../shared/app-version";
 import { browser } from "./browser";
 import { createStore } from "./store";
@@ -16,6 +17,14 @@ import { createStore } from "./store";
  *    and a dialog that keeps returning is worse than a stale tab. Instead, the
  *    next client-side navigation becomes a full page load, which gets the new
  *    version at the one moment nothing typed on the page can be lost.
+ *  - Postponing is not forever: `config.http.updateGraceMinutes` after it, the
+ *    tab reloads by itself. The banner counts down, and in the last minute
+ *    tells the user to save what they have not saved.
+ *
+ * When a release changes the API in a way older tabs cannot use, the server
+ * refuses them outright (`config.http.minClientVersion`: a 426 with
+ * `code: "client_outdated"`). That is `requireUpdate()`: the dialog comes
+ * back without "Postpone", since the page cannot do anything more anyway.
  *
  * Idle tabs make no requests, so returning to a tab that has been in the
  * background for a while asks the server once (`checkOnReturn`).
@@ -24,10 +33,16 @@ import { createStore } from "./store";
  * and the tab should follow it.
  */
 
-export type UpdateStatus = "current" | "available" | "pending";
-export type UpdateState = { status: UpdateStatus; serverVersion: string | null };
+/**
+ * `available`: a new version, not yet answered. `pending`: postponed, until
+ * `deadline` (epoch ms). `required`: the server no longer accepts this one.
+ */
+export type UpdateStatus = "current" | "available" | "pending" | "required";
+export type UpdateState = { status: UpdateStatus; serverVersion: string | null; deadline: number | null };
 
-export const updateStore = createStore<UpdateState>({ status: "current", serverVersion: null });
+const INITIAL: UpdateState = { status: "current", serverVersion: null, deadline: null };
+
+export const updateStore = createStore<UpdateState>(INITIAL);
 
 /** The version this bundle was built with. */
 export const CLIENT_VERSION = APP_VERSION;
@@ -39,7 +54,15 @@ export function noteServerVersion(version: string | null): void {
 	lastSeenAt = Date.now();
 	if (!version || version === CLIENT_VERSION) return;
 	if (updateStore.get().status !== "current") return;
-	updateStore.set({ status: "available", serverVersion: version });
+	updateStore.set({ status: "available", serverVersion: version, deadline: null });
+}
+
+/** The server refused this version (426 `client_outdated`): only updating is left. */
+export function requireUpdate(serverVersion: string | null = null): void {
+	const current = updateStore.get();
+	if (current.status === "required") return;
+	clearTimeout(graceTimer);
+	updateStore.set({ status: "required", serverVersion: serverVersion ?? current.serverVersion, deadline: null });
 }
 
 export function isUpdatePending(): boolean {
@@ -50,11 +73,21 @@ export function updateNow(): void {
 	browser.location?.reload();
 }
 
-/** "Postpone": no more dialogs; the banner stays, and the next navigation loads the new version. */
-export function postponeUpdate(): void {
-	const { serverVersion } = updateStore.get();
-	updateStore.set({ status: "pending", serverVersion });
+let graceTimer: ReturnType<typeof setTimeout> | undefined;
+
+/**
+ * "Postpone": no more dialogs. The banner counts down to an automatic update,
+ * and the next navigation loads the new version sooner.
+ */
+export function postponeUpdate(graceMinutes: number = config.http.updateGraceMinutes): void {
+	const { status, serverVersion } = updateStore.get();
+	if (status === "required" || status === "pending") return;
+	const graceMs = Math.max(0, graceMinutes) * 60_000;
+	updateStore.set({ status: "pending", serverVersion, deadline: Date.now() + graceMs });
 	guardNavigation();
+	// A timer in a background tab may fire late, never early: the reload
+	// happens at the deadline or as soon after it as the browser allows.
+	graceTimer = setTimeout(updateNow, graceMs);
 }
 
 let guarded = false;
@@ -142,6 +175,7 @@ export function reloadOnStaleChunks(onStale?: (error: unknown) => void): void {
 
 /** For tests. */
 export function resetVersionState(): void {
-	updateStore.set({ status: "current", serverVersion: null });
+	clearTimeout(graceTimer);
+	updateStore.set(INITIAL);
 	lastSeenAt = Date.now();
 }
