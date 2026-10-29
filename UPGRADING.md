@@ -91,6 +91,12 @@ Node 24 LTS, a generic `wrangler.toml` environment merge, a safer deploy pipelin
 35. **`sync-secrets` no longer pushes `DEPLOY_*` keys** (`DEPLOY_HOOK_URL`, `DEPLOY_MODE`, …) as Worker secrets; they are deploy settings.
 36. **New `.github/workflows/demo.yml`**: calls the `DEMO_DEPLOY_HOOK_URL` deploy hook when a release is published. It does nothing without that secret — delete it if you prefer.
 37. **Fixed: the update banner was hidden under `TopBar`**, which is fixed to the viewport. The banner is now fixed at the top and publishes its height as `--app-banner-h`, by which `body` (`index.css`) and the TopBar shell are offset. A fixed layout of your own should offset by it too.
+38. **Auth emails are sent in the background** (`sendInBackground` in `src/worker/middleware/auth.ts`). Better Auth awaited the password-reset and verification sends only for addresses with an account, so the response time told a caller which addresses exist. A failed send is now logged (`[EMAIL] … email failed`, without the address) instead of failing the request, so the user is no longer told about it.
+39. **`auth delete-user` refuses to run without a terminal unless given `--yes`** (new; `--force` still works) and exits 1. It used to print the prompt and exit 0 without deleting anything.
+40. **The CLI reads `.env.<env>` from the project directory**, not the working directory, so `bin/auth … --env preview` works from anywhere (e.g. a monorepo root).
+41. **New `type-check` script (`tsc -b`)**, used by CI. The CI step `npx tsc --noEmit` ran against the solution-style root `tsconfig.json` and checked no files. `src/config.ts` is now part of `tsconfig.worker.json`.
+42. **Tests no longer hard-code the starter's tables and migrations**, so adding a migration does not break the suite; the drift test also compares column types, defaults, indexes and foreign keys (new `test/support/schema-structure.ts`); a wrong-password sign-in can be tested (`vitest.config.ts` ignores the one stray Better Auth rejection behind its 401). The `[AUTH] Environment` line is logged once per isolate.
+43. **Fixed: `components/ui/resizable.tsx` with react-resizable-panels 4.** The separator of a horizontal group was drawn as a full-width bar that collapsed the panels.
 
 ### Required actions
 
@@ -113,7 +119,8 @@ Node 24 LTS, a generic `wrangler.toml` environment merge, a safer deploy pipelin
 - Take the `[[env.*.ratelimits]]` blocks from `wrangler.toml` (`AUTH_RATE_LIMITER`, `CLIENT_ERRORS_RATE_LIMITER`). If another Worker in the same Cloudflare account already uses namespace ids `1001` / `1002`, pick others.
 - Take `src/worker/middleware/demo.ts`, `src/react-app/lib/demo.ts`, `src/worker/lib/expired-auth-rows.ts` and migration `0005_credential_account_ids`; merge `src/worker/index.ts` (demo middleware after maintenance, the auth rate limit, `/api/demo`), `src/worker/scheduled.ts`, `src/worker/routes/cli.ts`, `src/worker/adapters/email/index.ts`, `LoginForm.tsx` and `Profile.tsx`. Run the migrations: users created by the CLI before this release can then sign in.
 - Optional, for a non-English UI: translate the starter's strings with `overrideMessages()` or `setTranslator()` before `installHttpLayer()`.
-- Verify: `npx tsc -b`, `npm run lint`, `npm test`, `npm run build:production`, then check `dist/<name>/wrangler.json` has your production `name`, `vars` and bindings. `npm run maintenance -- status --env production` should report the configured mechanism.
+- Scripts that call `auth delete-user` without a terminal must pass `--yes`. If your drift test now fails, your baseline mirror really differs from your migrations (types, defaults, indexes or foreign keys): fix `baseline.ts`.
+- Verify: `npm run type-check`, `npm run lint`, `npm test`, `npm run build:production`, then check `dist/<name>/wrangler.json` has your production `name`, `vars` and bindings. `npm run maintenance -- status --env production` should report the configured mechanism.
 
 ---
 
