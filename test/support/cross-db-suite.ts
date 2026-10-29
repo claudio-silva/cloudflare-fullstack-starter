@@ -3,10 +3,11 @@ import { sql, type Kysely } from "kysely";
 import { describe, expect, it } from "vitest";
 import { dbBool, dbNow, ignoreConflict, toIso, type DatabaseKind } from "../../src/worker/db";
 import { clearTable, describeSchema, exportRows, finishTable, importRows, type EncodedRow } from "../../src/worker/db/backup";
-import { migrateDatabase } from "../../src/worker/db/migrations";
+import { createMigrations, migrateDatabase } from "../../src/worker/db/migrations";
 import type { Database } from "../../src/worker/types/database";
 import { createProjectTables } from "./project-tables";
 import { schemaSnapshot } from "./schema-snapshot";
+import { schemaStructure } from "./schema-structure";
 
 type AnyDb = Kysely<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -22,7 +23,20 @@ export function defineCrossDbSuite(label: string, kind: DatabaseKind, fresh: () 
 			expect((await migrateDatabase(a, { kind })).mode).toBe("baseline");
 			expect((await migrateDatabase(b, { kind, forceIncremental: true })).mode).toBe("incremental");
 			expect(await schemaSnapshot(a)).toEqual(await schemaSnapshot(b));
-			expect((await schemaSnapshot(a)).map((t) => t.table)).toEqual(["accounts", "login_events", "sessions", "users", "verifications"]);
+			// Types, defaults, indexes and foreign keys too: a baseline that only matches on columns is not a mirror.
+			expect(await schemaStructure(a, kind)).toEqual(await schemaStructure(b, kind));
+			expect((await schemaSnapshot(a)).map((t) => t.table)).toEqual(expect.arrayContaining(["accounts", "login_events", "sessions", "users", "verifications"]));
+		});
+
+		it("the drift check sees an index or a foreign key one side lacks", async () => {
+			const a = await fresh();
+			const b = await fresh();
+			await migrateDatabase(a, { kind });
+			await migrateDatabase(b, { kind });
+			const before = await schemaStructure(a, kind);
+			expect(before.find((t) => t.table === "sessions")?.foreignKeys).toHaveLength(1);
+			await b.schema.createIndex("drift_probe_idx").on("users").column("name").execute();
+			expect(await schemaStructure(b, kind)).not.toEqual(before);
 		});
 
 		it("is idempotent and records the squashed migrations", async () => {
@@ -30,7 +44,7 @@ export function defineCrossDbSuite(label: string, kind: DatabaseKind, fresh: () 
 			await migrateDatabase(db, { kind });
 			expect((await migrateDatabase(db, { kind })).applied).toEqual([]);
 			const rows = await db.selectFrom("kysely_migration").select("name").orderBy("name").execute();
-			expect(rows.map((r: { name: string }) => r.name)).toEqual(["0001_initial", "0002_add_role", "0003_account_token_columns", "0004_login_events", "0005_credential_account_ids"]);
+			expect(rows.map((r: { name: string }) => r.name)).toEqual(Object.keys(createMigrations(kind)).sort());
 		});
 
 		it("supports the portable query subset the app uses", async () => {

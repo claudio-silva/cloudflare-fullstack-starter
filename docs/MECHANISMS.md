@@ -558,4 +558,7 @@ Better Auth sends `Date` and `boolean` values on PostgreSQL and MySQL.
 
 A drift test proves the baseline and the incremental path converge to the same
 schema **on every engine**, so the squashed baseline a fresh install runs cannot
-silently diverge from the migrations an existing install has applied.
+silently diverge from the migrations an existing install has applied. "Same"
+covers column types, default values, indexes (with uniqueness and partial
+predicates) and foreign keys, not just tables and columns
+(`test/support/schema-structure.ts`).

@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { app } from "../src/worker/index";
 import { createDb } from "../src/worker/db";
+import { createMigrations } from "../src/worker/db/migrations";
 import { pruneExpiredAuthRows } from "../src/worker/lib/expired-auth-rows";
 
 const call = (path: string, init?: RequestInit) => app.request(path, init, env);
@@ -48,7 +49,7 @@ describe("worker API", () => {
 		type Info = { kind: string; migrations: string[]; tables: Array<{ name: string; restoreChunkRows: number }> };
 		const info = (await (await call("/api/cli/backup/info", { headers })).json()) as Info;
 		expect(info.kind).toBe("sqlite");
-		expect(info.migrations).toEqual(["0001_initial", "0002_add_role", "0003_account_token_columns", "0004_login_events", "0005_credential_account_ids"]);
+		expect(info.migrations).toEqual(Object.keys(createMigrations("sqlite")).sort());
 		const names = info.tables.map((t) => t.name);
 		expect(names.indexOf("users")).toBeLessThan(names.indexOf("accounts"));
 		expect(names).not.toContain("kysely_migration");
@@ -104,9 +105,8 @@ describe("sign-in log", () => {
 		const res = await call("/api/auth/sign-in/email", {
 			method: "POST",
 			headers: { "Content-Type": "application/json", "CF-Connecting-IP": "203.0.113.7" },
-			// No password: Better Auth rejects this at validation. Its
-			// invalid-credentials path leaks an unhandled rejection from inside
-			// the library, which fails the run; see the guard in index.ts.
+			// No password: Better Auth rejects this at validation, before any
+			// account lookup.
 			body: JSON.stringify({ email }),
 		});
 		expect(res.status).toBeGreaterThanOrEqual(400);

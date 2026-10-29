@@ -50,7 +50,7 @@ src/worker/db/migrations/
 | **Existing** | Runs only the pending **incremental** migrations (Kysely `Migrator`; state in `kysely_migration`). |
 | **Legacy D1** (tracked by the old `wrangler d1 migrations`) | **Adopts** it: marks matching migrations as applied (via each migration's `legacyName`), then runs the rest. |
 
-A test (`test/support/cross-db-suite.ts`) proves baseline and incremental give the **same schema** on every database, so they cannot drift silently.
+A test (`test/support/cross-db-suite.ts`) proves baseline and incremental give the **same schema** on every database (columns with their types and defaults, indexes, foreign keys), so they cannot drift silently.
 
 ### Adding a migration
 1. Create `incremental/0004_<name>.ts` exporting a factory `(kind) => ({ up })` (copy `0003_...`), using `columnTypes(kind)` to stay portable (or your database's native DDL once you have chosen it). Register it in `migrations/index.ts`. Never edit or rename an applied one.

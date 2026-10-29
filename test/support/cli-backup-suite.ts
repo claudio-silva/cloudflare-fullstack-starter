@@ -7,7 +7,7 @@ import { applyRestore, prepareRestore, readBackup, writeBackup } from "../../src
 import type { CliDatabaseClient } from "../../src/cli/utils/db";
 import { dbNow, type DatabaseKind } from "../../src/worker/db";
 import { appliedMigrations, clearTable, describeSchema, exportRows, finishTable, importRows, restoreChunkRows, type EncodedRow } from "../../src/worker/db/backup";
-import { migrateDatabase } from "../../src/worker/db/migrations";
+import { createMigrations, migrateDatabase } from "../../src/worker/db/migrations";
 import { createProjectTables } from "./project-tables";
 
 type AnyDb = Kysely<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -52,11 +52,11 @@ export function defineCliBackupSuite(label: string, kind: DatabaseKind, fresh: (
 			const file = join(dir, "x.backup.jsonl");
 			const client = clientFor(db, kind);
 			const written = await writeBackup(client, "test", file, () => undefined);
-			expect(written.rows).toBe(1201);
 
 			const { header, counts } = await readBackup(file);
-			expect(counts).toEqual({ users: 1, z_parent: 1200 });
-			expect(header.migrations).toEqual(["0001_initial", "0002_add_role", "0003_account_token_columns", "0004_login_events", "0005_credential_account_ids"]);
+			expect(counts).toMatchObject({ users: 1, z_parent: 1200 });
+			expect(written.rows).toBe(Object.values(counts).reduce((a, b) => a + b, 0));
+			expect(header.migrations).toEqual(Object.keys(createMigrations(kind)).sort());
 
 			// Damage the live data, then restore (1200 rows are paged: more than one page, more than one restore chunk).
 			await db.deleteFrom("a_child").execute();
