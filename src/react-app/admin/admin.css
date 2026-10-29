@@ -13,7 +13,7 @@
 	--sidebar-border: 0 0% 27%;
 	--sidebar-ring: 0 0% 80%;
 
-	--admin-sidebar-footer: #444;
+	--admin-footer-h: 49px; /* the sidebar footer and the page footer line up */
 	--admin-sidebar-active: #444; /* the current page */
 	--admin-bg: #f8f8f8; /* around the cards */
 	--admin-footer: #f4f4f4;
@@ -32,7 +32,6 @@
 	--sidebar-border: 0 0% 18%;
 	--sidebar-ring: 0 0% 60%;
 
-	--admin-sidebar-footer: #262626;
 	--admin-sidebar-active: #262626;
 	--admin-bg: #111;
 	--admin-footer: #161616;

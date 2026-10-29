@@ -44,9 +44,9 @@ const ORDINAL = "w-[50px] min-w-[50px] max-w-[50px] border-r border-border bg-(-
 const CHECKBOX = "border-neutral-500 dark:border-neutral-400";
 /** The row menu's column. */
 /** Fixed to the widest content each can hold: "Superadmin", "Disabled", a long date. */
-const ROLE_COL = "w-[130px] min-w-[130px] whitespace-nowrap";
-const STATUS_COL = "hidden w-[120px] min-w-[120px] whitespace-nowrap sm:table-cell";
-const CREATED_COL = "hidden w-[130px] min-w-[130px] whitespace-nowrap md:table-cell";
+const ROLE_COL = "w-[110px] min-w-[110px] whitespace-nowrap";
+const STATUS_COL = "hidden w-[110px] min-w-[110px] whitespace-nowrap sm:table-cell";
+const CREATED_COL = "hidden w-[110px] min-w-[110px] whitespace-nowrap md:table-cell";
 /** As wide as the row-number column, with the box in the middle. */
 const SELECT_COL = "w-[50px] min-w-[50px] max-w-[50px] px-0";
 const MENU_COL = "w-[50px] min-w-[50px] max-w-[50px] px-0 text-center";
@@ -211,7 +211,7 @@ export function UserList() {
 							</EmptyHeader>
 						</Empty>
 					) : (
-						<Table>
+						<Table className="table-fixed">
 							<TableHeader className="bg-(--admin-table-head)">
 								<TableRow>
 									<TableHead className={`${ORDINAL} font-bold`}>#</TableHead>

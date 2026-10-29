@@ -24,8 +24,8 @@ export function AdminLayout() {
 	const content = (
 		<div className="flex min-h-full flex-col bg-(--admin-bg)">
 			<div className="flex flex-1 flex-col">{allowed ? <Outlet /> : <Forbidden inArea />}</div>
-			<footer className="border-t bg-(--admin-footer) text-xs text-muted-foreground">
-				<div className="flex w-full flex-wrap justify-between gap-2 px-4 py-1 md:px-8">
+			<footer className="flex min-h-(--admin-footer-h) items-center border-t bg-(--admin-footer) text-xs text-muted-foreground">
+				<div className="flex w-full flex-wrap justify-between gap-2 px-4 py-2 md:px-8">
 					<span>
 						© {YEAR} {config.appName}
 					</span>

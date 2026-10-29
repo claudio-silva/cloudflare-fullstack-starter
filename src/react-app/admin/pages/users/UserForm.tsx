@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import { Save, Trash2, UserX, X } from "lucide-react";
+import { ClipboardList, History, Save, Trash2, UserX, X } from "lucide-react";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -33,7 +33,7 @@ import type { ApiErrorBody } from "../../../../shared/http-contract";
 import { ROLES } from "../../../../shared/roles";
 import { createUserSchema, type AdminUser, type AdminUserDetail } from "../../../../shared/admin-users";
 import { AdminPage } from "../../components/AdminPage";
-import { ACTION_BUTTON } from "../../styles";
+import { ACTION_BUTTON, TAB_LIST, TAB_TRIGGER } from "../../styles";
 import { ROLE_LABELS, formatDateTime, formatIdle } from "./format";
 import { UserActivity } from "./UserActivity";
 import { RoleBadge, StatusBadge, UserAvatar } from "./user-ui";
@@ -172,9 +172,15 @@ export function UserForm() {
 		>
 			<Tabs defaultValue="details" className="gap-6">
 			{!isNew && (
-				<TabsList>
-					<TabsTrigger value="details">Details</TabsTrigger>
-					<TabsTrigger value="activity">Activity</TabsTrigger>
+				<TabsList variant="line" className={TAB_LIST}>
+					<TabsTrigger value="details" className={TAB_TRIGGER}>
+						<ClipboardList />
+						Details
+					</TabsTrigger>
+					<TabsTrigger value="activity" className={TAB_TRIGGER}>
+						<History />
+						Activity
+					</TabsTrigger>
 				</TabsList>
 			)}
 			<TabsContent value="details">

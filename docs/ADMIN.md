@@ -106,7 +106,7 @@ so the rest of the app keeps the starter's theme. In light mode:
 | Part | Colour |
 |---|---|
 | Sidebar, white text and icons | `#333` |
-| Sidebar footer, and the current page's item (bold) | `#444` |
+| The current page's item (bold) | `#444` |
 | Page background, outside the cards | `#f8f8f8` |
 | Page footer | `#f4f4f4` |
 | A list's search bar (the input stays white) | `#f4f4f4` |
