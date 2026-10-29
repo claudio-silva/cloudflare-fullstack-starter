@@ -1,6 +1,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import type { MigrationCompatibility, JournalEntry, SchemaSnapshot } from "../../shared/migration-types";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 export type Environment = "local" | "preview" | "production";
 
@@ -103,7 +104,7 @@ export type LoginEventsResponse = { events: LoginEvent[]; totals: { attempts: nu
 
 function loadEnvFile(environment: Environment) {
 	const fileName = `.env.${environment}`;
-	const filePath = resolve(process.cwd(), fileName);
+	const filePath = resolve(fileURLToPath(new URL("../../../", import.meta.url).href), fileName); // the app directory, not the working directory
 	if (!existsSync(filePath)) {
 		return;
 	}

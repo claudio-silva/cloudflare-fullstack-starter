@@ -10,6 +10,7 @@ type DeleteUserOptions = {
 	all?: boolean;
 	env?: EnvironmentOption;
 	force?: boolean;
+	yes?: boolean;
 };
 
 export function createDeleteUserCommand(): Command {
@@ -21,10 +22,12 @@ export function createDeleteUserCommand(): Command {
 		.option("-a, --all", "Delete all users (cannot be used with --user)")
 		.argument("[environment]", "Target environment (local, preview, production)")
 		.option("--env <environment>", "Target environment (local, preview, production)")
-		.option("--force", "Skip confirmation prompt")
+		.option("-y, --yes", "Do not ask for confirmation (required in non-interactive shells)")
+		.option("--force", "Same as --yes")
 		.action(async (environment: string | undefined, options: DeleteUserOptions) => {
 			try {
-				const { user: email, all, force } = options;
+				const { user: email, all } = options;
+				const force = options.force || options.yes;
 				const env = normalizeEnvironment(options.env, environment);
 				if (email && all) {
 					printError("Cannot specify both --user and --all options");
@@ -90,6 +93,11 @@ export function createDeleteUserCommand(): Command {
 }
 
 function confirmDeletion(question: string): Promise<boolean> {
+	// Without a terminal the prompt would get no answer and the command would end
+	// with success having deleted nothing; fail instead, so scripts notice.
+	if (!process.stdin.isTTY) {
+		throw new Error("Refusing to delete without confirmation in a non-interactive shell. Pass --yes.");
+	}
 	return new Promise((resolve) => {
 		const rl = readline.createInterface({
 			input: process.stdin,

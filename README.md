@@ -354,6 +354,7 @@ npm run auth activate-user -- -u admin@example.com -s off  # deactivate
 # Delete a user (removes user, accounts, and sessions)
 npm run auth delete-user -- -u admin@example.com
 npm run auth delete-user -- --all                          # delete ALL users (use with caution)
+# Both ask for confirmation; pass --yes in scripts and CI (without a terminal they refuse and exit 1)
 ```
 
 User roles:
