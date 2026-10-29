@@ -10,6 +10,43 @@ A great starting point for your next **MVP** or **SaaS** app.
 
 **[Live demo](https://cloudflare-fullstack-starter-production.dev-c1b.workers.dev)** — the template as it is, deployed from this repository's latest release. It is read-only: the sign-in page gives you the account, and nothing you change is saved.
 
+## Contents
+
+- [Why This Starter?](#why-this-starter)
+- [Features](#features)
+- [Cloudflare-first, not Cloudflare-only](#cloudflare-first-not-cloudflare-only)
+- [Why Cloudflare?](#why-cloudflare)
+- [AI-Assisted Development](#-ai-assisted-development)
+- [AI Agent Installation, Conversion and Upgrade](#-ai-agent-installation-conversion-and-upgrade)
+- [Manual Installation](#manual-installation)
+- [Preview Installation](#preview-installation)
+- [What's Included](#whats-included)
+- [Errors, connectivity and updates](#errors-connectivity-and-updates)
+  - [Error handling](#error-handling)
+  - [Offline and lost connection](#offline-and-lost-connection)
+  - [Automatic update of open tabs](#automatic-update-of-open-tabs)
+  - [Client error reporting](#client-error-reporting)
+- [Localisation (i18n)](#localisation-i18n)
+- [Demo mode](#demo-mode)
+- [Project Structure](#project-structure)
+- [CLI Commands](#cli-commands)
+  - [Auth Management](#auth-management)
+  - [Database](#database)
+- [Environment Setup](#environment-setup)
+  - [Local Development](#local-development)
+  - [Preview/Production](#previewproduction)
+  - [How Environment Variables Work](#how-environment-variables-work)
+- [Development](#development)
+- [Deploy](#deploy)
+  - [Releases and versions](#releases-and-versions)
+  - [Deploy modes](#deploy-modes)
+  - [Maintenance](#maintenance)
+  - [Commands](#commands)
+- [Customization](#customization)
+- [Observability Features](#observability-features)
+- [Additional Resources](#additional-resources)
+- [License](#license)
+
 ---
 
 ## Why This Starter?
@@ -39,7 +76,7 @@ This starter removes that overhead **entirely**. Create a project from the templ
 | **Zero-downtime migrations** | Schema changes ship without taking the app down |
 | **Maintenance mode** | Planned or emergency, and users don't lose what they were doing |
 | **Sign-in log** | Who signed in, and who tried |
-| **Global error handling** | Every API error shown the same way, once — no error-handling code at call sites |
+| **Global error handling** | Every API error is handled centrally — no error-handling code is needed at call sites, except when specific status codes need special handling. Standard behaviour is provided for most status codes, maintenance mode and network conditions |
 | **Offline support** | While offline, requests are answered from local data by your handlers, or held and resumed in order when the connection returns; `online` / `offline` events and state |
 | **Auto-update** | Open tabs learn about a new release and move to it without losing work |
 | **Client error reporting** | Browser errors land in your Worker logs, with abuse protection |
@@ -250,27 +287,152 @@ If wrangler is logged in, you can do it from the command line:
 
 ## Errors, connectivity and updates
 
-A client/server app fails in the same few ways everywhere: the server refuses something, the server breaks, the connection drops, or the server is upgraded under a page that is still open. The starter handles each of them **once, for the whole app**, on both sides of one contract (`src/shared/http-contract.ts`), so feature code deals only with what belongs to the feature. The reasoning behind every choice below is in [docs/MECHANISMS.md — The HTTP layer](docs/MECHANISMS.md#the-http-layer).
+A client/server app goes wrong in a handful of predictable ways. The starter handles each of them **centrally, for the whole app**, so feature code deals only with what belongs to the feature.
+
+| Situation | What the user gets | Page blocked? |
+|---|---|---|
+| The server refuses a request (4xx) | the server's message, as a toast | No |
+| The session has expired (401) | the same, then the sign-in form | No |
+| The server fails (5xx) | a generic message with a reference to quote | No |
+| The connection drops | a banner counting down to the next attempt | While requests are waiting |
+| A maintenance window | a banner until it ends | While requests are waiting |
+| A new version is released | a dialog, then a countdown banner | No — unless it is a new major |
+
+The Worker and the browser share one contract (`src/shared/http-contract.ts`). The reasoning behind every choice below is in [docs/MECHANISMS.md — The HTTP layer](docs/MECHANISMS.md#the-http-layer).
 
 ### Error handling
 
-- **One error shape.** Every error the Worker sends is `{ error, code, level, requestId }`. `error` is written for the user; the real cause goes only to the logs. Handlers say both at once with `AppError` / `fail()` (`src/worker/lib/errors.ts`), and anything else thrown — a bug — becomes a generic 500 whose cause is logged, and shown to developers outside production.
-- **No error handling at call sites.** The app calls its API through `http()` (`import { http } from "@/lib/http"`), a drop-in for `fetch`. A failed call shows its message once, as a toast, and then **rejects** with `HandledHttpError`: the code after `await http()` runs only on success, and the call site that forgets to check `res.ok` cannot carry on as if it had worked. A 401 brings up sign-in.
-- **The caller keeps what it handles itself:** `http(url, { handles: [404] })` gets the 404 as usual; `[0]` takes network failures; `"all"` takes everything.
-- **Statuses only for callers that ask.** `installHttpLayer()` patches the browser's `fetch`, but shows and rejects error responses only for `/api/` calls that carry a `handles` key — which `http()` adds. A plain `fetch` (or `handles: null`) gets every status exactly as it would without the layer, so code and libraries that know nothing about it, Better Auth's client among them, keep working. Lost connections and maintenance are another matter: holding a request through them is safe for any caller, so it is done for every same-origin request.
-- **Your own UI, if you prefer.** Each banner, the update dialog and the error toasts can be turned off (`installHttpLayer({ ui })`), to show your own from the same state and actions; `ui.blockWith` chooses how a blocked page is shown, banner or dialog.
+**On the server: one error shape**
+
+- Every error response is `{ error, code, level, requestId }`.
+- `error` is written for the user. The real cause goes only to the logs.
+- Handlers give both at once with `AppError` or `fail()` (`src/worker/lib/errors.ts`):
+
+  ```ts
+  throw new AppError(403, "You can't edit someone else's post.", {
+    log: `user ${user.id} tried to edit post ${post.id}`,
+    code: "post_not_owned",
+  });
+  ```
+
+- Anything else thrown — a bug — becomes a generic 500. Its cause is logged, and shown in the browser outside production.
+
+**In the browser: no error handling at call sites**
+
+The app calls its API with `http()` (`import { http } from "@/lib/http"`), a drop-in for `fetch`. When a call fails, the HTTP layer:
+
+1. shows the message, as a toast;
+2. on a 401, brings up sign-in;
+3. **rejects** the call with `HandledHttpError`.
+
+So the code after `await http()` runs only on success, and a call site cannot carry on as if a failed call had worked:
+
+```ts
+await http("/api/posts", { method: "POST", body });
+navigate("/posts"); // not reached if the post was refused
+```
+
+**Handling a status yourself**
+
+List it in `handles`, and the call gets it as an ordinary response:
+
+```ts
+const res = await http(`/api/posts/${id}`, { handles: [404] });
+if (res.status === 404) return showEmptyState();
+```
+
+| `handles` | The call gets | The layer handles |
+|---|---|---|
+| `[]` (the `http()` default) | successes only | everything else |
+| `[404, 409]` | those statuses too | the rest |
+| `[0]` | network failures, as `fetch` gives them | the rest; nothing is held |
+| `"all"` | everything | nothing, not even maintenance |
+| absent or `null` | every status | lost connections and maintenance only |
+
+**Code that does not know about the layer**
+
+`installHttpLayer()` patches the browser's global `fetch`, so it sees every request, those of libraries included. It draws one line:
+
+- **Statuses** are handled only for `/api/` calls that carry a `handles` key, which `http()` adds. A plain `fetch` gets every status exactly as it would without the layer, so libraries such as Better Auth's client keep working.
+- **Lost connections and maintenance** are ridden out for every same-origin request, since waiting is safe for any caller.
+
+**Your own UI, if you prefer**
+
+- `installHttpLayer({ ui })` turns off any of the banners, the update dialog and the error toasts, so you can show your own from the same state and actions.
+- `ui.blockWith` chooses how a blocked page is shown: `"banner"` (default) or `"dialog"`.
 
 ### Offline and lost connection
 
-A network failure, or a gateway error from the edge, takes the app **offline**; so does the browser's own `offline` event, at once. While offline, every request is first offered to the app's **offline handlers** (`http.addOfflineHandler`), which can answer it from IndexedDB or localStorage; one that none answers waits in line **without being sent**. While anything is held, the page is **blocked** — dimmed, no clicks, no typing, focus on *Try now* — under a banner (or, with `blockWith: "dialog"`, a dialog) that counts down to the next attempt; offline with everything answered locally, the app stays usable under the banner alone. Only the oldest is tried, and it is the check: as soon as it gets through, the rest follow in the order they were made, with nothing for the user to repeat or confirm. Writes carry an `Idempotency-Key` that stays the same across retries. `http.online`, `http.subscribe()` and the `app:online` / `app:offline` / `app:maintenance` window events tell the app where things stand — `app:online` only once everything held has been answered — and `http.beforeReconnect()` sends an outbox before the held requests go out. Maintenance windows are held the same way, blocking the page under their own banner, and replayed when they end. A new version does not block: the app keeps working, under a banner. → [Lost connection](docs/MECHANISMS.md#lost-connection), [Maintenance mode](docs/MECHANISMS.md#maintenance-mode)
+When the server cannot be reached, requests **wait instead of failing**, and go out in order once it can.
+
+**What takes the app offline**
+
+- A network failure, or a gateway error from Cloudflare's edge (502, 503, 504, 52x).
+- The browser's own `offline` event, at once.
+
+**What happens to requests**
+
+- Each is first offered to the app's **offline handlers** (`http.addOfflineHandler`), which can answer it from local data — IndexedDB, localStorage. Their answers are marked `X-Offline: 1`.
+- Those no handler answers wait in line, **without being sent**.
+- Only the oldest is retried. As soon as it gets through, the rest follow in the order they were made, with nothing for the user to repeat or confirm.
+- Writes carry an `Idempotency-Key` that stays the same across retries, so the server can tell a retry from a new request.
+
+**What the user sees**
+
+- **While requests are waiting**, the page is blocked — dimmed, no clicks, no typing — under a banner that counts down to the next attempt, with *Try now* and *Cancel*. With `blockWith: "dialog"`, a dialog in the middle instead.
+- **Offline, with everything answered locally**, only the banner shows. The app stays usable.
+
+**What the app can use**
+
+| API | What it is for |
+|---|---|
+| `http.online`, `http.state` | the current state: `online`, `reconnecting`, `offline` or `maintenance` |
+| `http.subscribe(listener)` | to follow it, e.g. for an indicator of your own |
+| window events `app:online`, `app:offline`, `app:maintenance` | to sync local data; `app:online` fires only once everything held has been answered |
+| `http.beforeReconnect(hook)` | to run something before the held requests go out, such as sending an outbox |
+
+**Maintenance windows** are held the same way: the page is blocked under a banner of their own, and the requests are replayed when the window ends.
+
+→ [Lost connection](docs/MECHANISMS.md#lost-connection), [Maintenance mode](docs/MECHANISMS.md#maintenance-mode)
 
 ### Automatic update of open tabs
 
-Every response carries the server's version (`X-App-Version`). When it changes — a release, or a rollback — open tabs offer to update: *Update now* reloads, *Postpone* leaves a banner counting down to an automatic update (`config.http.updateGraceMinutes`, 10 by default; in the last minute it asks the user to save instead), and the next in-app navigation becomes a full page load sooner, the one moment nothing typed can be lost. A new major version (by semver; before 1.0.0, a new minor) is a hard update instead: the server refuses the old tabs' API requests with a 426 and the dialog shows without *Postpone* — so release an incompatible API change with `deploy:production --major`. Tabs returning from the background check once, and a lazily loaded chunk that no longer exists reloads the page. → [New versions](docs/MECHANISMS.md#new-versions)
+Every response carries the server's version (`X-App-Version`). When it differs from the version of an open tab, the tab updates. How urgently depends on the version number:
+
+| New version | Update | What the user gets |
+|---|---|---|
+| Same major — a minor, a patch, or a rollback within the major | **Soft** | a dialog with *Update now* and *Postpone* |
+| Another major, either way — before 1.0.0, another minor | **Hard** | a dialog with *Update now* only |
+
+**Soft update**
+
+- *Update now* reloads.
+- *Postpone* leaves a banner counting down to an automatic update, after `config.http.updateGraceMinutes` (10 by default). In the last minute it asks the user to save any pending changes.
+- Navigating to another page in the meantime updates sooner, as a full page load: the one moment nothing typed can be lost.
+
+**Hard update**
+
+- The server refuses the old tab's API requests (426) before they run.
+- The dialog cannot be postponed.
+- So release an API change that older tabs cannot use with `npm run deploy:production -- --major` — and only such changes.
+
+**Tabs that make no requests**
+
+- A tab returning from the background checks the version once.
+- A lazily loaded chunk that no longer exists reloads the page.
+
+→ [New versions](docs/MECHANISMS.md#new-versions)
 
 ### Client error reporting
 
-Uncaught errors, unhandled rejections, stale chunks and 5xx responses in the browser are posted to `POST /api/client-errors` and written to the Worker logs with `source: "client"`, the page, the client version and the browser — so you see the failures your users see, next to the server's. Nothing is stored. The endpoint has to be open (the errors that matter most can happen before sign-in), so it accepts only its own origin, caps sizes, is rate-limited per IP, and always answers 204. Turn it off with `config.http.reportClientErrors`. → [Client error reports](docs/MECHANISMS.md#client-error-reports)
+So that you see the failures your users see, next to the server's.
+
+- **What:** uncaught errors, unhandled rejections, stale chunks, and 5xx responses in the browser.
+- **Where:** posted to `POST /api/client-errors` and written to the Worker logs with `source: "client"`, the page, the client version and the browser. Nothing is stored.
+- **Abuse protection:** the endpoint has to be open, since the errors that matter most can happen before sign-in. So it accepts only its own origin, caps sizes, is rate-limited per IP, and always answers 204.
+- **Turning it off:** `config.http.reportClientErrors: false`.
+
+→ [Client error reports](docs/MECHANISMS.md#client-error-reports)
 
 ## Localisation (i18n)
 
