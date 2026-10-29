@@ -39,8 +39,7 @@ describe("demo mode", () => {
 		const signIn = await call("/api/auth/sign-in/email", {
 			method: "POST",
 			headers: { "content-type": "application/json" },
-			// No password, as in worker.test.ts: Better Auth's wrong-password path
-			// leaks an unhandled rejection that fails the run.
+			// No password, as in worker.test.ts: refused at validation.
 			body: JSON.stringify({ email: "nobody@example.com" }),
 		});
 		// Refused by Better Auth's validation, not by the demo.

@@ -42,6 +42,26 @@ function getAuthEmailSender(c: AppContext, environment: Environment, authEmailsE
 	}
 }
 
+// The local-environment summary is printed once per isolate, not on every request.
+let environmentLogged = false;
+
+/**
+ * Sends an auth email without making the response wait for it. Better Auth
+ * awaits these callbacks only for addresses that have an account, so an awaited
+ * send makes those requests slower (and a provider failure visible), which
+ * tells a caller which addresses exist. A failure is logged without the address.
+ */
+function sendInBackground(c: AppContext, delivery: Promise<unknown>, what: string) {
+	const handled = delivery.catch((error: unknown) => {
+		console.error(`[EMAIL] ${what} email failed:`, error instanceof Error ? error.message : "unknown error");
+	});
+	try {
+		c.executionCtx.waitUntil(handled);
+	} catch {
+		// No ExecutionContext (tests, Node): the promise already has its catch, so fire and forget.
+	}
+}
+
 export function createAuth(c: AppContext) {
 	const environment: Environment = (c.env.ENVIRONMENT as Environment) || "local";
 	const db = createDb(c.env);
@@ -51,8 +71,9 @@ export function createAuth(c: AppContext) {
 	});
 	const emailSender = getAuthEmailSender(c, environment, authEmailsEnabled);
 
-	// Log email configuration on first auth call (helpful for debugging)
-	if (environment === "local") {
+	// Log email configuration once per isolate (helpful for debugging)
+	if (environment === "local" && !environmentLogged) {
+		environmentLogged = true;
 		console.log(
 			`[AUTH] Environment: ${environment}, Auth emails: ${authEmailsEnabled ? "enabled" : "disabled"}, `
 			+ `Email sender: ${emailSender ? `configured` : "not configured"}`,
@@ -106,11 +127,7 @@ export function createAuth(c: AppContext) {
 				const modifiedUrl = url.replace("/api/auth/reset-password", "/reset-password")
 					+ `&email=${encodeURIComponent(user.email)}`;
 				const html = getPasswordResetEmailTemplate(user.name || user.email, modifiedUrl);
-				await emailSender.sendEmail({
-					to: user.email,
-					subject: "Reset your password",
-					html,
-				});
+				sendInBackground(c, emailSender.sendEmail({ to: user.email, subject: "Reset your password", html }), "Password reset");
 			},
 		},
 		emailVerification: {
@@ -123,11 +140,7 @@ export function createAuth(c: AppContext) {
 				}
 				const modifiedUrl = url.replace("/api/auth/verify-email", "/verify-email");
 				const html = getVerificationEmailTemplate(user.name || user.email, modifiedUrl);
-				await emailSender.sendEmail({
-					to: user.email,
-					subject: "Verify your account",
-					html,
-				});
+				sendInBackground(c, emailSender.sendEmail({ to: user.email, subject: "Verify your account", html }), "Verification");
 			},
 		},
 		telemetry: {

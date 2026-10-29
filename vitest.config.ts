@@ -11,6 +11,9 @@ const alias = { "@": path.resolve(import.meta.dirname, "./src/react-app") };
 // Kept separate from vite.config.ts so tests don't load the dev/build plugin.
 export default defineConfig({
 	test: {
+		// Better Auth 1.7 leaves the 401 APIError of a refused sign-in as a rejected promise that the Workers pool
+		// reports as unhandled, although the HTTP response is correct (the dev server logs nothing). Ignore only that error.
+		onUnhandledError: (error) => (error as { body?: { code?: string } }).body?.code === "INVALID_EMAIL_OR_PASSWORD" ? false : undefined,
 		projects: [
 			{
 				plugins: [
