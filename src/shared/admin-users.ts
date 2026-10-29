@@ -26,12 +26,32 @@ export const updateUserSchema = userFields.partial().extend({ password: password
 export type CreateUserInput = z.infer<typeof createUserSchema>;
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;
 
+/** A session untouched for this long makes its user idle rather than active. */
+export const IDLE_AFTER_SECONDS = 5 * 60;
+
+/**
+ * - `active`: in session, last seen under five minutes ago
+ * - `idle`: in session, last seen five minutes ago or more
+ * - `disabled`: cannot sign in
+ * - `offline`: has no session
+ */
+export type UserStatus = "active" | "idle" | "disabled" | "offline";
+
+export function userStatus(emailVerified: boolean, idleSeconds: number | null): UserStatus {
+	if (!emailVerified) return "disabled";
+	if (idleSeconds === null) return "offline";
+	return idleSeconds < IDLE_AFTER_SECONDS ? "active" : "idle";
+}
+
 export type AdminUser = {
 	id: string;
 	name: string | null;
 	email: string;
 	role: Role | string;
 	emailVerified: boolean;
+	status: UserStatus;
+	/** Seconds since the user's most recent session was last used; null when they have none. */
+	idleSeconds: number | null;
 	createdAt: string;
 	updatedAt: string;
 };
@@ -41,7 +61,20 @@ export type AdminUserDetail = AdminUser & {
 	signInMethods: string[];
 	activeSessions: number;
 	lastSignInAt: string | null;
+	lastSignOutAt: string | null;
 };
+
+export type ActivityEvent = {
+	id: string;
+	/** `failed` is a sign-in attempt that did not succeed. */
+	kind: "sign-in" | "sign-out" | "failed";
+	ip: string | null;
+	country: string | null;
+	userAgent: string | null;
+	createdAt: string;
+};
+
+export type AdminUserActivity = { events: ActivityEvent[]; limit: number };
 
 export const USER_SORT_FIELDS = ["name", "email", "role", "createdAt"] as const;
 export type UserSortField = (typeof USER_SORT_FIELDS)[number];

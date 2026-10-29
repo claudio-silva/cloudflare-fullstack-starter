@@ -110,7 +110,10 @@ export function createAuth(c: AppContext) {
 		session: {
 			modelName: "sessions",
 			expiresIn: 60 * 60 * 24 * 7,
-			updateAge: 60 * 60 * 24,
+			// A session is touched at most this often, and that touch is the user's
+			// "last seen" (the admin area shows Active / Idle from it). A day would
+			// leave it a day stale; a minute costs one small write per active session.
+			updateAge: 60,
 		},
 		account: { modelName: "accounts" },
 		verification: { modelName: "verifications" },

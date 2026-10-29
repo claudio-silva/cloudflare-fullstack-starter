@@ -26,6 +26,7 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { authClient } from "@/lib/auth/client";
 import { http, isHandledHttpError } from "@/lib/http";
 import type { ApiErrorBody } from "../../../../shared/http-contract";
@@ -33,23 +34,30 @@ import { ROLES } from "../../../../shared/roles";
 import { createUserSchema, type AdminUser, type AdminUserDetail } from "../../../../shared/admin-users";
 import { AdminPage } from "../../components/AdminPage";
 import { ACTION_BUTTON } from "../../styles";
-import { ROLE_LABELS, formatDateTime } from "./format";
+import { ROLE_LABELS, formatDateTime, formatIdle } from "./format";
+import { UserActivity } from "./UserActivity";
 import { RoleBadge, StatusBadge, UserAvatar } from "./user-ui";
 
 /** The server's rules (src/shared/admin-users.ts), except that editing may leave the password empty. */
 const formSchema = (isNew: boolean) =>
-	createUserSchema.extend({
-		password: z
-			.string()
-			.refine(
-				(value) => (!isNew && value === "") || (value.length >= 8 && value.length <= 128),
-				isNew ? "At least 8 characters." : "At least 8 characters, or leave it empty.",
-			),
-	});
+	createUserSchema
+		.extend({
+			password: z
+				.string()
+				.refine(
+					(value) => (!isNew && value === "") || (value.length >= 8 && value.length <= 128),
+					isNew ? "At least 8 characters." : "At least 8 characters, or leave it empty.",
+				),
+			confirmPassword: z.string(),
+		})
+		.refine((values) => values.password === values.confirmPassword, {
+			message: "The passwords don't match.",
+			path: ["confirmPassword"],
+		});
 
 type FormValues = z.input<ReturnType<typeof formSchema>>;
 
-const EMPTY: FormValues = { name: "", email: "", role: "user", emailVerified: true, password: "" };
+const EMPTY: FormValues = { name: "", email: "", role: "user", emailVerified: true, password: "", confirmPassword: "" };
 
 const toValues = (user: AdminUser): FormValues => ({
 	name: user.name ?? "",
@@ -57,6 +65,7 @@ const toValues = (user: AdminUser): FormValues => ({
 	role: (ROLES as readonly string[]).includes(user.role) ? (user.role as FormValues["role"]) : "user",
 	emailVerified: user.emailVerified,
 	password: "",
+	confirmPassword: "",
 });
 
 /**
@@ -94,8 +103,8 @@ export function UserForm() {
 	}, [id, form]);
 
 	const onSubmit = async (values: z.output<typeof schema>) => {
-		const { password, ...fields } = values;
-		const body = password ? values : fields;
+		const { name, email, role, emailVerified, password } = values;
+		const body = { name, email, role, emailVerified, ...(password ? { password } : {}) };
 		try {
 			// 409 is ours: an email already in use belongs next to the field.
 			const res = await http(isNew ? "/api/admin/users" : `/api/admin/users/${id}`, {
@@ -161,6 +170,14 @@ export function UserForm() {
 			description={isNew ? "Create an account that signs in with an email and password." : user!.email}
 			breadcrumbs={[{ title: isNew ? "New" : title }]}
 		>
+			<Tabs defaultValue="details" className="gap-6">
+			{!isNew && (
+				<TabsList>
+					<TabsTrigger value="details">Details</TabsTrigger>
+					<TabsTrigger value="activity">Activity</TabsTrigger>
+				</TabsList>
+			)}
+			<TabsContent value="details">
 			<Form {...form}>
 				<form onSubmit={form.handleSubmit(onSubmit)} className="grid items-start gap-6 lg:grid-cols-3">
 					<div className="space-y-6 lg:col-span-2">
@@ -252,13 +269,26 @@ export function UserForm() {
 										: "Leave empty to keep the current one. Setting a new one signs the user out everywhere."}
 								</CardDescription>
 							</CardHeader>
-							<CardContent>
+							<CardContent className="grid gap-5 sm:grid-cols-2">
 								<FormField
 									control={form.control}
 									name="password"
 									render={({ field }) => (
-										<FormItem className="sm:max-w-[calc(50%-0.625rem)]">
+										<FormItem>
 											<FormLabel>{isNew ? "Password" : "New password"}</FormLabel>
+											<FormControl>
+												<Input type="password" autoComplete="new-password" {...field} />
+											</FormControl>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+								<FormField
+									control={form.control}
+									name="confirmPassword"
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel>Confirm password</FormLabel>
 											<FormControl>
 												<Input type="password" autoComplete="new-password" {...field} />
 											</FormControl>
@@ -297,7 +327,7 @@ export function UserForm() {
 									</div>
 									<div className="flex flex-wrap gap-2">
 										<RoleBadge role={user.role} />
-										<StatusBadge active={user.emailVerified} />
+										<StatusBadge status={user.status} />
 									</div>
 									<Separator />
 									<dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
@@ -307,6 +337,12 @@ export function UserForm() {
 										<dd className="text-right">{formatDateTime(user.updatedAt)}</dd>
 										<dt className="text-muted-foreground">Last sign-in</dt>
 										<dd className="text-right">{formatDateTime(user.lastSignInAt)}</dd>
+										<dt className="text-muted-foreground">Last sign-out</dt>
+										<dd className="text-right">{formatDateTime(user.lastSignOutAt)}</dd>
+										<dt className="text-muted-foreground">In session</dt>
+										<dd className="text-right">{user.idleSeconds === null ? "No" : "Yes"}</dd>
+										<dt className="text-muted-foreground">Idle time</dt>
+										<dd className="text-right">{formatIdle(user.idleSeconds)}</dd>
 										<dt className="text-muted-foreground">Sign-in with</dt>
 										<dd className="text-right">{user.signInMethods.map((m) => (m === "credential" ? "password" : m)).join(", ") || "—"}</dd>
 										<dt className="text-muted-foreground">Sessions</dt>
@@ -355,6 +391,13 @@ export function UserForm() {
 					)}
 				</form>
 			</Form>
+			</TabsContent>
+			{!isNew && (
+				<TabsContent value="activity">
+					<UserActivity userId={user!.id} />
+				</TabsContent>
+			)}
+			</Tabs>
 		</AdminPage>
 	);
 }

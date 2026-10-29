@@ -76,6 +76,8 @@ export interface AuthLogDatabase {
     user_agent: string | null;
     country: string | null;
     created_at: Timestamp;
+    /** Null (every row before 0006) and "sign-in" are sign-ins. */
+    event: "sign-in" | "sign-out" | null;
   };
 }
 

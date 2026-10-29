@@ -12,7 +12,10 @@ import {
 	USER_SORT_FIELDS,
 	createUserSchema,
 	updateUserSchema,
+	userStatus,
+	type ActivityEvent,
 	type AdminUser,
+	type AdminUserActivity,
 	type AdminUserDetail,
 	type AdminUserList,
 	type UserSortField,
@@ -29,15 +32,38 @@ adminUsers.use("*", requireRole("superadmin"));
 
 type UserRow = Pick<Selectable<Database["users"]>, "id" | "name" | "email" | "role" | "emailVerified" | "createdAt" | "updatedAt">;
 
-const toAdminUser = (u: UserRow): AdminUser => ({
-	id: u.id,
-	name: u.name,
-	email: u.email,
-	role: u.role,
-	emailVerified: Boolean(u.emailVerified),
-	createdAt: toIso(u.createdAt) ?? "",
-	updatedAt: toIso(u.updatedAt) ?? "",
-});
+/** Seconds since each user's most recent live session was last used; users with none are absent. */
+async function idleSecondsFor(db: ReturnType<typeof createDb>, ids: string[]): Promise<Map<string, number>> {
+	const idle = new Map<string, number>();
+	if (ids.length === 0) return idle;
+	const now = Date.now();
+	const sessions = await db.selectFrom("sessions").select(["userId", "updatedAt", "expiresAt"]).where("userId", "in", ids).execute();
+	for (const s of sessions) {
+		if (new Date(s.expiresAt).getTime() <= now) continue;
+		const seconds = Math.max(0, Math.round((now - new Date(s.updatedAt).getTime()) / 1000));
+		idle.set(s.userId, Math.min(seconds, idle.get(s.userId) ?? Infinity));
+	}
+	return idle;
+}
+
+async function present(c: AppContext, rows: UserRow[]): Promise<AdminUser[]> {
+	const idle = await idleSecondsFor(createDb(c.env), rows.map((u) => u.id));
+	return rows.map((u) => {
+		const idleSeconds = idle.get(u.id) ?? null;
+		const emailVerified = Boolean(u.emailVerified);
+		return {
+			id: u.id,
+			name: u.name,
+			email: u.email,
+			role: u.role,
+			emailVerified,
+			status: userStatus(emailVerified, idleSeconds),
+			idleSeconds,
+			createdAt: toIso(u.createdAt) ?? "",
+			updatedAt: toIso(u.updatedAt) ?? "",
+		};
+	});
+}
 
 async function parseBody<T extends z.ZodType>(c: AppContext, schema: T): Promise<z.infer<T>> {
 	const body = await c.req.json().catch(() => undefined);
@@ -95,37 +121,62 @@ adminUsers.get("/", async (c) => {
 		filtered.select((eb) => eb.fn.countAll<number>().as("total")).executeTakeFirst(),
 	]);
 
-	return c.json<AdminUserList>({ users: rows.map(toAdminUser), total: Number(count?.total ?? 0), page, pageSize });
+	return c.json<AdminUserList>({ users: await present(c, rows), total: Number(count?.total ?? 0), page, pageSize });
 });
 
 adminUsers.get("/:id", async (c) => {
 	const db = createDb(c.env);
 	const user = await findUser(c, c.req.param("id"));
-	const [accounts, sessions, lastSignIn] = await Promise.all([
+	const lastEvent = (kind: "sign-in" | "sign-out") => {
+		let query = db.selectFrom("login_events").select("created_at").where("user_id", "=", user.id).where("success", "=", dbBool(true));
+		// Rows from before sign-outs were recorded have no kind: they are sign-ins.
+		query = kind === "sign-out" ? query.where("event", "=", "sign-out") : query.where((eb) => eb.or([eb("event", "is", null), eb("event", "=", "sign-in")]));
+		return query.orderBy("created_at", "desc").limit(1).executeTakeFirst();
+	};
+	const [accounts, sessions, lastSignIn, lastSignOut, [detail]] = await Promise.all([
 		db.selectFrom("accounts").select("providerId").where("userId", "=", user.id).execute(),
 		db.selectFrom("sessions").select((eb) => eb.fn.countAll<number>().as("n")).where("userId", "=", user.id).executeTakeFirst(),
-		db
-			.selectFrom("login_events")
-			.select("created_at")
-			.where("user_id", "=", user.id)
-			.where("success", "=", dbBool(true))
-			.orderBy("created_at", "desc")
-			.limit(1)
-			.executeTakeFirst(),
+		lastEvent("sign-in"),
+		lastEvent("sign-out"),
+		present(c, [user]),
 	]);
 	return c.json<AdminUserDetail>({
-		...toAdminUser(user),
+		...detail,
 		signInMethods: accounts.map((a) => a.providerId),
 		activeSessions: Number(sessions?.n ?? 0),
 		lastSignInAt: lastSignIn ? (toIso(lastSignIn.created_at) ?? null) : null,
+		lastSignOutAt: lastSignOut ? (toIso(lastSignOut.created_at) ?? null) : null,
 	});
+});
+
+const ACTIVITY_LIMIT = 50;
+
+/** The user's sign-ins (failed ones too) and sign-outs, newest first. Pruned like the rest of `login_events`. */
+adminUsers.get("/:id/activity", async (c) => {
+	const user = await findUser(c, c.req.param("id"));
+	const rows = await createDb(c.env)
+		.selectFrom("login_events")
+		.select(["id", "success", "event", "ip", "country", "user_agent", "created_at"])
+		.where("user_id", "=", user.id)
+		.orderBy("created_at", "desc")
+		.limit(ACTIVITY_LIMIT)
+		.execute();
+	const events: ActivityEvent[] = rows.map((r) => ({
+		id: r.id,
+		kind: r.event === "sign-out" ? "sign-out" : r.success ? "sign-in" : "failed",
+		ip: r.ip,
+		country: r.country,
+		userAgent: r.user_agent,
+		createdAt: toIso(r.created_at) ?? "",
+	}));
+	return c.json<AdminUserActivity>({ events, limit: ACTIVITY_LIMIT });
 });
 
 adminUsers.post("/", async (c) => {
 	const input = await parseBody(c, createUserSchema);
 	await assertEmailFree(c, input.email);
 	const id = await createPasswordUser(createDb(c.env), { ...input, name: input.name || null });
-	return c.json(toAdminUser(await findUser(c, id)), 201);
+	return c.json((await present(c, [await findUser(c, id)]))[0], 201);
 });
 
 adminUsers.patch("/:id", async (c) => {
@@ -157,7 +208,7 @@ adminUsers.patch("/:id", async (c) => {
 	const downgraded = changesRole && !hasRole(input.role, user.role as Role);
 	if (input.password || downgraded || deactivates) await revokeSessions(db, user.id);
 
-	return c.json(toAdminUser(await findUser(c, user.id)));
+	return c.json((await present(c, [await findUser(c, user.id)]))[0]);
 });
 
 adminUsers.delete("/:id", async (c) => {

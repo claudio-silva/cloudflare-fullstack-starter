@@ -43,6 +43,12 @@ const ORDINAL = "w-[50px] min-w-[50px] max-w-[50px] border-r border-border bg-(-
 /** Darker than shadcn's default, so a checkbox shows against the shaded headings. */
 const CHECKBOX = "border-neutral-500 dark:border-neutral-400";
 /** The row menu's column. */
+/** Fixed to the widest content each can hold: "Superadmin", "Disabled", a long date. */
+const ROLE_COL = "w-[130px] min-w-[130px] whitespace-nowrap";
+const STATUS_COL = "hidden w-[120px] min-w-[120px] whitespace-nowrap sm:table-cell";
+const CREATED_COL = "hidden w-[130px] min-w-[130px] whitespace-nowrap md:table-cell";
+/** As wide as the row-number column, with the box in the middle. */
+const SELECT_COL = "w-[50px] min-w-[50px] max-w-[50px] px-0";
 const MENU_COL = "w-[50px] min-w-[50px] max-w-[50px] px-0 text-center";
 
 /**
@@ -160,7 +166,7 @@ export function UserList() {
 			}
 		>
 			<Card className="gap-0 overflow-hidden py-0">
-				<div className="flex items-center gap-3 border-b bg-(--admin-toolbar) py-2 pr-4">
+				<div className="flex items-center gap-2 border-b bg-(--admin-toolbar) py-2 pr-4">
 					{/* Over the row-number column. */}
 					<div className="flex w-[50px] shrink-0 justify-center">
 						<Toggle variant="outline" size="sm" pressed={selecting} onPressedChange={toggleSelecting} aria-label="Select users" className="bg-background px-2">
@@ -210,9 +216,9 @@ export function UserList() {
 								<TableRow>
 									<TableHead className={`${ORDINAL} font-bold`}>#</TableHead>
 									{selecting && (
-										<TableHead className="w-10">
+										<TableHead className={SELECT_COL}>
 											<Checkbox
-												className={CHECKBOX}
+												className={`${CHECKBOX} mx-auto block`}
 												checked={allSelected ? true : selected.size > 0 ? "indeterminate" : false}
 												onCheckedChange={toggleAll}
 												disabled={rows.length === 0}
@@ -225,13 +231,13 @@ export function UserList() {
 											User
 										</SortHeader>
 									</TableHead>
-									<TableHead>
+									<TableHead className={ROLE_COL}>
 										<SortHeader field="role" {...sortProps}>
 											Role
 										</SortHeader>
 									</TableHead>
-									<TableHead className="hidden sm:table-cell">Status</TableHead>
-									<TableHead className="hidden md:table-cell">
+									<TableHead className={STATUS_COL}>Status</TableHead>
+									<TableHead className={CREATED_COL}>
 										<SortHeader field="createdAt" {...sortProps}>
 											Created
 										</SortHeader>
@@ -252,9 +258,9 @@ export function UserList() {
 											>
 												<TableHead scope="row" className={`${ORDINAL} font-normal text-muted-foreground`}>{(data.page - 1) * data.pageSize + i + 1}</TableHead>
 												{selecting && (
-													<TableCell className="w-10" onClick={(e) => e.stopPropagation()}>
+													<TableCell className={SELECT_COL} onClick={(e) => e.stopPropagation()}>
 														<Checkbox
-															className={CHECKBOX}
+															className={`${CHECKBOX} mx-auto block`}
 															checked={selected.has(user.id)}
 															onCheckedChange={() => toggleRow(user.id)}
 															aria-label={`Select ${user.name || user.email}`}
@@ -270,13 +276,13 @@ export function UserList() {
 														</div>
 													</div>
 												</TableCell>
-												<TableCell>
+												<TableCell className={ROLE_COL}>
 													<RoleBadge role={user.role} />
 												</TableCell>
-												<TableCell className="hidden sm:table-cell">
-													<StatusBadge active={user.emailVerified} />
+												<TableCell className={STATUS_COL}>
+													<StatusBadge status={user.status} />
 												</TableCell>
-												<TableCell className="hidden text-muted-foreground md:table-cell">{formatDate(user.createdAt)}</TableCell>
+												<TableCell className={`${CREATED_COL} text-muted-foreground`}>{formatDate(user.createdAt)}</TableCell>
 												<TableCell className={MENU_COL} onClick={(e) => e.stopPropagation()}>
 													<DropdownMenu>
 														<DropdownMenuTrigger asChild>
@@ -300,8 +306,8 @@ export function UserList() {
 													<Skeleton className="mx-auto h-4 w-4" />
 												</TableHead>
 												{selecting && (
-													<TableCell className="w-10">
-														<Skeleton className="size-4" />
+													<TableCell className={SELECT_COL}>
+														<Skeleton className="mx-auto size-4" />
 													</TableCell>
 												)}
 												<TableCell>
@@ -310,13 +316,13 @@ export function UserList() {
 														<Skeleton className="h-4 w-40" />
 													</div>
 												</TableCell>
-												<TableCell>
+												<TableCell className={ROLE_COL}>
 													<Skeleton className="h-5 w-16" />
 												</TableCell>
-												<TableCell className="hidden sm:table-cell">
+												<TableCell className={STATUS_COL}>
 													<Skeleton className="h-5 w-16" />
 												</TableCell>
-												<TableCell className="hidden md:table-cell">
+												<TableCell className={CREATED_COL}>
 													<Skeleton className="h-4 w-24" />
 												</TableCell>
 												<TableCell className={MENU_COL} />

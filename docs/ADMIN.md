@@ -174,6 +174,32 @@ Rules the API enforces:
 "Active" is `emailVerified`, the same flag `npm run auth activate-user` sets.
 While email verification is required, an unverified user cannot sign in.
 
+### Status
+
+The list's **Status** column says what the user is doing now, from their
+sessions (`userStatus()` in `src/shared/admin-users.ts`):
+
+| Status | When |
+|---|---|
+| Active (green dot) | in session, last seen less than 5 minutes ago |
+| Idle (grey dot) | in session, last seen 5 minutes ago or more |
+| Disabled (red dot) | not `emailVerified`; wins over the other two |
+| — (no pill) | no live session |
+
+"Last seen" is the latest `sessions.updatedAt` of the user's unexpired sessions.
+Better Auth touches it at most once per `session.updateAge`, which the starter
+sets to 60 seconds (`middleware/auth.ts`), so idle time is accurate to about a
+minute, at the price of one small write per active session per minute.
+
+### The user page
+
+Two tabs. **Details** has the form (the password is typed twice) and a panel
+with the status, in-session flag, idle time, last sign-in and last sign-out.
+**Activity** lists the last 50 sign-ins, failed attempts and sign-outs from
+`login_events` (`GET /api/admin/users/:id/activity`), which are recorded
+for every user, and pruned after `AUTH_LOG_RETENTION_DAYS`. Sign-outs are
+recorded since migration `0006_login_event_kind`; earlier rows are sign-ins.
+
 ## Removing it
 
 Commit first, then:

@@ -18,6 +18,7 @@ export function createBaseline(kind: DatabaseKind): Baseline {
 			"0004_login_events",
 			// Data only: a new database has no rows to repair.
 			"0005_credential_account_ids",
+			"0006_login_event_kind",
 		],
 		async up(db: Kysely<unknown>) {
 			await db.schema
@@ -88,6 +89,8 @@ export function createBaseline(kind: DatabaseKind): Baseline {
 				.addColumn("user_agent", t.text)
 				.addColumn("country", "varchar(2)")
 				.addColumn("created_at", t.timestamp, (c) => c.notNull())
+				// Null is a sign-in; "sign-out" is the other. See 0006_login_event_kind.
+				.addColumn("event", "varchar(16)")
 				.execute();
 
 			await db.schema.createIndex("idx_sessions_user").on("sessions").column("userId").execute();

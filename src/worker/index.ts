@@ -1,13 +1,13 @@
 import { Hono } from "hono";
 import type { AppBindings } from "./types/context";
-import { handleAuthRequest } from "./middleware/auth";
+import { createAuth, handleAuthRequest } from "./middleware/auth";
 import { cli } from "./routes/cli";
 import { profile } from "./routes/profile";
 import { admin } from "./routes/admin"; // [admin-area-line]
 import { config } from "../config";
 import { APP_COMMIT, APP_VERSION } from "../shared/app-version";
 import { createDb, databaseKind } from "./db";
-import { isSignInPath, recordLoginAttempt } from "./lib/login-log";
+import { isSignInPath, isSignOutPath, recordLoginAttempt, recordSignOut } from "./lib/login-log";
 import { maintenanceMiddleware } from "./middleware/maintenance";
 import { versionMiddleware } from "./middleware/version";
 import { clientErrors } from "./routes/client-errors";
@@ -104,11 +104,20 @@ app.all("/api/auth/*", async (c) => {
 			);
 		}
 	}
+	// Signing out deletes the session, so who is signing out is read first.
+	const signingOut =
+		isSignOutPath(c.req.path) && c.req.method === "POST"
+			? (await createAuth(c).api.getSession({ headers: c.req.raw.headers }).catch(() => null))?.user
+			: undefined;
 	const response = await handleAuthRequest(c);
-	if (isSignInPath(c.req.path) && c.req.method === "POST") {
-		const write = recordLoginAttempt(c, response.status < 400).catch((error: unknown) =>
-			console.error("[auth] could not record the sign-in attempt", error),
-		);
+	const record =
+		isSignInPath(c.req.path) && c.req.method === "POST"
+			? recordLoginAttempt(c, response.status < 400)
+			: signingOut && response.status < 400
+				? recordSignOut(c, signingOut)
+				: undefined;
+	if (record) {
+		const write = record.catch((error: unknown) => console.error("[auth] could not record the event", error));
 		// `executionCtx` is absent outside a real Worker invocation (tests,
 		// some runtimes). Dropping the record there would make the log quietly
 		// incomplete, so fall back to awaiting it.

@@ -16,6 +16,10 @@ import { createDb, databaseKind, dbBool, dbNow } from "../db";
 /** Paths worth recording. Session reads and sign-outs are noise. */
 const SIGN_IN_PATHS = ["/sign-in", "/callback", "/oauth"];
 
+export function isSignOutPath(path: string): boolean {
+	return path.endsWith("/sign-out");
+}
+
 export function isSignInPath(path: string): boolean {
 	return SIGN_IN_PATHS.some((p) => path.includes(p));
 }
@@ -36,14 +40,25 @@ async function emailFromRequest(c: AppContext): Promise<string> {
 }
 
 export async function recordLoginAttempt(c: AppContext, success: boolean): Promise<void> {
-	const email = await emailFromRequest(c);
+	await insertEvent(c, { email: await emailFromRequest(c), success, event: "sign-in" });
+}
+
+/** The user must be read before the sign-out, which deletes the session. */
+export async function recordSignOut(c: AppContext, user: { id: string; email: string }): Promise<void> {
+	await insertEvent(c, { email: user.email, userId: user.id, success: true, event: "sign-out" });
+}
+
+async function insertEvent(
+	c: AppContext,
+	{ email, userId: knownUserId, success, event }: { email: string; userId?: string; success: boolean; event: "sign-in" | "sign-out" },
+): Promise<void> {
 	const cf = (c.req.raw as Request & { cf?: { country?: string } }).cf;
 	const ip = c.req.header("CF-Connecting-IP") ?? c.req.header("X-Forwarded-For")?.split(",")[0]?.trim() ?? null;
 
 	const db = createDb(c.env);
-	const userId = email
+	const userId = knownUserId ?? (email
 		? ((await db.selectFrom("users").select("id").where("email", "=", email).executeTakeFirst())?.id ?? null)
-		: null;
+		: null);
 
 	await db
 		.insertInto("login_events")
@@ -56,6 +71,7 @@ export async function recordLoginAttempt(c: AppContext, success: boolean): Promi
 			user_agent: c.req.header("User-Agent")?.slice(0, 512) ?? null,
 			country: cf?.country?.slice(0, 2) ?? null,
 			created_at: dbNow(databaseKind),
+			event,
 		})
 		.execute();
 }

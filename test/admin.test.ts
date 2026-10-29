@@ -85,6 +85,41 @@ describe("admin API", () => {
 		expect((await call(`/users/${target.id}`, { method: "PATCH", body: { role: "user" } })).status).toBe(200);
 		expect((await target.call("/anything")).status).toBe(401);
 	});
+
+	it("shows who is in session, and logs sign-ins and sign-outs", async () => {
+		const { call } = await userWithRole("superadmin");
+		const target = await userWithRole("user");
+		type Row = { id: string; status: string; idleSeconds: number | null };
+		const find = async () => ((await (await call(`/users?q=${encodeURIComponent(target.email)}`)).json()) as { users: Row[] }).users[0];
+
+		// Signed in just now: in session and active.
+		const active = await find();
+		expect(active.status).toBe("active");
+		expect(active.idleSeconds).toBeLessThan(300);
+
+		// Disabled takes precedence over the session.
+		await call(`/users/${target.id}`, { method: "PATCH", body: { emailVerified: false } });
+		expect((await find()).status).toBe("disabled");
+		await call(`/users/${target.id}`, { method: "PATCH", body: { emailVerified: true } });
+
+		// Sign-in with a wrong password is a failure; signing out is recorded.
+		await app.request("/api/auth/sign-in/email", { method: "POST", headers: json, body: JSON.stringify({ email: target.email, password: "wrong-password" }) }, local);
+		const signOut = await app.request(
+			"/api/auth/sign-out",
+			{ method: "POST", headers: { ...json, cookie: await signInCookie(target.email), origin: new URL(local.APP_BASE_URL as string).origin }, body: "{}" },
+			local,
+		);
+		expect(signOut.status).toBe(200);
+
+		const activity = (await (await call(`/users/${target.id}/activity`)).json()) as { events: { kind: string }[] };
+		const kinds = activity.events.map((e) => e.kind);
+		expect(kinds).toContain("sign-in");
+		expect(kinds).toContain("sign-out");
+		expect(kinds).toContain("failed");
+
+		const detail = (await (await call(`/users/${target.id}`)).json()) as { lastSignOutAt: string | null };
+		expect(detail.lastSignOutAt).not.toBeNull();
+	});
 });
 
 async function signInCookie(email: string) {

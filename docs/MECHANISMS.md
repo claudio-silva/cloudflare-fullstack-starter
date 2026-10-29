@@ -653,7 +653,9 @@ API. A token with API access and Maintainer rights reads the value regardless.
 ## Sign-in log
 
 `login_events` records every attempt, successful or failed, with IP, user agent
-and country. The `sessions` table cannot answer "who has used this app": it
+and country, and every sign-out (its `event` column is `sign-out`; `null` or
+`sign-in` for the rest). Sessions are touched every 60 seconds
+(`session.updateAge`), so `sessions.updatedAt` can serve as "last seen". The `sessions` table cannot answer "who has used this app": it
 holds only sessions that still exist, so it forgets every expired login and
 never saw the failures.
 
