@@ -4,10 +4,11 @@ import { cloudflareTest } from "@cloudflare/vitest-plugin";
 
 const alias = { "@": path.resolve(import.meta.dirname, "./src/react-app") };
 
-// Two projects:
+// Three projects:
 //  - worker:   runs inside workerd with the real wrangler.toml bindings (D1, Durable Objects)
 //  - cross-db: runs in Node against PostgreSQL (PGlite always; real servers when TEST_*_URL is set)
 //              and MySQL, using the same behavioural suite as the D1 run.
+//  - scripts:  runs in Node, for the release tooling in bin/lib.
 // Kept separate from vite.config.ts so tests don't load the dev/build plugin.
 export default defineConfig({
 	test: {
@@ -32,7 +33,7 @@ export default defineConfig({
 				test: {
 					name: "worker",
 					include: ["test/**/*.test.ts"],
-					exclude: ["test/cross-db/**"],
+					exclude: ["test/cross-db/**", "test/scripts/**"],
 					setupFiles: ["./test/apply-migrations.ts"],
 				},
 			},
@@ -44,6 +45,13 @@ export default defineConfig({
 					environment: "node",
 					testTimeout: 60_000,
 					hookTimeout: 60_000,
+				},
+			},
+			{
+				test: {
+					name: "scripts",
+					include: ["test/scripts/**/*.test.ts"],
+					environment: "node",
 				},
 			},
 		],

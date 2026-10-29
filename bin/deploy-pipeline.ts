@@ -73,7 +73,7 @@ async function liveVersion(env: DeployEnv): Promise<string | null> {
 }
 
 async function reportFailure(env: DeployEnv, stage: Stage, error: unknown): Promise<void> {
-	const { version } = resolveBuildInfo();
+	const { version } = resolveBuildInfo(undefined, env);
 	try {
 		// Connecting first is what loads .env.<env> into process.env, which is
 		// where CLI_API_KEY comes from outside CI.

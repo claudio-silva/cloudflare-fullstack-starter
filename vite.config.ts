@@ -89,7 +89,7 @@ function createEnvCustomizer(tomlPath: string, env: "preview" | "production") {
 }
 
 export default defineConfig(({ mode }) => {
-	const buildInfo = resolveBuildInfo(import.meta.dirname);
+	const buildInfo = resolveBuildInfo(import.meta.dirname, mode);
 	const tomlPath = path.resolve(import.meta.dirname, "wrangler.toml");
 	const configCustomizer =
 		mode === "preview" || mode === "production" ? createEnvCustomizer(tomlPath, mode) : undefined;

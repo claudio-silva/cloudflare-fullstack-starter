@@ -575,6 +575,23 @@ Where the tag sits differs by mode, and both placements are deliberate. In
 release leaves no tag claiming a version that never went live. In the CI modes
 the tag comes first, because the tag is what arms the trigger.
 
+**A commit whose CI failed is not released.** `deploy:production` reads the
+GitHub Actions checks of the commit through `gh`, refuses a red one and waits
+for a running one, in every mode. That is a courtesy on the releasing machine;
+the guarantee is on the host: a deployment branch protected by required checks
+refuses any commit without them, whoever pushes it. The two fit together
+because, in the CI modes, the script pushes the release commit and waits for its
+checks before it promotes the branch. The release commit is a fresh commit (it
+only bumps the version) and has to earn its own green, rather than borrow its
+parent's.
+
+**Which field is the version.** `version`, unless the build environment says
+`APP_VERSION_FROM=starter`; then `starter.version`, for the build and for
+`deploy:production` alike. That exists for one repository, the starter itself:
+it releases with its own tooling, and if it bumped `version`, every project made
+from the template would be born at the template's version, its next major
+release a hard update for no reason of its own.
+
 Preview is looser: it deploys on every push to its branch with no tag, and
 reports `X.Y.Z+preview.<sha>`. That is semver build metadata, ignored in
 comparisons — correct, because it is the same version line built from a
@@ -687,12 +704,14 @@ deployment a demo — `DEMO_*`, the database id (`D1_DATABASE_ID`), the
 deploy hook — lives on that deployment. The repository stays the template, a
 project created from it is not a demo, and there is nothing to strip out.
 
-The starter's own demo is built by Cloudflare Workers Builds from `main`, with
-the build variables `D1_DATABASE_ID`, `APP_VERSION_FROM=starter` (report the
-template's version rather than the app's `0.0.1`) and
-`DEPLOY_MODE=workers-builds`. `.github/workflows/demo.yml` calls its deploy
-hook when a release is published, and does nothing in a repository without the
-`DEMO_DEPLOY_HOOK_URL` secret.
+The starter's own demos are two such deployments, built by Cloudflare Workers
+Builds with the build variables `D1_DATABASE_ID`, `APP_VERSION_FROM=starter`
+(report — and release — the template's version rather than the app's `0.0.1`)
+and `DEPLOY_MODE=workers-builds`. The production demo shows the latest
+release: the starter's own `npm run deploy:production` promotes `release` and
+calls its deploy hook. The preview demo builds every push to `main`. This is
+the starter using its own pipeline; a project made from the template inherits
+none of it. See `docs/DEPLOYMENT.md`, *The starter's own releases*.
 
 ---
 

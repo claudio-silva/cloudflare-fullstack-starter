@@ -343,7 +343,7 @@ const isCi = () => Boolean(process.env.WORKERS_CI || process.env.CI);
  * old Worker would happily answer "nothing to apply" to a migration it does not know about.
  */
 async function waitForDeploy(env: DbEnvironment, timeoutMs = 120_000): Promise<void> {
-	const expected = resolveBuildInfo();
+	const expected = resolveBuildInfo(undefined, env);
 	const baseUrl = getApiBaseUrl(env);
 	const deadline = Date.now() + timeoutMs;
 	let seen = "no response";

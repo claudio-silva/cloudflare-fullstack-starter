@@ -48,6 +48,46 @@ npm run test:e2e       # from 2.0.0 on, optional
 
 ---
 
+## 3.4.0 — 2026-10-29
+
+Lighter dependencies (React lint rules from `eslint-plugin-react-x`, the shadcn/ui components as the CLI writes them), and release tooling the starter now uses on itself: a CI gate in `deploy:production`, the `APP_VERSION_FROM` release field, and the preview version suffix.
+
+### Breaking changes
+
+1. **React lint rules come from `eslint-plugin-react-x`**, which replaces `eslint-plugin-react-hooks` (devDependency) in `eslint.config.js`. The official plugin loads Babel to run the React Compiler's analysis; `react-x` has no Babel in its tree. It reports more than the old rules did: in the starter it found `matchMedia` read during render (`Logo.tsx`, now `useSyncExternalStore`) and React 18 context APIs (`theme-provider.tsx` / `theme-context.tsx`, now `<Context value>` and `use()`). New `docs/DEPENDENCIES.md` records why each dependency is here and what was dropped.
+2. **The shadcn/ui components are reinstalled from the CLI, and only a lighter set ships.**
+    - **Installed as the CLI writes them** (style `new-york`), importing from `radix-ui` (one package, replacing the 27 `@radix-ui/react-*` packages) and `cn` (replacing `clsx` + `tailwind-merge`). `@/lib/utils` now re-exports `cn` from the `cn` package.
+    - **No longer shipped**, with their packages: `chart` (`recharts`), `carousel` (`embla-carousel-react`), `drawer` (`vaul`), `calendar` (`react-day-picker`), `input-otp` (`input-otp`), `resizable` (`react-resizable-panels`), `sonner` (`next-themes`; toasts still come from the `sonner` package). Also gone: the starter's split-out helper files `badge-variants.ts`, `button-variants.ts`, `toggle-variants.ts`, `form-hooks.ts`, `sidebar-hooks.ts` and `navigation-menu-style.ts`; their exports are back in the component files, as shadcn writes them (`buttonVariants` from `ui/button`, `useFormField` from `ui/form`, `useSidebar` from `ui/sidebar`, and so on).
+    - **New:** `button-group`, `empty`, `field`, `input-group`, `item`, `kbd`, `native-select`, `spinner`.
+    - **`TooltipProvider`** is now mounted once in `main.tsx`, so a `Tooltip` works anywhere without a provider of its own.
+    - `src/react-app/hooks/use-mobile.tsx` is renamed `use-mobile.ts`, the name the CLI uses.
+    - `eslint.config.js` turns off, for `components/ui/` only, the rules that flag code as the CLI writes it.
+    - `docs/SHADCN_COMPONENTS.md` is now the whole catalogue, with what is installed, the install command for the rest, and how to change a component.
+    - **`components/ui/` is now project-owned** (see *File ownership*).
+3. **Fixed: the sign-up and reset-password forms switched from uncontrolled to controlled inputs** (a React warning in the console). They now give `react-hook-form` `defaultValues`.
+4. **`deploy:production` will not release a commit whose CI failed.** Before changing anything it reads the GitHub Actions checks of `main` through the `gh` CLI, stops on a failed one and waits for running ones. In the `workers-builds` / `external-ci` modes it then pushes the release commit and waits for its checks too, before tagging and promoting, so a deployment branch protected by required checks accepts it; a failure there leaves no tag, and the next run releases the same version. Without GitHub Actions, on another host, or without `gh` it prints a note and goes on as before. New `--no-ci-check` skips it. New `bin/lib/ci-checks.ts`.
+5. **`APP_VERSION_FROM=starter` also selects the field `deploy:production` bumps and tags** (`starter.version` instead of `version`), and the one it compares with the latest tag. Projects do not set it, and nothing changes for them; it is how the starter releases itself without moving the `0.0.1` new projects start from. The version arithmetic moved to `bin/lib/release-version.ts`.
+6. **Preview builds report `X.Y.Z+preview.<commit>`**, as `docs/DEPLOYMENT.md` already said they did. `resolveBuildInfo()` (`bin/lib/build-info.ts`) takes the environment as a second argument; `vite.config.ts`, `bin/db.ts` and `bin/deploy-pipeline.ts` pass it.
+7. **`.github/workflows/demo.yml` is removed.** The starter's demo is now deployed by its own `deploy:production`, and the workflow never did anything in a project.
+8. **New `scripts` Vitest project** (`vitest.config.ts`): Node tests for the release tooling, in `test/scripts/`. The `worker` project excludes that directory.
+
+### Required actions
+
+- **Lint (1):** in `package.json`, replace `eslint-plugin-react-hooks` with `eslint-plugin-react-x`; merge `eslint.config.js`. Fix what `npm run lint` now reports, or turn individual rules off with a reason. Take `docs/DEPENDENCIES.md`, keeping its *Project choices* section for your own entries.
+- **shadcn/ui (2): keep the components your project uses.** Do not delete files from `components/ui/` because the starter dropped them, and keep the packages they need (`npm ls` shows which). Then, either:
+  - **move to the new set:** `npx shadcn@latest add <the components you have> --overwrite`, then re-apply your own edits to them (mark them `// project:`). Replace imports of the removed helper files (`@/components/ui/button-variants` → `@/components/ui/button`, `form-hooks` → `form`, `sidebar-hooks` → `sidebar`, `badge-variants` → `badge`, `toggle-variants` → `toggle`, `navigation-menu-style` → `navigation-menu`). Add `cn` and `radix-ui` to `package.json`, and remove the `@radix-ui/react-*`, `clsx` and `tailwind-merge` packages nothing imports any more. Take the `components/ui/` override in `eslint.config.js`;
+  - **or keep your current components** as they are. Leave out the new `components/ui/` lint override if they lint clean without it.
+  - In both cases, merge `main.tsx` (`TooltipProvider`). If your app already mounts one higher up, keep just one.
+  - If the CLI appends variables to `index.css` that you already define (`--sidebar-*`), keep one copy.
+- **Forms (3):** merge `SignUp.tsx` and `ResetPassword.tsx` if you have not changed them; otherwise give your own `useForm` calls `defaultValues`.
+- **Release tooling (4–6, 8):** take `bin/lib/build-info.ts`, `bin/lib/ci-checks.ts`, `bin/lib/release-version.ts` and `test/scripts/`; merge `bin/deploy-production.ts`, `bin/db.ts`, `bin/deploy-pipeline.ts`, `vite.config.ts` (`resolveBuildInfo(…, mode)`) and `vitest.config.ts`. Do not set `APP_VERSION_FROM`.
+- If you release from a machine without `gh`, or your CI is not GitHub Actions, nothing to do: the gate reports that it cannot check. If a release must go out with CI red, use `--no-ci-check`.
+- Optional, in a CI mode: protect the deployment branch with your CI's checks required, as `docs/DEPLOYMENT.md` (*`workers-builds`*) describes.
+- **Demo workflow (7):** delete `.github/workflows/demo.yml` unless you use it.
+- Verify: `npm run type-check`, `npm run lint`, `npm test`, `npm run deploy:production -- --dry-run` (shows the release field and the CI state, changes nothing).
+
+---
+
 ## 3.3.0 — 2026-10-24
 
 Node 24 LTS, a generic `wrangler.toml` environment merge, a safer deploy pipeline with maintenance mode, a global HTTP layer (errors, lost connections, new versions, client error reports), and removal of decorative scaffolding.
@@ -99,17 +139,6 @@ Node 24 LTS, a generic `wrangler.toml` environment merge, a safer deploy pipelin
 43. **Fixed: `components/ui/resizable.tsx` with react-resizable-panels 4.** The separator of a horizontal group was drawn as a full-width bar that collapsed the panels.
 44. **Offline support** (`src/react-app/lib/http/connectivity.ts`): offline handlers (`http.addOfflineHandler`) answer requests from local data while the server cannot be reached, marked `X-Offline: 1`; requests no handler answers wait in line without being sent, and only the oldest is tried; the browser's `offline` event takes the app offline at once and its `online` event brings the next attempt forward; `http.online`, `http.state`, `http.subscribe()` and the `app:online` / `app:offline` / `app:maintenance` window events report the state, `app:online` only once everything held has been answered; `http.beforeReconnect()` hooks run before held requests are sent (an outbox first). `installHttpLayer({ exclude })` leaves chosen paths alone; `installHttpLayer({ ui, onError })` turns parts of the default UI off. While requests are held (offline, or a maintenance window), **the page is blocked**: dimmed, and every other child of `<body>` made `inert` — no clicks, no focus — with focus on *Try now*; `ui.blockWith` shows it as a banner (default) or a centred dialog. Offline with every request answered locally does not block; a new version never does. The lost-connection dialog and `MaintenanceOverlay` are replaced by `components/http/HttpLayerUi.tsx` (`<HttpLayerUi />` in `main.tsx`), rendered into its own `#http-layer` element; it publishes the banners' height as `--app-banner-h`, by which `body`, `TopBar` and `AuthOverlay` are offset. `MaintenanceState` gains `waiting`, and a request held by maintenance now honours its abort signal.
 45. **Soft and hard updates, decided by the version number.** Within a major (before 1.0.0: within a minor), an update is *soft*: after *Postpone*, the banner counts down `config.http.updateGraceMinutes` (new, default `10`) and the tab reloads when it runs out; in the last minute the countdown is replaced by "N seconds left before the update. Save any pending changes now!". Across a major, in either direction, it is *hard*: the update dialog shows without *Postpone*, replacing any postponed update, and the Worker answers API requests whose `X-Client-Version` is a major away with a 426 `{ code: "client_incompatible" }` before running them — except error reports and requests that do not say their version. New in `src/shared/http-contract.ts`: `CLIENT_INCOMPATIBLE_CODE`, `compatibilityLine()`, `isBreakingChange()`. `UpdateStatus` gains `required`, `UpdateState` gains `deadline`; new `requireUpdate()`. i18n: `update.postponed` now takes `{app}` and `{minutes}`, `update.bannerAction` is "Update now"; new `update.bannerCountdown`, `update.bannerSoon`, `update.requiredTitle`, `update.requiredBody`.
-46. **React lint rules come from `eslint-plugin-react-x`**, which replaces `eslint-plugin-react-hooks` (devDependency) in `eslint.config.js`. The official plugin loads Babel to run the React Compiler's analysis; `react-x` has no Babel in its tree. It reports more than the old rules did: in the starter it found `matchMedia` read during render (`Logo.tsx`, now `useSyncExternalStore`) and React 18 context APIs (`theme-provider.tsx` / `theme-context.tsx`, now `<Context value>` and `use()`). New `docs/DEPENDENCIES.md` records why each dependency is here and what was dropped.
-47. **The shadcn/ui components are reinstalled from the CLI, and only a lighter set ships.**
-    - **Installed as the CLI writes them** (style `new-york`), importing from `radix-ui` (one package, replacing the 27 `@radix-ui/react-*` packages) and `cn` (replacing `clsx` + `tailwind-merge`). `@/lib/utils` now re-exports `cn` from the `cn` package.
-    - **No longer shipped**, with their packages: `chart` (`recharts`), `carousel` (`embla-carousel-react`), `drawer` (`vaul`), `calendar` (`react-day-picker`), `input-otp` (`input-otp`), `resizable` (`react-resizable-panels`), `sonner` (`next-themes`; toasts still come from the `sonner` package). Also gone: the starter's split-out helper files `badge-variants.ts`, `button-variants.ts`, `toggle-variants.ts`, `form-hooks.ts`, `sidebar-hooks.ts` and `navigation-menu-style.ts`; their exports are back in the component files, as shadcn writes them (`buttonVariants` from `ui/button`, `useFormField` from `ui/form`, `useSidebar` from `ui/sidebar`, and so on).
-    - **New:** `button-group`, `empty`, `field`, `input-group`, `item`, `kbd`, `native-select`, `spinner`.
-    - **`TooltipProvider`** is now mounted once in `main.tsx`, so a `Tooltip` works anywhere without a provider of its own.
-    - `src/react-app/hooks/use-mobile.tsx` is renamed `use-mobile.ts`, the name the CLI uses.
-    - `eslint.config.js` turns off, for `components/ui/` only, the rules that flag code as the CLI writes it.
-    - `docs/SHADCN_COMPONENTS.md` is now the whole catalogue, with what is installed, the install command for the rest, and how to change a component.
-    - **`components/ui/` is now project-owned** (see *File ownership*).
-48. **Fixed: the sign-up and reset-password forms switched from uncontrolled to controlled inputs** (a React warning in the console). They now give `react-hook-form` `defaultValues`.
 
 ### Required actions
 
@@ -134,13 +163,6 @@ Node 24 LTS, a generic `wrangler.toml` environment merge, a safer deploy pipelin
 - If you translated the `update.*` strings, revise `update.postponed` and `update.bannerAction`, and add the four new keys. From now on, a major release reloads every open tab at once, unsaved work and all: release an API change older tabs cannot use with `--major`, and only that.
 - Optional, for a non-English UI: translate the starter's strings with `overrideMessages()` or `setTranslator()` before `installHttpLayer()`.
 - Scripts that call `auth delete-user` without a terminal must pass `--yes`. If your drift test now fails, your baseline mirror really differs from your migrations (types, defaults, indexes or foreign keys): fix `baseline.ts`.
-- **Lint (46):** in `package.json`, replace `eslint-plugin-react-hooks` with `eslint-plugin-react-x`; merge `eslint.config.js`. Fix what `npm run lint` now reports, or turn individual rules off with a reason. Take `docs/DEPENDENCIES.md`, keeping its *Project choices* section for your own entries.
-- **shadcn/ui (47): keep the components your project uses.** Do not delete files from `components/ui/` because the starter dropped them, and keep the packages they need (`npm ls` shows which). Then, either:
-  - **move to the new set:** `npx shadcn@latest add <the components you have> --overwrite`, then re-apply your own edits to them (mark them `// project:`). Replace imports of the removed helper files (`@/components/ui/button-variants` → `@/components/ui/button`, `form-hooks` → `form`, `sidebar-hooks` → `sidebar`, `badge-variants` → `badge`, `toggle-variants` → `toggle`, `navigation-menu-style` → `navigation-menu`). Add `cn` and `radix-ui` to `package.json`, and remove the `@radix-ui/react-*`, `clsx` and `tailwind-merge` packages nothing imports any more. Take the `components/ui/` override in `eslint.config.js`;
-  - **or keep your current components** as they are. Leave out the new `components/ui/` lint override if they lint clean without it.
-  - In both cases, merge `main.tsx` (`TooltipProvider`). If your app already mounts one higher up, keep just one.
-  - If the CLI appends variables to `index.css` that you already define (`--sidebar-*`), keep one copy.
-- **Forms (48):** merge `SignUp.tsx` and `ResetPassword.tsx` if you have not changed them; otherwise give your own `useForm` calls `defaultValues`.
 - Verify: `npm run type-check`, `npm run lint`, `npm test`, `npm run build:production`, then check `dist/<name>/wrangler.json` has your production `name`, `vars` and bindings. `npm run maintenance -- status --env production` should report the configured mechanism.
 
 ---
@@ -339,6 +361,6 @@ Everything from `5d89c05` (2026-07-03) onward is covered by the 2.0.0 entry. For
 ## Maintainer checklist (for each release)
 
 1. Add an entry at the top of this log **if anything can break an existing install** (config keys, env vars, bindings, schema, scripts, runtime versions, file moves, behavior changes). List *Breaking changes* and ordered *Required actions*; split large releases into stages.
-2. Bump `starter.version` in `package.json` (semver: major = breaking, minor = backwards-compatible features, patch = fixes).
-3. Tag the release `vX.Y.Z` (the upgrade procedure diffs between tags) and push tags.
+2. Release with the starter's own tooling: `npm run deploy:production -- --minor` (or `--patch` / `--major`; semver: major = breaking, minor = backwards-compatible features, patch = fixes). With `APP_VERSION_FROM=starter` in `.env.production` it bumps `starter.version` (never `version`, which stays `0.0.1`), waits for CI, tags `vX.Y.Z` (the upgrade procedure diffs between tags), promotes `release`, and waits for the demo to serve the new version. See `docs/DEPLOYMENT.md`, *The starter's own releases*.
+3. Publish a GitHub release for the tag, with this log's entry as its notes.
 4. If a release is too large to apply in one go, say so and define the stages.

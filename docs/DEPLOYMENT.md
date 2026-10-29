@@ -137,6 +137,8 @@ import { APP_VERSION, APP_COMMIT } from "../../shared/app-version"; // adjust th
 
 It comes from the committed file, not from the tag, so every builder — this script, Workers Builds, GitLab CI — produces the same value. The tag only marks the commit that carries it.
 
+With `APP_VERSION_FROM=starter` (a build variable, see below) the release field is `starter.version` instead, for the build and for `deploy:production` alike. Only the starter's own repository needs it: see [The starter's own releases](#the-starters-own-releases).
+
 **A production deploy is always started by `npm run deploy:production`, and always carries a tag.** Pushing or merging into the deployment branch without one deploys nothing. The reason is simple: a deploy triggered by a bare push puts code online with no version attached to it, and then two different builds answer to the same version number.
 
 ```bash
@@ -145,20 +147,35 @@ npm run deploy:production -- --minor   # or --major, or -v 2.1.0
 npm run deploy:production -- --dry-run # show the plan, change nothing
 npm run deploy:production -- --local   # build and deploy from here, whatever the mode
 npm run deploy:production -- --release-only   # bump, tag and push; deploy nothing
+npm run deploy:production -- --no-ci-check    # release although CI has not passed (emergencies)
 ```
 
 It runs from a clean `main` that equals `origin/main`. If `HEAD` already carries a tag, that version is redeployed instead of bumped. A new project starts at `0.0.1` (pre-alpha) and its first release is that version, unbumped. After that each release bumps the latest tag — unless `package.json` is ahead of it, which means someone set the version by hand (say `1.0.0` for the first stable release), and that version is released as it is. **Never run it against production without the owner's approval.**
 
 **Choose the bump by compatibility, not by size.** Open tabs read the version: a minor or patch is a soft update (the user may postpone it for `config.http.updateGraceMinutes`), a new major — before 1.0.0, a new minor — is a hard one: every open tab is told to reload at once and its API requests are refused until it does. Use `--major` exactly when the API changes in a way older tabs cannot use. See `docs/MECHANISMS.md`, *New versions*.
 
+**A commit whose CI failed is not released.** Before changing anything, the script reads the GitHub Actions checks of `main` through the `gh` CLI: it stops if one failed, and waits while they run. In the CI modes it also pushes the release commit and waits for *its* checks before tagging and promoting, so that a deployment branch protected by required checks (below) accepts it; if they fail, no tag is made and the next run releases the same version. Without GitHub Actions, on another host, or without `gh`, it says so and goes on ungated. Checks from other apps — a Workers Builds preview build — are not a verdict on the code and are ignored.
+
 Where the tag sits in the sequence differs by mode, and both placements are deliberate:
 
 - **`manual`** — deploy first, tag after it succeeds. There is no trigger to arm, so a failed release should not leave a tag claiming a version that never went live.
-- **`workers-builds` / `external-ci`** — tag first, then promote the branch, because the tag is what the build checks. The script then waits for `GET /api/` to report the version it released. A tag whose deploy failed stays behind; it means "handed to the pipeline", and `/api/` tells you what is actually serving.
+- **`workers-builds` / `external-ci`** — CI first, then the tag, then promote the branch, because the tag is what the build checks. The script then waits for `GET /api/` to report the version it released. A tag whose deploy failed stays behind; it means "handed to the pipeline", and `/api/` tells you what is actually serving.
 
-Preview is looser on purpose: it deploys on every push to its branch with **no tag**, and reports `X.Y.Z+preview.<sha>`. That is semver build metadata, ignored when comparing versions, which is right — it is the same version line, built from a different branch. A pre-release suffix would sort *below* the release, and preview is normally ahead of production, not behind.
+Preview is looser on purpose: it deploys on every push to its branch with **no tag**, and reports `X.Y.Z+preview.<sha>` (`bin/lib/build-info.ts` adds the suffix to any `--mode preview` build). That is semver build metadata, ignored when comparing versions, which is right — it is the same version line, built from a different branch. A pre-release suffix would sort *below* the release, and preview is normally ahead of production, not behind.
 
-A project begins its own tag line: create it from the template without the starter's git history (as `docs/AGENTS_SETUP.md` does), because the starter's own `vX.Y.Z` tags are *template* releases and would otherwise seed the first version.
+A project begins its own tag line: create it from the template without the starter's git history (as `docs/AGENTS_SETUP.md` does), because the starter's own `vX.Y.Z` tags are *template* releases and would otherwise seed the first version. GitHub's *Use this template* already copies one commit and no tags; leave **Include all branches** unticked, or the starter's `release` branch comes along too.
+
+### The starter's own releases
+
+The starter releases itself with this same command, and its demos are deployed by this same pipeline. Nothing of it reaches a project made from the template: everything that differs lives in the starter's own gitignored `.env.*` files and on its Cloudflare deployments.
+
+- **Version field.** `APP_VERSION_FROM=starter` in `.env.production` and `.env.preview`. `deploy:production` bumps and tags `starter.version`, the builds report it, and `version` stays at the `0.0.1` new projects start from. Without it the starter would commit `version: 3.x` to `main`, and every new project would be born at that version, with the next major release a hard update for no reason.
+- **Mode.** `DEPLOY_MODE=workers-builds`, so the committed `deploy.config.ts` keeps `manual` for projects.
+- **Production demo** — Worker `cloudflare-fullstack-starter-production`, its own D1 (`D1_DATABASE_ID`), `DEMO_MODE`. Workers Builds watches `release` with automatic builds off; `deploy:production` promotes `main` to `release` and calls the deploy hook (`DEPLOY_HOOK_URL`). It shows the latest release.
+- **Preview demo** — Worker `cloudflare-fullstack-starter-preview`, its own D1, `DEMO_MODE`. Workers Builds builds every push to `main` (`DEPLOY_BRANCH=main`), so it shows the work in progress as `X.Y.Z+preview.<sha>`.
+- **CI gate.** `release` is a protected branch requiring the `build-and-lint` and `e2e` checks of `ci.yml`, for administrators too; `deploy:production` waits for them, as described above.
+
+A release of the starter is then: write its `UPGRADING.md` entry, and run `npm run deploy:production -- --minor` (or `--patch` / `--major`, by what an upgrade breaks).
 
 ## Build variables
 
@@ -169,7 +186,7 @@ Local builds read `.env.<env>`; a CI build has no such file. `npm run sync-build
 | Plain build variable | every `VITE_*` (public by definition: it ends up in the client bundle), `CLI_API_URL*`, `DEPLOY_MODE` / `DEPLOY_BRANCH` (read by the CI guard), and `D1_DATABASE_ID` / `APP_VERSION_FROM` (read by the build; see below) |
 | Secret build variable (write-only) | `CLI_API_KEY`, which CI needs to run migrations through the Worker |
 
-`D1_DATABASE_ID` replaces the `DB` binding's `database_id` in the generated config, so a deployment can use its own database without editing the committed `wrangler.toml` — that is how the starter's demo runs from the template unchanged. `APP_VERSION_FROM=starter` makes the build report `starter.version` instead of `version`. Neither is a Worker secret: `sync-secrets` skips them, and every `DEPLOY_*` key.
+`D1_DATABASE_ID` replaces the `DB` binding's `database_id` in the generated config, so a deployment can use its own database without editing the committed `wrangler.toml` — that is how the starter's demo runs from the template unchanged. `APP_VERSION_FROM=starter` makes the build report `starter.version` instead of `version`, and `deploy:production` bump it. Neither is a Worker secret: `sync-secrets` skips them, and every `DEPLOY_*` key.
 
 Whoever holds the `.env.*` files is the source of truth: their values overwrite the cloud ones; keys missing from the file are left untouched. Everyone else just uses what was pushed. Runtime secrets still go through `bin/sync-secrets.ts` (it skips `VITE_*`).
 
@@ -203,6 +220,8 @@ GitHub or GitLab.com only; **self-hosted GitHub or GitLab is not supported** —
 Workers Builds triggers on **branch pushes, never on tags**, so leave automatic branch builds disabled and put the **deploy hook** URL in `.env.production` as `DEPLOY_HOOK_URL`. `deploy:production` posts to it after pushing the tag, which keeps "no deploy without a tag" true.
 
 The build command is an ordinary shell command: if it exits non-zero the build fails and the deploy step never runs. So CI *can* gate on tests. What it cannot do is run service containers or browsers, so a Postgres/MySQL matrix and Playwright stay in GitHub Actions.
+
+To make those GitHub Actions checks a hard gate, protect the deployment branch: GitHub → Settings → Branches → a rule for `release` with *Require status checks to pass* (pick the jobs of your CI workflow) and *Do not allow bypassing*. A push of a commit without passing checks is then refused by GitHub itself, whoever pushes it. `deploy:production` waits for the checks of its release commit before promoting, so the protection costs a release nothing but that wait.
 
 ### `external-ci` — your own CI
 

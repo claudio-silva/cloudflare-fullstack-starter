@@ -8,7 +8,7 @@ Install and start building. Authentication, database, UI, CLI, and deployment ar
 
 A great starting point for your next **MVP** or **SaaS** app.
 
-**[Live demo](https://cloudflare-fullstack-starter-production.dev-c1b.workers.dev)** — the template as it is, deployed from this repository's latest release. It is read-only: the sign-in page gives you the account, and nothing you change is saved.
+**[Live demo](https://cloudflare-fullstack-starter-production.dev-c1b.workers.dev)** — the template as it is, deployed from this repository's latest release. It is read-only: the sign-in page gives you the account, and nothing you change is saved. The **[preview demo](https://cloudflare-fullstack-starter-preview.dev-c1b.workers.dev)** shows the work in progress on `main`, unreleased.
 
 ## Contents
 
@@ -176,6 +176,8 @@ Click **"Use this template"** on GitHub, or use the CLI:
 gh repo create my-app --template claudio-silva/cloudflare-fullstack-starter --clone
 cd my-app
 ```
+
+Leave **Include all branches** unticked (the CLI's `--include-all-branches`, off by default): the other branches are this repository's own release plumbing.
 
 ### 2. Install dependencies
 
@@ -721,9 +723,10 @@ Releases, deploy modes, migrations and maintenance are summarised here; the reas
 
 `npm run deploy:production` cuts a release:
 
-1. bumps `version` in `package.json`;
-2. commits `Release vX.Y.Z` and tags it;
-3. deploys.
+1. checks that CI passed on `main` (GitHub Actions, through `gh`), waiting while it runs;
+2. bumps `version` in `package.json`;
+3. commits `Release vX.Y.Z` and tags it;
+4. deploys.
 
 **Which version it releases**
 
@@ -735,6 +738,8 @@ Releases, deploy modes, migrations and maintenance are summarised here; the reas
 
 **Where to see it** — the version and commit are baked into the build and served by `GET /api/`. Preview deploys report `X.Y.Z+preview.<sha>`.
 
+**This repository releases itself the same way**, with `APP_VERSION_FROM=starter` so that it bumps `starter.version` and leaves `version` at the `0.0.1` your project starts from; its two demos are deployed by Workers Builds. None of that is in the template. → [The starter's own releases](docs/DEPLOYMENT.md#the-starters-own-releases)
+
 ### Deploy modes
 
 | `mode` in `deploy.config.ts` | Who builds and deploys |
@@ -743,7 +748,7 @@ Releases, deploy modes, migrations and maintenance are summarised here; the reas
 | `workers-builds` | Cloudflare Workers Builds, connected to your GitHub or GitLab.com repo |
 | `external-ci` | Your own CI (self-hosted GitLab, GitHub Actions, …), triggered by the release tag |
 
-- **In the CI modes**, `deploy:production` pushes the tag, promotes the deployment branch and waits for the Worker to report the new version.
+- **In the CI modes**, `deploy:production` waits for CI on the release commit, pushes the tag, promotes the deployment branch and waits for the Worker to report the new version. Protect the deployment branch with required checks to make CI a hard gate.
 - **`--local`** deploys from your machine, whatever the mode.
 - **To switch CI deploys off for a while** — a runner that is down, a frozen period — set the mode to `manual` and commit. Each CI deploy job then stops at its first step, green, without installing or building.
 

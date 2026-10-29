@@ -10,23 +10,34 @@
  *
  *   manual          build, migrate and deploy from this machine, then tag.
  *                   The tag follows success, because there is no trigger to arm.
- *   workers-builds  push main, push the tag, promote the branch, then let
- *                   Cloudflare build. The tag precedes the deploy because it is
- *                   what the build checks.
+ *   workers-builds  push main, wait for its CI, push the tag, promote the
+ *                   branch, then let Cloudflare build. The tag precedes the
+ *                   deploy because it is what the build checks.
  *   external-ci     same, with your own CI doing the build.
+ *
+ * In every mode, a commit whose CI failed is not released (GitHub Actions,
+ * read through `gh`; see bin/lib/ci-checks.ts). In the CI modes the release
+ * commit itself is waited for too, before the branch is promoted, so that a
+ * deployment branch protected by required checks accepts it.
  *
  * `--local` forces the manual path in any mode, for when you want to watch a
  * release happen rather than read about it afterwards.
  *
  * The version lives in package.json, not in the tag, so every builder — this
  * script, Workers Builds, GitLab CI — produces the same value. The tag only
- * marks the commit that carries it.
+ * marks the commit that carries it. The field is `version`, or
+ * `starter.version` with `APP_VERSION_FROM=starter`: that is how the starter
+ * releases itself while `version` stays at the 0.0.1 new projects start from.
  *
  * NEVER run this against production without explicit approval.
  */
 
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { loadDeployConfig, parseEnvFile } from "./lib/deploy-config";
+import { readVersion, versionField } from "./lib/build-info";
+import { waitForChecks } from "./lib/ci-checks";
+import { nextVersion as computeNextVersion, type BumpKind } from "./lib/release-version";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 
@@ -56,39 +67,18 @@ function usage(): void {
   --version, -v X.Y.Z           Use this exact version
   --local                       Build and deploy from this machine, whatever the mode
   --release-only                Bump, tag and push; do not deploy or trigger CI
+  --no-ci-check                 Release even though CI has not passed (emergencies only)
   --yes, -y                     Do not prompt
   --dry-run                     Show the plan; change nothing
   --help, -h`);
 }
 
-function semver(version: string): [number, number, number] | null {
-	const m = version.match(/^v?(\d+)\.(\d+)\.(\d+)$/);
-	return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
-}
-
-function isAhead(a: [number, number, number], b: [number, number, number]): boolean {
-	for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] > b[i];
-	return false;
-}
-
-/**
- * The next release. Normally the latest tag, bumped. But when `package.json`
- * is ahead of every tag, someone chose that version by hand — or the project
- * is new and still on the 0.0.1 it was created with — so it ships unbumped.
- */
-function nextVersion(latest: string, pkgVersion: string, kind: "patch" | "minor" | "major"): string {
-	const pkg = semver(pkgVersion);
-	if (!latest) {
-		if (!pkg) die(`package.json version ${pkgVersion} is not X.Y.Z`);
-		return `v${pkgVersion}`;
+function nextVersion(latest: string, pkgVersion: string, kind: BumpKind): string {
+	try {
+		return computeNextVersion(latest, pkgVersion, kind);
+	} catch (error) {
+		return die(error instanceof Error ? error.message : String(error));
 	}
-	const parsed = semver(latest);
-	if (!parsed) die(`cannot bump non-semver tag ${latest}`);
-	if (pkg && isAhead(pkg, parsed)) return `v${pkgVersion}`;
-	const [ma, mi, pa] = parsed;
-	if (kind === "major") return `v${ma + 1}.0.0`;
-	if (kind === "minor") return `v${ma}.${mi + 1}.0`;
-	return `v${ma}.${mi}.${pa + 1}`;
 }
 
 async function confirm(question: string): Promise<boolean> {
@@ -138,6 +128,30 @@ function pushWithoutCi(ref: string): void {
 	}
 }
 
+/**
+ * Refuse to release a commit whose CI failed; wait for it while it runs.
+ * Returns false when there is no CI to wait for (no checks, not GitHub, no `gh`).
+ */
+async function requireGreenCi(sha: string, what: string, appearWithinMs = 0): Promise<boolean> {
+	const { verdict, detail } = await waitForChecks(sha, { appearWithinMs });
+	const short = sha.slice(0, 7);
+	switch (verdict) {
+		case "success":
+			console.log(`✓ CI passed on ${what} (${short})`);
+			return true;
+		case "failure":
+			return die(`CI failed on ${what} (${short}): ${detail.join(", ")}. Fix it, or pass --no-ci-check in an emergency.`);
+		case "timeout":
+			return die(`CI on ${what} (${short}) still running after 30 min (${detail.join(", ")}).`);
+		case "none":
+			console.log(`Note: no GitHub Actions checks on ${what} (${short}); not gated on CI.`);
+			return false;
+		case "unknown":
+			console.log(`Note: cannot read the CI status of ${what} (not GitHub, or \`gh\` missing or logged out); not gated on CI.`);
+			return false;
+	}
+}
+
 async function main(): Promise<void> {
 	const args = process.argv.slice(2);
 	if (args.includes("--help") || args.includes("-h")) return usage();
@@ -148,6 +162,7 @@ async function main(): Promise<void> {
 	const dryRun = args.includes("--dry-run");
 	const forceLocal = args.includes("--local");
 	const releaseOnly = args.includes("--release-only");
+	const ciCheck = !args.includes("--no-ci-check");
 
 	const cfg = loadDeployConfig(ENV);
 	const mode = forceLocal ? "manual" : cfg.mode;
@@ -177,17 +192,22 @@ async function main(): Promise<void> {
 	}
 
 	// --- Version -------------------------------------------------------------
+	// APP_VERSION_FROM decides which field is bumped, as it decides which one the
+	// build reports. Exported, so the local build in manual mode agrees.
+	const appVersionFrom = process.env.APP_VERSION_FROM ?? parseEnvFile(resolve(process.cwd(), `.env.${ENV}`)).APP_VERSION_FROM;
+	if (appVersionFrom) process.env.APP_VERSION_FROM = appVersionFrom;
+	const field = versionField(appVersionFrom);
 	const originalSha = git(["rev-parse", "HEAD"]);
 	const headTag = git(["tag", "--points-at", "HEAD", "--list", "v*.*.*", "--sort=-v:refname"]).split("\n")[0];
 	const latest = git(["tag", "--list", "v*.*.*", "--sort=-v:refname"]).split("\n")[0];
-	const pkgVersion = JSON.parse(execFileSync("node", ["-p", "JSON.stringify(require('./package.json'))"], { encoding: "utf-8" })).version as string;
+	const pkgVersion = readVersion(JSON.parse(readFileSync("package.json", "utf-8")), field) ?? "";
 
 	let version: string;
 	let tagNeeded: boolean;
 	if (headTag) {
 		if (explicit && `v${explicit.replace(/^v/, "")}` !== headTag) die(`HEAD is already ${headTag}`);
 		version = headTag;
-		if (`v${pkgVersion}` !== version) die(`package.json (v${pkgVersion}) does not match tag ${version}`);
+		if (`v${pkgVersion}` !== version) die(`package.json ${field} (v${pkgVersion}) does not match tag ${version}`);
 		tagNeeded = false;
 		console.log(`HEAD is already ${version}; redeploying it.`);
 	} else {
@@ -199,14 +219,27 @@ async function main(): Promise<void> {
 
 	console.log(`Latest tag : ${latest || "<none>"}`);
 	console.log(`Release    : ${version} (${git(["rev-parse", "--short", "HEAD"])})`);
+	console.log(`Field      : ${field} (${pkgVersion || "unset"})`);
 	console.log(`Mode       : ${mode}${forceLocal && cfg.mode !== "manual" ? ` (forced local; config says ${cfg.mode})` : ""}`);
 	console.log(`Branch     : ${mode === "manual" ? "n/a" : cfg.branch}`);
-	if (dryRun) return console.log("(dry run — nothing changed)");
+	if (dryRun) {
+		if (ciCheck) {
+			const { verdict, detail } = await waitForChecks(originalSha, { timeoutMs: 0 });
+			const state = verdict === "timeout" ? "running" : verdict;
+			console.log(`CI         : ${state}${detail.length ? ` (${detail.join(", ")})` : ""}`);
+		}
+		return console.log("(dry run — nothing changed)");
+	}
 	if (!yes && !(await confirm(`Proceed with ${version}? [y/N] `))) die("aborted");
+
+	// --- CI gate -------------------------------------------------------------
+	// The commit being released must have passed CI. Checked before anything is
+	// changed, so a red build costs nothing; waited for while it is still running.
+	const hasCi = ciCheck && (await requireGreenCi(originalSha, "main"));
 
 	// --- Release -------------------------------------------------------------
 	if (needsCommit) {
-		run("npm", ["pkg", "set", `version=${version.replace(/^v/, "")}`]);
+		run("npm", ["pkg", "set", `${field}=${version.replace(/^v/, "")}`]);
 		run("git", ["commit", "-qam", `Release ${version}`]);
 	}
 
@@ -226,6 +259,15 @@ async function main(): Promise<void> {
 			rollback();
 			process.exit(1);
 		}
+	}
+
+	// The release commit is new to CI. Promoting it before its checks finish
+	// would be refused by a deployment branch that requires them, so push it
+	// first and wait. If it fails, no tag is made: main is left one commit
+	// ahead, and the next run releases the same version from there.
+	if (mode !== "manual" && !releaseOnly && needsCommit && hasCi) {
+		run("git", ["push", "origin", "main"]);
+		await requireGreenCi(git(["rev-parse", "HEAD"]), `the release commit`, 120_000);
 	}
 
 	if (tagNeeded) {
