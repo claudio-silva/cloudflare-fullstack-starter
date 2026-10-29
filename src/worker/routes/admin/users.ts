@@ -117,8 +117,8 @@ async function assertEmailFree(c: AppContext, email: string, exceptId?: string) 
 }
 
 const USER_COLUMNS = ["id", "name", "email", "role", "emailVerified", "createdAt", "updatedAt"] as const;
-/** Ascending: most present first. */
-const STATUS_RANK: Record<AdminUser["status"], number> = { active: 0, idle: 1, offline: 2, disabled: 3 };
+/** Ascending: most present first. Offline has no rank: it shows as "—", and empty values always sort last. */
+const STATUS_RANK: Record<Exclude<AdminUser["status"], "offline">, number> = { active: 0, idle: 1, disabled: 2 };
 
 /** `GET /?q=&page=1&pageSize=20&sort=createdAt&dir=desc` */
 adminUsers.get("/", async (c) => {
@@ -142,8 +142,15 @@ adminUsers.get("/", async (c) => {
 	if (sort === "status" || sort === "lastSignInAt") {
 		const all = await present(c, await filtered.select(USER_COLUMNS).orderBy("createdAt", "desc").orderBy("id").execute());
 		const sign = dir === "asc" ? 1 : -1;
-		const key = (u: AdminUser) => (sort === "status" ? STATUS_RANK[u.status] : u.lastSignInAt ? Date.parse(u.lastSignInAt) : -Infinity);
-		all.sort((a, b) => sign * (key(a) - key(b)) || 0);
+		// Empty values (shown as "—") come last in either direction.
+		const key = (u: AdminUser): number | null =>
+			sort === "status" ? (u.status === "offline" ? null : STATUS_RANK[u.status]) : u.lastSignInAt ? Date.parse(u.lastSignInAt) : null;
+		all.sort((a, b) => {
+			const ka = key(a);
+			const kb = key(b);
+			if (ka === null || kb === null) return ka === kb ? 0 : ka === null ? 1 : -1;
+			return sign * (ka - kb);
+		});
 		return c.json<AdminUserList>({ users: all.slice((page - 1) * pageSize, page * pageSize), total: all.length, page, pageSize });
 	}
 

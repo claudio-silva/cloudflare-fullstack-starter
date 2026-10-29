@@ -186,7 +186,7 @@ sessions (`userStatus()` in `src/shared/admin-users.ts`):
 | Disabled (red dot) | not `emailVerified`; wins over the other two |
 | — (no pill) | no live session |
 
-The column sorts too (active, idle, signed out, disabled), as does **Last sign-in**. Both come from the sessions and the log, not from a column, so those sorts are done in the Worker over everyone who matches the search, then paged.
+The column sorts too (active, idle, disabled, then those with no session), as does **Last sign-in**. Both come from the sessions and the log, not from a column, so those sorts are done in the Worker over everyone who matches the search, then paged. Empty values ("—": no session, no sign-in yet) always sort last, in either direction.
 
 Every sortable heading cycles through three states: ascending, descending, and no sort (back to newest first, with no arrow). The **Idle** column is the time since the user's latest session was used.
 
