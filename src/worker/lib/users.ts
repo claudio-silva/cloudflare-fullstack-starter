@@ -5,8 +5,8 @@ import { dbBool, dbNow } from "../db";
 import { ROLES, hasRole, type Role } from "../../shared/roles";
 
 /**
- * User writes shared by the auth CLI (routes/cli.ts), the admin area
- * (routes/admin/) and the profile page. Better Auth owns sign-up and sign-in;
+ * User writes shared by the auth CLI (routes/cli.ts), the profile page and
+ * any user management (such as the example admin area). Better Auth owns sign-up and sign-in;
  * these cover what it leaves to an administrator.
  */
 
