@@ -32,14 +32,16 @@
  *
  * The very first deploy of an environment has no Worker to ask about pending
  * migrations, and nobody to serve while the schema is created, so it deploys
- * first, then syncs the secrets (they need a Worker to attach to), then
- * applies every migration.
+ * first, with the secrets uploaded alongside the code, then applies every
+ * migration.
  *
  * Usage:
  *   tsx bin/deploy-pipeline.ts --env <preview|production> [--skip-build] [--dry-run]
  */
 
 import { execFileSync } from "node:child_process";
+import { mkdirSync, rmSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { connectToDatabase } from "../src/cli/utils/db";
 import { loadDeployConfig, type DeployEnv } from "./lib/deploy-config";
 import { resolveBuildInfo } from "./lib/build-info";
@@ -57,8 +59,13 @@ function run(command: string, args: string[]): void {
 }
 
 /** Deploy the current build, optionally with the app taken out of service. */
-function deployWorker(inMaintenance: boolean): void {
-	run("npx", inMaintenance ? ["wrangler", "deploy", "--var", "MAINTENANCE:1"] : ["wrangler", "deploy"]);
+function deployWorker(inMaintenance: boolean, secretsFile?: string): void {
+	run("npx", [
+		"wrangler",
+		"deploy",
+		...(inMaintenance ? ["--var", "MAINTENANCE:1"] : []),
+		...(secretsFile ? ["--secrets-file", secretsFile] : []),
+	]);
 }
 
 /** Compare `vX.Y.Z` style versions, ignoring any build metadata. */
@@ -98,10 +105,10 @@ async function reportFailure(env: DeployEnv, stage: Stage, error: unknown): Prom
 	}
 }
 
-/** First deploy of an environment: nothing to keep serving, so deploy, then secrets, then the schema. */
+/** First deploy of an environment: nothing to keep serving, so deploy (secrets included), then the schema. */
 async function firstDeploy(env: DeployEnv, workerName: string, skipBuild: boolean, dryRun: boolean): Promise<void> {
 	console.log(`First deploy of ${env}: Worker "${workerName}" does not exist yet.`);
-	console.log("  Order: build, deploy, secrets, every migration");
+	console.log("  Order: build, deploy with the secrets, every migration");
 	if (dryRun) {
 		console.log("(dry run — nothing changed)");
 		return;
@@ -113,9 +120,22 @@ async function firstDeploy(env: DeployEnv, workerName: string, skipBuild: boolea
 			run("npm", ["run", `build:${env}`]);
 		}
 		stage = "deploy";
-		deployWorker(false);
-		// CI does not hold the .env files; the secrets were synced by whoever set CI up.
-		if (!isCi()) run("npx", ["tsx", "bin/sync-secrets.ts", env, "--force"]);
+		// The secrets go up with the first version: put afterwards, they would
+		// make a second one, and the migrations could reach the first, which
+		// has no CLI_API_KEY. CI does not hold the .env files; there, whoever
+		// set CI up deployed the Worker already.
+		if (isCi()) {
+			deployWorker(false);
+		} else {
+			const secretsFile = resolve(".wrangler", `first-deploy-secrets.${env}.json`);
+			mkdirSync(dirname(secretsFile), { recursive: true });
+			try {
+				run("npx", ["tsx", "bin/sync-secrets.ts", env, "--to-file", secretsFile]);
+				deployWorker(false, secretsFile);
+			} finally {
+				rmSync(secretsFile, { force: true });
+			}
+		}
 		stage = "migrate-expand";
 		run("npx", ["tsx", "bin/db.ts", "migrate", "--env", env, "--wait-for-deploy"]);
 	} catch {

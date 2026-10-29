@@ -134,7 +134,7 @@ Use this when moving from local dev to real Cloudflare resources. Paths are rela
 2. **D1** — Create preview and production databases in the dashboard (or CLI). Paste `database_id` into `wrangler.toml`, or set it as `D1_DATABASE_ID` in `.env.<env>` (what `setup:ci` does); keep `database_name` following the convention above.
 3. **Optional bindings** — Add `[[env.*.kv_namespaces]]`, `[[env.*.r2_buckets]]`, `[env.*.triggers]` / `crons` or any other binding under `[env.preview|production]` in `wrangler.toml` when you need them. `vite.config.ts` copies every key across generically, so there is nothing to mirror by hand (see bridge doc).
 4. **Secrets** — List required keys in `.env.example`, then copy to `.env.preview` / `.env.production` (gitignored). Never commit real secrets.
-5. **First deploy** — With the database in place, the first `npm run deploy:preview` / `deploy:production` sees that the Worker does not exist yet and deploys it before anything else: build, deploy, secrets, then every migration (they run through the deployed Worker, so `CLI_API_KEY` and `CLI_API_URL_<ENV>` must be set in the `.env.*` file).
+5. **First deploy** — With the database in place, the first `npm run deploy:preview` / `deploy:production` sees that the Worker does not exist yet and deploys it before anything else: build, deploy (its secrets uploaded with it), then every migration (they run through the deployed Worker, so `CLI_API_KEY` and `CLI_API_URL_<ENV>` must be set in the `.env.*` file).
 6. **Workers Builds (optional)** — To build and deploy on `git push`, run `npm run setup:ci`, or follow the manual steps in `docs/DEPLOYMENT.md`.
 
 ## CI and clone hygiene

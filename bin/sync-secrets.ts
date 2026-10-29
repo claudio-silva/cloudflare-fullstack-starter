@@ -13,6 +13,13 @@
  *   tsx bin/sync-secrets.ts production
  *   tsx bin/sync-secrets.ts preview
  *   tsx bin/sync-secrets.ts preview --force   # even if the file has not changed
+ *   tsx bin/sync-secrets.ts preview --to-file <path>
+ *
+ * `--to-file` writes the secrets as JSON instead of putting them, for
+ * `wrangler deploy --secrets-file`: the first deploy of a Worker uploads them
+ * with its first version, so no version ever runs without them (secrets put
+ * afterwards make a second version, and requests reach the first one for a
+ * while). It records the hash, as the deploy is what syncs them.
  */
 
 import { spawnSync } from "child_process";
@@ -136,8 +143,9 @@ async function main() {
 
 	const currentHash = computeFileHash(envFile);
 	const storedHash = getStoredHash(env);
+	const toFile = args.includes("--to-file") ? args[args.indexOf("--to-file") + 1] : undefined;
 
-	if (currentHash === storedHash && !args.includes("--force")) {
+	if (currentHash === storedHash && !args.includes("--force") && !toFile) {
 		console.log(`✓ Secrets for ${env} are up to date (no changes detected)`);
 		process.exit(0);
 	}
@@ -159,6 +167,13 @@ async function main() {
 	}
 
 	console.log(`  Found ${secretKeys.length} secret(s): ${secretKeys.join(", ")}`);
+
+	if (toFile) {
+		writeFileSync(toFile, JSON.stringify(secrets), { mode: 0o600 });
+		storeHash(env, currentHash);
+		console.log(`✓ Secrets written to ${toFile}, for the deploy to upload`);
+		return;
+	}
 
 	const entries = Object.entries(secrets);
 	let allSuccess = true;

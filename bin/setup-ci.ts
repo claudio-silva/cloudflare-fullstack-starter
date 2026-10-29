@@ -182,7 +182,7 @@ const triggersOf = (account: Account, tag: string) =>
 
 // --- GitHub -------------------------------------------------------------------
 
-type Repo = { fullName: string; id: number; ownerId: number; ownerLogin: string; name: string; private: boolean };
+type Repo = { fullName: string; id: number; ownerId: number; ownerLogin: string; ownerIsOrg: boolean; name: string; private: boolean };
 
 function githubRepository(): Repo {
 	step("GitHub repository");
@@ -198,9 +198,9 @@ function githubRepository(): Repo {
 		die(`origin is the starter template itself (${STARTER_REPO}). Give the project its own repository first:\n  git remote rename origin starter && git remote add origin <your repo> && git push -u origin main`);
 	}
 	try {
-		const r = gh<{ id: number; name: string; private: boolean; owner: { id: number; login: string } }>(`repos/${fullName}`);
+		const r = gh<{ id: number; name: string; private: boolean; owner: { id: number; login: string; type: string } }>(`repos/${fullName}`);
 		ok(`${fullName}${r.private ? " (private)" : ""}`);
-		return { fullName, id: r.id, ownerId: r.owner.id, ownerLogin: r.owner.login, name: r.name, private: r.private };
+		return { fullName, id: r.id, ownerId: r.owner.id, ownerLogin: r.owner.login, ownerIsOrg: r.owner.type === "Organization", name: r.name, private: r.private };
 	} catch {
 		return die(`cannot read ${fullName} with \`gh\`. Install the GitHub CLI and run \`gh auth login\`.`);
 	}
@@ -309,6 +309,14 @@ async function buildConnection(account: Account, repo: Repo, tags: string[]): Pr
 			repo_name: repo.name,
 		});
 		change(`connect ${repo.fullName} to Workers Builds (build token "${tokens[0].build_token_name}")`);
+		// Cloudflare accepts the connection whether or not its GitHub app may see
+		// the repository, and builds started by hand work for a public one. Only
+		// pushes reveal it: with no access, they start nothing.
+		const installations = repo.ownerIsOrg ? `https://github.com/organizations/${repo.ownerLogin}/settings/installations` : "https://github.com/settings/installations";
+		todo.push(
+			`Make sure the Cloudflare GitHub app sees ${repo.fullName}: ${installations} → Cloudflare Workers and Pages → Configure. ` +
+				`With "Only select repositories", add this one; otherwise pushes start no build.`,
+		);
 		return { repoConnectionUuid: conn.repo_connection_uuid, buildTokenUuid: tokens[0].build_token_uuid };
 	} catch (error) {
 		if (error instanceof CloudflareApiError && error.codes.includes(8000008)) {
@@ -395,7 +403,7 @@ function protectReleases(repo: Repo): void {
 		todo.push(`Protect ${branch} once CI has run on main: push main, wait for GitHub Actions, run npm run setup:ci again.`);
 		return note("no GitHub Actions checks on origin/main yet; cannot tell which ones to require");
 	}
-	change(`ruleset "${RULESET_NAME}": ${branch} accepts only commits that passed ${checks.join(", ")}`);
+	change(`create ruleset "${RULESET_NAME}": ${branch} accepts only commits that passed ${checks.join(", ")}`);
 	if (dryRun) return;
 	try {
 		gh(`repos/${repo.fullName}/rulesets`, "POST", releaseRuleset(branch, checks));

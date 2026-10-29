@@ -234,6 +234,8 @@ Each step checks before it changes anything:
 
 One step needs a browser, once per account: Workers Builds deploys with a build token that only the dashboard creates, and reads the repository through the Cloudflare GitHub app. When either is missing the command says what to click (connect any of the Workers in the dashboard — the settings typed there do not matter, the next run corrects them) and stops; run it again afterwards.
 
+If the GitHub app was installed with *Only select repositories*, add each new repository to it (GitHub → Settings → Applications → Cloudflare Workers and Pages → Configure). Cloudflare accepts the connection either way and nothing reports the gap: pushes simply start no build. `setup:ci` reminds you when it connects a repository.
+
 #### The settings, by hand
 
 Per Worker: dashboard → Workers & Pages → the Worker → Settings → Builds → connect the repository.

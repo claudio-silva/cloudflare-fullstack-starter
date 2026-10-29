@@ -48,7 +48,7 @@ npm run test:e2e       # from 2.0.0 on, optional
 
 ---
 
-## 3.5.0 — unreleased
+## 3.5.0 — 2026-10-29
 
 Deploying with Cloudflare Workers Builds is set up by one command, `npm run setup:ci`; the first deploy of an environment works without preparation; and git worktrees run on their own, with or without Paseo.
 
@@ -56,14 +56,15 @@ Deploying with Cloudflare Workers Builds is set up by one command, `npm run setu
 
 1. **Fixed: in dev, sign-in worked only on port 5173.** The Better Auth client (`src/react-app/lib/auth/client.ts`) used `http://localhost:5173` in dev; it now uses the page's origin, which is the API's in dev too.
 2. **The E2E tests follow `APP_BASE_URL` in `.env.local`** when it is a localhost URL (`playwright.config.ts`), instead of always port 5173, so they test the checkout they run in.
-3. **The first deploy of an environment creates its Worker.** `bin/deploy-pipeline.ts` asked the not-yet-deployed Worker for its migrations and failed. When the Worker does not exist (new `bin/lib/worker.ts`), it now builds, deploys, syncs the secrets and then runs every migration.
-4. **`sync-secrets` no longer sends `CLI_API_URL*` to the Worker** (they are build variables, read by the deploy scripts, not by the Worker), and takes `--force` to sync without the change check.
-5. **New `npm run setup:ci`** (`bin/setup-ci.ts`, `bin/lib/setup-ci.ts`): creates the D1 databases, fills `.env.preview` / `.env.production`, deploys each environment the first time, creates or corrects the Workers Builds triggers, syncs build variables and secrets, protects the release branch with a GitHub ruleset and sets `mode: "workers-builds"`. Idempotent; `--dry-run`. The Cloudflare API client moved to `bin/lib/cloudflare-api.ts`.
-6. **Git worktrees:** `bin/worktree-setup` (dependencies, `.env.local`, a copy of the local D1 database) and `bin/worktree-dev [port]` (dev server on a port of its own, written into `.env.local`). `paseo.json` runs them under Paseo; elsewhere, including worktrees Claude Code creates, they are run by hand (`AGENTS.md`, *Working in a git worktree*). `.claude/worktrees/` is gitignored.
+3. **The first deploy of an environment creates its Worker.** `bin/deploy-pipeline.ts` asked the not-yet-deployed Worker for its migrations and failed. When the Worker does not exist (new `bin/lib/worker.ts`), it now builds, deploys with the secrets uploaded alongside the code (`wrangler deploy --secrets-file`, from the new `sync-secrets --to-file`; secrets put afterwards make a second version, and the migrations could reach the first, which has no `CLI_API_KEY`), then runs every migration.
+4. **A Workers Builds build started through the API reports a commit again.** It sets `WORKERS_CI_COMMIT_SHA` to the branch name; `resolveBuildInfo()` now takes it only when it is a hash, and asks git otherwise.
+5. **`sync-secrets` no longer sends `CLI_API_URL*` to the Worker** (they are build variables, read by the deploy scripts, not by the Worker), and takes `--force` to sync without the change check.
+6. **New `npm run setup:ci`** (`bin/setup-ci.ts`, `bin/lib/setup-ci.ts`): creates the D1 databases, fills `.env.preview` / `.env.production`, deploys each environment the first time, creates or corrects the Workers Builds triggers, syncs build variables and secrets, protects the release branch with a GitHub ruleset and sets `mode: "workers-builds"`. Idempotent; `--dry-run`. The Cloudflare API client moved to `bin/lib/cloudflare-api.ts`.
+7. **Git worktrees:** `bin/worktree-setup` (dependencies, `.env.local`, a copy of the local D1 database) and `bin/worktree-dev [port]` (dev server on a port of its own, written into `.env.local`). `paseo.json` runs them under Paseo; elsewhere, including worktrees Claude Code creates, they are run by hand (`AGENTS.md`, *Working in a git worktree*). `.claude/worktrees/` is gitignored.
 
 ### Required actions
 
-- **Take** `bin/setup-ci.ts`, `bin/lib/{setup-ci,cloudflare-api,worker}.ts`, `bin/worktree-setup`, `bin/worktree-dev` (keep them executable), `paseo.json` and `test/scripts/setup-ci.test.ts`. **Merge** `bin/deploy-pipeline.ts`, `bin/sync-build-vars.ts`, `bin/sync-secrets.ts`, `playwright.config.ts`, `src/react-app/lib/auth/client.ts`, `.gitignore`, the `setup:ci` script in `package.json`, and the worktree section and command lines of `AGENTS.md`.
+- **Take** `bin/setup-ci.ts`, `bin/lib/{setup-ci,cloudflare-api,worker}.ts`, `bin/worktree-setup`, `bin/worktree-dev` (keep them executable), `paseo.json` and `test/scripts/setup-ci.test.ts`. **Merge** `bin/deploy-pipeline.ts`, `bin/sync-build-vars.ts`, `bin/sync-secrets.ts`, `bin/lib/build-info.ts`, `test/scripts/release.test.ts`, `playwright.config.ts`, `src/react-app/lib/auth/client.ts`, `.gitignore`, the `setup:ci` script in `package.json`, and the worktree section and command lines of `AGENTS.md`.
 - If your project changed `src/react-app/lib/auth/client.ts` to point at another API host, keep that.
 - If you set up Workers Builds by hand, `npm run setup:ci -- --dry-run` shows what it would correct; nothing is required.
 - Verify: `npm test`, `npm run test:e2e`, `npm run setup:ci -- --dry-run` (changes nothing).

@@ -10,7 +10,7 @@
  *   the app version of the template itself stays at 0.0.1 for the projects made from it.
  *   A preview build appends `+preview.<commit>` (semver build metadata, ignored when
  *   versions are compared): same version line, built from unreleased code.
- * - commit:  WORKERS_CI_COMMIT_SHA (Workers Builds) → `git rev-parse --short HEAD` → "unknown";
+ * - commit:  WORKERS_CI_COMMIT_SHA (Workers Builds; when it is a hash) → `git rev-parse --short HEAD` → "unknown";
  *   suffixed `-dirty` when building from a working tree with uncommitted changes.
  */
 import { execSync } from "node:child_process";
@@ -43,7 +43,9 @@ export function readVersion(pkg: PackageJson, field: VersionField): string | und
 
 export function resolveBuildInfo(rootDir: string = process.cwd(), environment?: string): BuildInfo {
 	const pkg = JSON.parse(readFileSync(resolve(rootDir, "package.json"), "utf8")) as PackageJson;
-	let commit = (process.env.WORKERS_CI_COMMIT_SHA ?? "").slice(0, 7);
+	// A build started through the API for a branch gets the branch name here.
+	const ciSha = process.env.WORKERS_CI_COMMIT_SHA ?? "";
+	let commit = /^[0-9a-f]{7,40}$/.test(ciSha) ? ciSha.slice(0, 7) : "";
 	if (!commit) {
 		try {
 			commit = git("rev-parse --short HEAD");

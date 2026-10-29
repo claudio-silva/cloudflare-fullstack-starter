@@ -73,6 +73,11 @@ describe("resolveBuildInfo", () => {
 		expect(resolveBuildInfo(dir, "production")).toEqual({ version: "3.4.0", commit: "abcdef0" });
 	});
 
+	it("ignores a WORKERS_CI_COMMIT_SHA that is not a hash", () => {
+		process.env.WORKERS_CI_COMMIT_SHA = "preview";
+		expect(resolveBuildInfo(dir, "production").commit).not.toBe("preview");
+	});
+
 	it("marks a preview build with semver build metadata", () => {
 		process.env.APP_VERSION_FROM = "starter";
 		expect(resolveBuildInfo(dir, "preview").version).toBe("3.4.0+preview.abcdef0");
