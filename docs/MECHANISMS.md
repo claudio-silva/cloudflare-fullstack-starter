@@ -137,12 +137,16 @@ it answers 200 throughout, and every held request is "recovered" straight into
 another 503. The probe has to be down exactly when the app is, so `/api/ping`
 is exempt from neither mechanism — and must not become so.
 
-Call sites never learn any of this happened. `<MaintenanceOverlay />` shows a
-banner — not a modal, and with no retry button, because the request is already
-being retried and a button would only add a second one.
+Call sites never learn any of this happened. `<MaintenanceBanner />` (in
+`components/http/HttpBanners.tsx`) shows a banner — not a modal, and with no
+retry button, because the request is already being retried and a button would
+only add a second one.
 
-Only calls managed by the HTTP layer are held (see below): those that opt in
-with `handles`, which includes the app's `http()` calls and Better Auth's.
+Every same-origin request is held, whether or not its caller knows the HTTP
+layer (see below) — except those with `handles: "all"` and the paths in
+`installHttpLayer({ exclude })`. While a window is on, the app's offline
+handlers answer first, and `beforeReconnect` hooks run before the held
+requests are released — see [Lost connection](#lost-connection).
 
 **Why maintenance polls `/api/ping` while a lost connection retries the real
 request:** in maintenance the app is known to be busy and down for minutes,
@@ -228,26 +232,33 @@ incompatibly.
 ### In the browser: one interceptor, no `if (!res.ok)`
 
 `installHttpLayer()` (`src/react-app/lib/http/interceptor.ts`, called in
-`main.tsx`) patches global `fetch` — like an Angular interceptor — but manages
-**only the calls that opt in**: a same-origin call under `/api/` whose options
-have a `handles` key. `handles: []` or `handles: null` is enough; it says "I
-know about the layer, and handle no status myself". A call without the key is
-passed through untouched — not even held through maintenance; only the
-`X-App-Version` of its response is noted, which changes nothing for the
-caller. So code and libraries that know nothing about the layer behave
-exactly as they would without it.
+`main.tsx`) patches global `fetch` — like an Angular interceptor — and draws
+one line: **what is safe to do for any caller, it does for every caller; what
+changes what a caller sees, only for callers that asked.**
 
-The app's own code calls `http()` (`import { http } from "@/lib/http"`), a
-one-line wrapper that gives `handles` a default of `[]`, so call sites carry
-no ceremony.
+For **every same-origin request**, whether or not its caller knows the layer:
 
 | Outcome | What happens |
 |---|---|
 | Maintenance (either mechanism) | held and replayed — see [Maintenance mode](#maintenance-mode) |
-| Network failure, or 502/503/504/52x from the edge | held behind one dialog and sent again — see below |
+| Network failure, or 502/503/504/52x from the edge | answered by an offline handler, or held and sent again — see [Lost connection](#lost-connection) |
+| Any API response | `X-App-Version` checked — see [New versions](#new-versions) |
+
+Holding a request changes *when* its caller hears back, never *what* it hears,
+so it is safe for code and libraries that know nothing about it. Statuses are
+another matter: a library may handle a 403 or a 409 itself, and there is no
+knowing which. So the rest applies only to a call under `/api/` that **opts
+in** with a `handles` key that is not `null`:
+
+| Outcome | What happens |
+|---|---|
 | 4xx | the server's message as a toast (warning, or the server's `level`) |
 | 401 | the same, and the session is re-checked, which brings up sign-in |
 | 5xx | production: a generic message with a reference to quote; elsewhere, the real cause |
+
+The app's own code calls `http()` (`import { http } from "@/lib/http"`), a
+one-line wrapper that gives `handles` a default of `[]`, so call sites carry
+no ceremony.
 
 After a failure it has shown, the call **rejects** with `HandledHttpError`.
 The caller's code after `await http()` simply does not run, so call sites
@@ -263,60 +274,139 @@ if (res.status === 404) return showEmptyState();
 
 | `handles` | The caller takes | The layer takes |
 |---|---|---|
-| absent | everything | nothing — the call is not managed |
-| `[]`, `null` (the `http()` default) | nothing | everything |
+| absent or `null` | every HTTP response | lost connections and maintenance |
+| `[]` (the `http()` default) | nothing | everything |
 | `[404, 409]` | those statuses | the rest |
-| `[0]` | network failures | the rest |
-| `"responses"` | every HTTP response | lost connections and maintenance |
-| `"all"` | everything | nothing but maintenance |
+| `[0]` | network failures, as `fetch` gives them | the rest; nothing is held |
+| `"all"` | everything | nothing — not even maintenance |
 
-Better Auth's client opts in with `"responses"` (`customFetchImpl` in
-`src/react-app/lib/auth/client.ts`): its forms keep showing its own errors,
-while a sign-in during a dropped connection or a maintenance window waits
-instead of failing. Any library that accepts a custom `fetch` can be wired
-the same way.
+`null` meaning the same as no key makes the layer easy to switch off on a
+condition: `http(url, { handles: quiet ? null : [] })`.
 
-**Why opt-in, keyed on `handles`:** a global patch that changed the
-behaviour of every request would break code written without knowing about
-it — a library that expects to see its 4xx, a call site that already shows
-its own error. The key's presence is the caller saying it knows. The other way
-to get the same guarantee is not to patch at all and export only a wrapper,
-but then nothing reaches requests that libraries make, not even to note the
-server's version.
+Better Auth's client needs no wiring: its forms show its own errors, and its
+requests are held through a lost connection or a maintenance window like
+anyone else's. A library with an offline strategy of its own — a sync engine,
+an offline-first cache — would only be slowed down by having its requests
+held; list its paths in `installHttpLayer({ exclude: ["/api/sync/"] })` (or
+pass a test, `(url) => boolean`), and the layer leaves them alone.
+
+**Why the line falls there:** a global patch that changed the statuses every
+request sees would break code written without knowing about it — a library
+that expects its 4xx, a call site that shows its own error. The key's
+presence is the caller saying it knows. Holding through an outage is
+different: without it, the caller would get an error it can do nothing about
+but show; with it, the same call simply succeeds later.
 
 **Why reject rather than resolve with the error response:** a resolved error
 response must be checked at every call site, and the one that forgets carries
 on as if it had worked — typically by parsing the error body as data. A
 rejection fails safe.
 
+**Your own UI.** Every part of the default UI can be turned off, to show your
+own built on the same state: `installHttpLayer({ ui: { connectivity: false,
+maintenance: false, update: false, errors: false } })`. The state is in
+`http.state` / `http.subscribe`, `connectivityStore`, `subscribeToMaintenance`
+and `updateStore` (React hooks in `components/http/hooks.ts`), and the actions
+are `http.retryNow()`, `http.cancelHeld()`, `updateNow()` and
+`postponeUpdate()`. `onError` receives every error the layer reports, with or
+without the toast. Turning a banner off changes nothing about what the layer
+does: requests are still held while offline, so an app that hides the
+connectivity banner must say so itself, and offer Cancel.
+
 ### Lost connection
 
-A network error, or a gateway status *without* our version header (the edge
-answering for an app it could not reach), opens one modal dialog that counts
-down to the next attempt (3, 5, 10, 20, then every 30 s). However many
-requests failed, there is one dialog. *Try now* — focused, so Enter works —
-skips the countdown; *Cancel* rejects every held request with
-`HandledHttpError`.
+`src/react-app/lib/http/connectivity.ts`. A network error, or a gateway
+status *without* our version header (the edge answering for an app it could
+not reach), means the server cannot be reached.
 
-**The attempt is the request itself.** There is no status endpoint to ask:
-the held requests are sent again, oldest first, and the first is the check.
-If it gets through, the app is reachable and that request has done its job,
-so the rest follow in order and the dialog closes; if it does not, they all
-wait for the next attempt. Reads and writes alike, and with nothing to
-confirm: the user did something and wants it done, and has no way of judging
-which HTTP method a click turned into.
+**What the browser can tell us, and what it cannot.** `navigator.onLine` and
+the window's `online` / `offline` events are the only network signal every
+browser has, and they are lopsided. `offline` is reliable: no network
+interface is up, so nothing can get through, and the layer goes offline at
+once, without waiting for a request to fail. `online` only means an
+interface is up — a Wi-Fi without internet, a hotel portal or a server that
+is down all look the same — so it only brings the next attempt forward.
+What decides is a request that actually reaches the server.
+(`navigator.connection` exists only in Chromium and describes the link's
+speed, not whether the server answers; it is not used.)
 
-**Every managed write carries an `Idempotency-Key`**, the same on each retry
-of that call. A write that failed on the way *back* may already have been
-carried out, and sending it again repeats it. For most writes that is
-harmless (setting a name twice); where it is not — a payment, an order, a
-message — the endpoint should remember the keys it has served and answer a
-repeat with the first result. The starter sends the key; deduplicating is the
-endpoint's decision, since only it knows what a duplicate costs.
+**While offline**, each request is first offered to the app's **offline
+handlers**, which may answer it from data kept locally:
 
-Unlike the maintenance banner, this dialog is modal and offers a way out: a
-maintenance window is known to end, a lost connection is not. While a
-maintenance window is on, the dialog stays closed and the banner speaks.
+```ts
+http.addOfflineHandler(async (request) => {
+  if (new URL(request.url).pathname !== "/api/posts") return undefined; // not mine
+  const posts = await db.posts.toArray();                    // IndexedDB, say
+  return Response.json(posts);
+});
+```
+
+A handler gets a standard `Request` — URL, method, headers, and a body it can
+read (`await request.json()`) — and returns a `Response`, or `undefined` to
+pass. Handlers are asked in the order they were added; the first response
+wins, and it reaches the caller marked with `X-Offline: 1`, so the app can
+tell that the data may be stale. They are asked during maintenance windows
+too: for the user it is the same situation. A **write** a handler accepts is
+the app's from then on — keep it in an outbox and send it later; the layer
+will not.
+
+**A request no handler answers waits in line, without being sent.** Only the
+oldest goes out, on a countdown (3, 5, 10, 20, then every 30 s; *Try now*
+skips it; while the browser reports no network at all, nothing is tried until
+it does), and it is the check: there is no status endpoint to ask. If it gets
+through, the rest follow in the order they were made — writes rely on that —
+and the user has nothing to repeat or confirm: they did something and want it
+done, and have no way of judging which HTTP method a click turned into.
+Requests made while the line is being sent join its end. Cancel gives up on
+everything held: a caller that knows the layer gets a `HandledHttpError`, one
+that does not gets the error `fetch` would have given it.
+
+**A request that fails on its own** — blocked by a browser extension, a CSP
+rule, a proxy — fails exactly as a lost network would. When the browser says
+it is online, the layer asks `/api/ping` before believing it: if the server
+answers, the request gets its own error, and nothing is held behind it.
+Otherwise one blocked URL would hold up the whole app for good.
+
+**Every write carries an `Idempotency-Key`**, the same on each retry of that
+call. A write that failed on the way *back* may already have been carried
+out, and sending it again repeats it. For most writes that is harmless
+(setting a name twice); where it is not — a payment, an order, a message —
+the endpoint should remember the keys it has served and answer a repeat with
+the first result. The starter sends the key; deduplicating is the endpoint's
+decision, since only it knows what a duplicate costs.
+
+**State and events.** `http.online` is true when the server can be reached
+and nothing is held; `http.state` is `online`, `offline`, `reconnecting`
+(sending what was held) or `maintenance`. `http.subscribe((state, previous)
+=> …)` hears every change; the window events `app:online`, `app:offline` and
+`app:maintenance` announce settled changes only:
+
+- `app:online` fires once everything that was held when the connection
+  returned has been answered — not when the first request gets through. A
+  failure while the line is being sent goes back to `offline` with nothing
+  announced in between, so an app that syncs on `app:online` never starts
+  syncing into a connection that is not there. (Requests made *during* the
+  sending do not hold it back, or an app that polls could hold it back for
+  ever.)
+- the state changes before the event fires, so a listener reading
+  `http.online` sees the new value.
+- nothing is announced on page load: a page that opens offline starts
+  `offline`.
+
+`http.online` is not `navigator.onLine`, by design: that one says a network
+interface is up; this one says the app's server answers.
+
+**Syncing an outbox.** Held requests go out before `app:online`, because they
+are what the user is waiting for. But a held request may depend on a write a
+handler accepted earlier — "attach a file to task X", with task X still in
+the outbox. Register the sync with `http.beforeReconnect(() => sendOutbox())`:
+when hooks are registered, the server is asked first (`/api/ping`, so no held
+request goes out before them) and the hooks run, in order, before anything
+held is sent. They run at the end of a maintenance window too. A tab that is
+closed while offline loses what the layer held, which lives in memory; what
+must survive belongs in an offline handler's outbox. Sending it with the page
+closed is the job of a service worker (Background Sync, Chromium only), not
+of this layer.
 
 ### New versions
 

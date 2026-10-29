@@ -2,12 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { describeError, installHttpLayer } from "../src/react-app/lib/http/interceptor";
 import { http } from "../src/react-app/lib/http/http";
 import { HandledHttpError } from "../src/react-app/lib/http/handled-error";
-import {
-	cancelHeldRequests,
-	configureConnection,
-	connectionStore,
-	resetConnection,
-} from "../src/react-app/lib/http/connection";
+import { configureConnectivity, connectivityStore, OFFLINE_HEADER } from "../src/react-app/lib/http/connectivity";
 import { postponeUpdate, resetVersionState, updateStore } from "../src/react-app/lib/http/version";
 import { flushReports, pendingReports, reportClientError, resetReporter } from "../src/react-app/lib/http/reporter";
 import { setTranslator } from "../src/react-app/lib/i18n";
@@ -18,14 +13,17 @@ import { APP_VERSION_HEADER, CLIENT_VERSION_HEADER, type ApiErrorBody } from "..
  * The browser half of the HTTP contract (src/react-app/lib/http/). What has
  * to hold, so that call sites can stay free of error handling:
  *
- *  - only calls that opt in (a `handles` key, which `http()` adds) are managed;
- *    plain `fetch` is untouched, so code unaware of the layer keeps working;
+ *  - only calls that opt in (a `handles` key other than `null`, which `http()`
+ *    adds) have their error responses handled; plain `fetch` gets every status
+ *    as it would without the layer, so code unaware of it keeps working;
  *  - an error response is shown once, by the layer, and the call rejects with
  *    `HandledHttpError` — the caller's code after `await http()` never runs;
  *  - a status listed in `handles` is the caller's, untouched;
- *  - a lost connection holds requests behind one dialog and sends them again,
- *    in order, as soon as one gets through — writes included, with the same
- *    `Idempotency-Key` — and Cancel rejects them;
+ *  - a lost connection holds every same-origin request, aware or not, unless an
+ *    offline handler answers it; only the oldest is tried, and the rest follow
+ *    in order once it gets through — writes included, with the same
+ *    `Idempotency-Key` — and Cancel gives them up;
+ *  - `online` is announced only once everything held has been answered;
  *  - every API request says which version sent it, and every response's
  *    version is checked.
  */
@@ -43,14 +41,18 @@ const appError = (status: number, body: ApiErrorBody) => json(status, body, { [A
 /**
  * A fake network. `respond` answers API calls; `offline()` makes every call
  * fail as a dropped connection would, probes included, until `online()`.
+ * `maintenance()` answers everything with the Worker's maintenance 503.
  */
-function fakeNetwork(respond: (url: string, init?: RequestInit) => Response = () => appOk()) {
+function fakeNetwork(respond: (url: string, init?: RequestInit) => Response | Promise<Response> = () => appOk()) {
 	const calls: Call[] = [];
 	let offline = false;
+	let maintenance = false;
 	const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-		const url = String(input);
+		const url = typeof input === "object" && !(input instanceof URL) ? new URL(input.url).pathname : String(input);
 		calls.push({ url, method: init?.method ?? "GET", headers: new Headers(init?.headers) });
+		if (init?.signal?.aborted) throw new DOMException("Aborted", "AbortError");
 		if (offline) throw new TypeError("Failed to fetch");
+		if (maintenance) return json(503, { code: "maintenance" }, { "x-maintenance": "1" });
 		if (url === "/api/ping") return new Response(null, { status: 204, headers: { [APP_VERSION_HEADER]: APP_VERSION } });
 		return respond(url, init);
 	});
@@ -60,6 +62,7 @@ function fakeNetwork(respond: (url: string, init?: RequestInit) => Response = ()
 		sent: (url: string) => calls.filter((c) => c.url === url),
 		offline: () => { offline = true; },
 		online: () => { offline = false; },
+		maintenance: (on: boolean) => { maintenance = on; },
 	};
 }
 const appOk = (body: unknown = {}) => json(200, body, { [APP_VERSION_HEADER]: APP_VERSION });
@@ -67,10 +70,10 @@ const appOk = (body: unknown = {}) => json(200, body, { [APP_VERSION_HEADER]: AP
 let uninstall: (() => void) | undefined;
 const onUnauthorized = vi.fn();
 
-function install(network: ReturnType<typeof fakeNetwork>) {
+function install(network: ReturnType<typeof fakeNetwork>, options: Parameters<typeof installHttpLayer>[0] = {}) {
 	vi.stubGlobal("fetch", network.fetchImpl);
-	uninstall = installHttpLayer({ onUnauthorized, reportErrors: false, maintenance: { pollScheduleMs: [1], maxWaitMs: 5_000 } });
-	configureConnection({ scheduleMs: [5] });
+	uninstall = installHttpLayer({ onUnauthorized, reportErrors: false, maintenance: { pollScheduleMs: [1], maxWaitMs: 5_000 }, ...options });
+	configureConnectivity({ scheduleMs: [5] });
 }
 
 const rejection = (promise: Promise<unknown>) => promise.then(() => { throw new Error("expected a rejection"); }, (e: unknown) => e);
@@ -79,7 +82,6 @@ beforeEach(() => vi.spyOn(console, "error").mockImplementation(() => undefined))
 afterEach(() => {
 	uninstall?.();
 	uninstall = undefined;
-	resetConnection();
 	resetVersionState();
 	setTranslator(null);
 	vi.unstubAllGlobals();
@@ -132,20 +134,22 @@ describe("error responses", () => {
 		expect(network.sent("/api/posts/1")[0].headers.has(CLIENT_VERSION_HEADER)).toBe(false);
 	});
 
-	it("manages a call with `handles: null` like one with `handles: []`", async () => {
-		install(fakeNetwork(() => appError(403, { error: "No." })));
-
-		expect(await rejection(fetch("/api/posts/1", { handles: null }))).toBeInstanceOf(HandledHttpError);
-		expect(toasts.warning).toHaveBeenCalledTimes(1);
-	});
-
-	it("gives a `handles: \"responses\"` caller every response — Better Auth's forms show their own errors", async () => {
+	it("treats `handles: null` like no key at all, so the layer can be switched off per call", async () => {
 		install(fakeNetwork(() => json(401, { message: "Invalid email or password" })));
 
-		const res = await fetch("/api/auth/sign-in/email", { method: "POST", handles: "responses" });
+		const res = await http("/api/auth/sign-in/email", { method: "POST", handles: null });
 		expect(res.status).toBe(401);
 		expect(toasts.warning).not.toHaveBeenCalled();
 		expect(onUnauthorized).not.toHaveBeenCalled();
+	});
+
+	it("hands errors to `onError`, and with `ui: { errors: false }` shows no toast", async () => {
+		const onError = vi.fn();
+		install(fakeNetwork(() => appError(409, { error: "Already taken." })), { onError, ui: { errors: false } });
+
+		await rejection(http("/api/posts"));
+		expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: "Already taken.", status: 409, level: "warning" }));
+		expect(toasts.warning).not.toHaveBeenCalled();
 	});
 
 	it("shows a 5xx as an error, and rejects with its status", async () => {
@@ -186,17 +190,36 @@ describe("what the user is told", () => {
 });
 
 describe("a lost connection", () => {
+	const state = () => connectivityStore.get().state;
+	const offlineWith = async <T,>(network: ReturnType<typeof fakeNetwork>, ...pending: Promise<T>[]) => {
+		await vi.waitFor(() => expect(state()).toBe("offline"));
+		network.online();
+		return Promise.all(pending);
+	};
+
 	it("holds a read and sends it again by itself once the app is reachable", async () => {
 		const network = fakeNetwork(() => appOk({ posts: [] }));
 		install(network);
 		network.offline();
 
 		const pending = http("/api/posts");
-		await vi.waitFor(() => expect(connectionStore.get().open).toBe(true));
+		await vi.waitFor(() => expect(http.online).toBe(false));
 		network.online();
 
 		expect(await (await pending).json()).toEqual({ posts: [] });
-		expect(connectionStore.get().open).toBe(false);
+		expect(http.online).toBe(true);
+		expect(http.state).toBe("online");
+	});
+
+	it("holds a call that does not know the layer too, and hands it its status untouched", async () => {
+		const network = fakeNetwork(() => appError(403, { error: "No." }));
+		install(network);
+		network.offline();
+
+		const pending = fetch("/api/posts", { method: "POST", body: "{}" });
+		const [res] = await offlineWith(network, pending);
+		expect(res.status).toBe(403);
+		expect(toasts.warning).not.toHaveBeenCalled();
 	});
 
 	it("treats the edge's 502 like a lost connection, but not a 502 from the app", async () => {
@@ -205,7 +228,7 @@ describe("a lost connection", () => {
 		install(network);
 
 		const pending = http("/api/posts");
-		await vi.waitFor(() => expect(connectionStore.get().open).toBe(true));
+		await vi.waitFor(() => expect(state()).toBe("offline"));
 		edge = false;
 		expect(await (await pending).json()).toEqual({ ok: 1 });
 		expect(toasts.error).not.toHaveBeenCalled();
@@ -216,49 +239,46 @@ describe("a lost connection", () => {
 		install(network);
 		network.offline();
 
-		const pending = http("/api/posts", { method: "POST", body: "{}" });
-		await vi.waitFor(() => expect(connectionStore.get().open).toBe(true));
-		network.online();
-
-		expect(await (await pending).json()).toEqual({ saved: true });
-		expect(connectionStore.get().open).toBe(false);
+		const [res] = await offlineWith(network, http("/api/posts", { method: "POST", body: "{}" }));
+		expect(await res.json()).toEqual({ saved: true });
 		const [first, retry] = network.sent("/api/posts");
 		expect(first.headers.get("Idempotency-Key")).toBeTruthy();
 		expect(retry.headers.get("Idempotency-Key")).toBe(first.headers.get("Idempotency-Key"));
 	});
 
-	it("checks with the held requests themselves, oldest first", async () => {
+	it("sends nothing made while offline: the oldest held request is the check, the rest follow in order", async () => {
 		const network = fakeNetwork(() => appOk());
 		install(network);
 		network.offline();
 
 		const a = http("/api/a", { method: "POST", body: "1" });
+		await vi.waitFor(() => expect(state()).toBe("offline"));
 		const b = http("/api/b", { method: "DELETE" });
-		await vi.waitFor(() => expect(connectionStore.get().open).toBe(true));
-		network.online();
-		await Promise.all([a, b]);
+		const c = fetch("/api/c");
+		await vi.waitFor(() => expect(network.sent("/api/a").length).toBeGreaterThan(2));
+		expect(network.sent("/api/b")).toHaveLength(0);
+		expect(network.sent("/api/c")).toHaveLength(0);
 
-		// /api/ping is the maintenance layer asking whether a network error is
-		// its emergency redirect; it is not what decides the retry.
-		const order = network.calls.map((c) => c.url).filter((url) => url !== "/api/ping");
-		expect(order.slice(-2)).toEqual(["/api/a", "/api/b"]);
-		// While still offline only the oldest is tried: /api/b waits its turn.
-		expect(order.slice(2, -2).every((url) => url === "/api/a")).toBe(true);
+		network.online();
+		await Promise.all([a, b, c]);
+		const order = network.calls.map((call) => call.url).filter((url) => url !== "/api/ping");
+		expect(order.slice(-3)).toEqual(["/api/a", "/api/b", "/api/c"]);
+		expect(network.sent("/api/b")).toHaveLength(1);
 	});
 
-	it("rejects every held request when the user cancels", async () => {
+	it("on Cancel, rejects a call that knows the layer as handled, and gives one that does not what fetch would have", async () => {
 		const network = fakeNetwork();
 		install(network);
 		network.offline();
 
-		const a = rejection(http("/api/a"));
-		const b = rejection(http("/api/b", { method: "DELETE" }));
-		await vi.waitFor(() => expect(connectionStore.get().open).toBe(true));
-		cancelHeldRequests();
+		const aware = rejection(http("/api/a"));
+		const unaware = rejection(fetch("/api/b", { method: "DELETE" }));
+		await vi.waitFor(() => expect(connectivityStore.get().held).toBe(2));
+		http.cancelHeld();
 
-		expect(await a).toMatchObject({ status: 0, handled: true });
-		expect(await b).toMatchObject({ status: 0, handled: true });
-		expect(connectionStore.get().open).toBe(false);
+		expect(await aware).toMatchObject({ status: 0, handled: true });
+		expect(await unaware).toBeInstanceOf(TypeError);
+		expect(connectivityStore.get().held).toBe(0);
 	});
 
 	it("lets a caller that handles network failures (`handles: [0]`) see the error itself", async () => {
@@ -267,7 +287,192 @@ describe("a lost connection", () => {
 		network.offline();
 
 		expect(await rejection(http("/api/a", { handles: [0] }))).toBeInstanceOf(TypeError);
-		expect(connectionStore.get().open).toBe(false);
+		expect(connectivityStore.get().held).toBe(0);
+	});
+
+	it("leaves excluded paths and `handles: \"all\"` alone: their failures come straight back", async () => {
+		const network = fakeNetwork();
+		install(network, { exclude: ["/api/sync/"] });
+		network.offline();
+
+		expect(await rejection(fetch("/api/sync/pull"))).toBeInstanceOf(TypeError);
+		expect(await rejection(http("/api/a", { handles: "all" }))).toBeInstanceOf(TypeError);
+		expect(connectivityStore.get().held).toBe(0);
+	});
+
+	it("does not hold anything behind a request that fails on its own while the server answers", async () => {
+		// A browser extension or a proxy blocking one URL looks exactly like a lost network.
+		const network = fakeNetwork((url) => {
+			if (url === "/api/blocked") throw new TypeError("Failed to fetch");
+			return appOk();
+		});
+		install(network);
+
+		expect(await rejection(http("/api/blocked"))).toBeInstanceOf(TypeError);
+		expect(http.state).toBe("online");
+		expect((await http("/api/fine")).status).toBe(200);
+	});
+});
+
+describe("offline handlers", () => {
+	const cached = () => json(200, { posts: ["from IndexedDB"] });
+
+	it("answer from local data while offline, marked as such, in the order they were added", async () => {
+		const network = fakeNetwork();
+		install(network);
+		const seen: string[] = [];
+		http.addOfflineHandler((req) => {
+			seen.push(`first ${req.method} ${new URL(req.url).pathname}`);
+			return undefined;
+		});
+		http.addOfflineHandler(async (req) => (new URL(req.url).pathname === "/api/posts" ? cached() : undefined));
+		network.offline();
+
+		const res = await http("/api/posts");
+		expect(await res.json()).toEqual({ posts: ["from IndexedDB"] });
+		expect(res.headers.get(OFFLINE_HEADER)).toBe("1");
+		expect(seen).toEqual(["first GET /api/posts"]);
+		expect(http.state).toBe("offline");
+	});
+
+	it("are asked first while offline, and a request they answer is never sent", async () => {
+		const network = fakeNetwork();
+		install(network);
+		http.addOfflineHandler((req) => (new URL(req.url).pathname === "/api/posts" ? cached() : undefined));
+		network.offline();
+
+		const held = http("/api/other");
+		await vi.waitFor(() => expect(http.state).toBe("offline"));
+		const before = network.sent("/api/posts").length;
+		await http("/api/posts");
+		expect(network.sent("/api/posts")).toHaveLength(before);
+
+		network.online();
+		await held;
+	});
+
+	it("see the request's body, and get it again however often they are asked", async () => {
+		const network = fakeNetwork();
+		install(network);
+		const bodies: unknown[] = [];
+		http.addOfflineHandler(async (req) => {
+			bodies.push(await req.json());
+			return json(201, { queued: true });
+		});
+		network.offline();
+
+		await http("/api/posts", { method: "POST", body: JSON.stringify({ title: "Hi" }) });
+		await http("/api/posts", { method: "POST", body: JSON.stringify({ title: "Again" }) });
+		expect(bodies).toEqual([{ title: "Hi" }, { title: "Again" }]);
+	});
+
+	it("answer during maintenance too", async () => {
+		const network = fakeNetwork();
+		install(network, { maintenance: { pollScheduleMs: [60_000], maxWaitMs: 5_000 } });
+		http.addOfflineHandler(() => cached());
+		network.maintenance(true);
+
+		const res = await http("/api/posts");
+		expect(res.headers.get(OFFLINE_HEADER)).toBe("1");
+		await vi.waitFor(() => expect(http.state).toBe("maintenance"));
+	});
+});
+
+describe("announcing the connection", () => {
+	// The window, as far as these events go (the Workers typings know only their own).
+	const window = globalThis as unknown as EventTarget;
+	const announced: string[] = [];
+	const listen = (event: Event) => {
+		announced.push(event.type);
+	};
+	beforeEach(() => {
+		announced.length = 0;
+		for (const type of ["app:online", "app:offline", "app:maintenance"]) window.addEventListener(type, listen);
+	});
+	afterEach(() => {
+		for (const type of ["app:online", "app:offline", "app:maintenance"]) window.removeEventListener(type, listen);
+	});
+
+	it("announces `online` only once everything held has been answered, with `http.online` already true", async () => {
+		const network = fakeNetwork();
+		install(network);
+		let onlineWhenAnnounced: boolean | undefined;
+		window.addEventListener("app:online", () => {
+			onlineWhenAnnounced = http.online;
+		}, { once: true });
+		const states: string[] = [];
+		http.subscribe((next) => states.push(next));
+		network.offline();
+
+		const a = http("/api/a");
+		await vi.waitFor(() => expect(http.state).toBe("offline"));
+		const b = http("/api/b");
+		network.online();
+		await Promise.all([a, b]);
+
+		expect(announced).toEqual(["app:offline", "app:online"]);
+		expect(onlineWhenAnnounced).toBe(true);
+		expect(states).toEqual(["offline", "reconnecting", "online"]);
+	});
+
+	it("announces nothing when the connection drops again while the held requests are being sent", async () => {
+		const network = fakeNetwork((url) => {
+			// The first held request gets through, and the network drops right after.
+			if (url === "/api/a") network.offline();
+			return appOk();
+		});
+		install(network);
+		network.offline();
+
+		const a = http("/api/a");
+		await vi.waitFor(() => expect(http.state).toBe("offline"));
+		const b = http("/api/b");
+		network.online();
+		await a;
+		await vi.waitFor(() => expect(http.state).toBe("offline"));
+		expect(announced).toEqual(["app:offline"]);
+		expect(http.online).toBe(false);
+
+		network.online();
+		await b;
+		expect(announced).toEqual(["app:offline", "app:online"]);
+	});
+
+	it("runs beforeReconnect hooks after the server answers and before anything held is sent", async () => {
+		const network = fakeNetwork();
+		install(network);
+		const order: string[] = [];
+		http.beforeReconnect(async () => {
+			order.push(`hook (after ${network.calls.at(-1)?.url})`);
+		});
+		network.offline();
+
+		const a = http("/api/a", { method: "POST", body: "1" });
+		await vi.waitFor(() => expect(http.state).toBe("offline"));
+		network.online();
+		await a;
+		order.push(...network.calls.slice(-1).map((call) => call.url));
+		expect(order).toEqual(["hook (after /api/ping)", "/api/a"]);
+	});
+
+	it("goes offline on the browser's `offline` event, and tries at once on `online`", async () => {
+		const network = fakeNetwork();
+		install(network);
+		configureConnectivity({ scheduleMs: [60_000] });
+		vi.stubGlobal("navigator", { onLine: false });
+		window.dispatchEvent(new Event("offline"));
+		expect(http.state).toBe("offline");
+		expect(connectivityStore.get().phase).toBe("waiting-for-network");
+
+		const pending = http("/api/a");
+		await vi.waitFor(() => expect(connectivityStore.get().held).toBe(1));
+		expect(network.sent("/api/a")).toHaveLength(0);
+
+		vi.stubGlobal("navigator", { onLine: true });
+		window.dispatchEvent(new Event("online"));
+		// Well before the 60 s countdown would have run out.
+		expect((await pending).status).toBe(200);
+		expect(http.state).toBe("online");
 	});
 });
 

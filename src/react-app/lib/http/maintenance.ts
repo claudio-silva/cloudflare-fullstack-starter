@@ -46,6 +46,11 @@ export type MaintenanceOptions = {
 	maxWaitMs?: number;
 	/** Must be subject to maintenance like any other route — see MAINTENANCE_PROBE_PATH. */
 	probePath?: string;
+	/**
+	 * Runs once the app answers again, before the held requests are released
+	 * (the HTTP layer's `beforeReconnect` hooks: an outbox sent first).
+	 */
+	beforeRelease?: () => Promise<void>;
 };
 
 const DEFAULTS = {
@@ -66,6 +71,8 @@ const DEFAULTS = {
 	/** Clamp for `Retry-After`: honour a long wait, but not an unbounded one. */
 	maxRetryAfterMs: 10 * 60 * 1000,
 };
+
+type Resolved = typeof DEFAULTS & MaintenanceOptions;
 
 /**
  * `Retry-After`, in milliseconds, or null when absent or unusable.
@@ -127,7 +134,7 @@ function isMaintenance(response: Response): boolean {
  */
 async function waitForRecovery(
 	originalFetch: typeof fetch,
-	opts: Required<MaintenanceOptions>,
+	opts: Resolved,
 	firstDelayMs: number | null,
 ): Promise<boolean> {
 	const deadline = Date.now() + opts.maxWaitMs;
@@ -148,7 +155,10 @@ async function waitForRecovery(
 		nextAttemptIn = 0;
 		emit();
 		attempt += 1;
-		if ((await probe(originalFetch, opts.probePath)) === "up") return true;
+		if ((await probe(originalFetch, opts.probePath)) === "up") {
+			await opts.beforeRelease?.();
+			return true;
+		}
 	}
 	return false;
 }
@@ -290,7 +300,7 @@ let recovery: Promise<boolean> | null = null;
  */
 function awaitRecovery(
 	originalFetch: typeof fetch,
-	opts: Required<MaintenanceOptions>,
+	opts: Resolved,
 	firstDelayMs: number | null = null,
 ): Promise<boolean> {
 	recovery ??= waitForRecovery(originalFetch, opts, firstDelayMs).finally(() => {
@@ -309,7 +319,7 @@ export function installMaintenanceInterceptor(options: MaintenanceOptions = {}):
 	// this keeps the module usable (and testable) outside one.
 	if (installed || typeof globalThis.fetch !== "function") return () => undefined;
 	installed = true;
-	const opts = { ...DEFAULTS, ...options };
+	const opts: Resolved = { ...DEFAULTS, ...options };
 	const originalFetch = globalThis.fetch.bind(globalThis);
 
 	/** Mark the app as down and start the one shared wait, if not already running. */

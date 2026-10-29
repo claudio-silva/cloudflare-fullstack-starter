@@ -29,10 +29,11 @@ export type BrowserGlobals = {
 		addEventListener(type: string, listener: Listener): void;
 		removeEventListener(type: string, listener: Listener): void;
 	};
-	navigator?: { sendBeacon?(url: string, data: Blob): boolean };
+	navigator?: { onLine?: boolean; sendBeacon?(url: string, data: Blob): boolean };
 	sessionStorage?: { getItem(key: string): string | null; setItem(key: string, value: string): void };
 	addEventListener?(type: string, listener: Listener): void;
 	removeEventListener?(type: string, listener: Listener): void;
+	dispatchEvent?(event: Event): boolean;
 };
 
 export const browser = globalThis as unknown as BrowserGlobals;

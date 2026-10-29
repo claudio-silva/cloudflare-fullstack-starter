@@ -40,7 +40,7 @@ This starter removes that overhead **entirely**. Create a project from the templ
 | **Maintenance mode** | Planned or emergency, and users don't lose what they were doing |
 | **Sign-in log** | Who signed in, and who tried |
 | **Global error handling** | Every API error shown the same way, once — no error-handling code at call sites |
-| **Connection recovery** | A dropped connection holds requests behind one dialog and resumes them when it returns |
+| **Offline support** | While offline, requests are answered from local data by your handlers, or held and resumed in order when the connection returns; `online` / `offline` events and state |
 | **Auto-update** | Open tabs learn about a new release and move to it without losing work |
 | **Client error reporting** | Browser errors land in your Worker logs, with abuse protection |
 | **Localisable** | Every built-in string can be translated, with or without an i18n library |
@@ -256,12 +256,13 @@ A client/server app fails in the same few ways everywhere: the server refuses so
 
 - **One error shape.** Every error the Worker sends is `{ error, code, level, requestId }`. `error` is written for the user; the real cause goes only to the logs. Handlers say both at once with `AppError` / `fail()` (`src/worker/lib/errors.ts`), and anything else thrown — a bug — becomes a generic 500 whose cause is logged, and shown to developers outside production.
 - **No error handling at call sites.** The app calls its API through `http()` (`import { http } from "@/lib/http"`), a drop-in for `fetch`. A failed call shows its message once, as a toast, and then **rejects** with `HandledHttpError`: the code after `await http()` runs only on success, and the call site that forgets to check `res.ok` cannot carry on as if it had worked. A 401 brings up sign-in.
-- **The caller keeps what it handles itself:** `http(url, { handles: [404] })` gets the 404 as usual; `"responses"` takes every response and leaves the layer only lost connections and maintenance; `"all"` takes everything.
-- **Opt-in, so nothing else changes.** `installHttpLayer()` patches the browser's `fetch`, but manages only same-origin `/api/` calls that carry a `handles` key — which `http()` adds. A plain `fetch` is left exactly as it was, so code and libraries that know nothing about the layer keep working. Better Auth's client opts in with `"responses"`: its forms show its errors, and the layer rides out outages for it.
+- **The caller keeps what it handles itself:** `http(url, { handles: [404] })` gets the 404 as usual; `[0]` takes network failures; `"all"` takes everything.
+- **Statuses only for callers that ask.** `installHttpLayer()` patches the browser's `fetch`, but shows and rejects error responses only for `/api/` calls that carry a `handles` key — which `http()` adds. A plain `fetch` (or `handles: null`) gets every status exactly as it would without the layer, so code and libraries that know nothing about it, Better Auth's client among them, keep working. Lost connections and maintenance are another matter: holding a request through them is safe for any caller, so it is done for every same-origin request.
+- **Your own UI, if you prefer.** Each banner, the update dialog and the error toasts can be turned off (`installHttpLayer({ ui })`), to show your own from the same state and actions.
 
-### Lost connection
+### Offline and lost connection
 
-A network failure, or a gateway error from the edge, holds the request behind **one** dialog that counts down to the next attempt — however many requests failed; *Try now* (or Enter) skips the wait. Each attempt re-sends the held requests themselves, oldest first: as soon as one gets through, the rest follow and the dialog closes, with nothing for the user to repeat or confirm. Writes carry an `Idempotency-Key` that stays the same across retries, so an endpoint where a duplicate matters can recognise one. Maintenance windows are held the same way, behind a banner, and replayed when they end. → [Lost connection](docs/MECHANISMS.md#lost-connection), [Maintenance mode](docs/MECHANISMS.md#maintenance-mode)
+A network failure, or a gateway error from the edge, takes the app **offline**; so does the browser's own `offline` event, at once. While offline, every request is first offered to the app's **offline handlers** (`http.addOfflineHandler`), which can answer it from IndexedDB or localStorage; one that none answers waits in line **without being sent**, under a banner that counts down to the next attempt. Only the oldest is tried, and it is the check: as soon as it gets through, the rest follow in the order they were made, with nothing for the user to repeat or confirm. Writes carry an `Idempotency-Key` that stays the same across retries. `http.online`, `http.subscribe()` and the `app:online` / `app:offline` / `app:maintenance` window events tell the app where things stand — `app:online` only once everything held has been answered — and `http.beforeReconnect()` sends an outbox before the held requests go out. Maintenance windows are held the same way, behind their own banner, and replayed when they end. → [Lost connection](docs/MECHANISMS.md#lost-connection), [Maintenance mode](docs/MECHANISMS.md#maintenance-mode)
 
 ### Automatic update of open tabs
 

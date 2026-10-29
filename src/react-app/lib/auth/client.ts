@@ -7,14 +7,11 @@ function getBaseURL(): string {
 	return window.location.origin;
 }
 
+// Better Auth does not know the HTTP layer, and needs not: its forms show its
+// own errors, while a lost connection or a maintenance window holds its
+// requests like anyone else's (lib/http/interceptor.ts).
 export const authClient = createAuthClient({
 	baseURL: getBaseURL(),
-	fetchOptions: {
-		// Opt Better Auth's own requests in to the HTTP layer with "responses":
-		// its forms keep showing its errors, while a lost connection or a
-		// maintenance window holds the request instead of failing it.
-		customFetchImpl: (input, init) => fetch(input, { ...init, handles: "responses" }),
-	},
 });
 
 export const { signIn, signUp, signOut, useSession, updateUser, changePassword, requestPasswordReset, resetPassword, sendVerificationEmail } = authClient;

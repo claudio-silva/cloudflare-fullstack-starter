@@ -5,9 +5,8 @@ import { Toaster } from "sonner";
 import "./index.css";
 import App from "./App.tsx";
 import { ThemeProvider } from "./components/theme-provider";
-import { MaintenanceOverlay } from "./components/http/MaintenanceOverlay";
-import { ConnectionDialog } from "./components/http/ConnectionDialog";
-import { UpdateBanner, UpdateDialog } from "./components/http/UpdatePrompt";
+import { HttpBanners } from "./components/http/HttpBanners";
+import { UpdateDialog } from "./components/http/UpdatePrompt";
 import { installHttpLayer } from "./lib/http/interceptor";
 import { authClient } from "./lib/auth/client";
 
@@ -24,10 +23,8 @@ createRoot(document.getElementById("root")!).render(
 	<StrictMode>
 		<BrowserRouter>
 			<ThemeProvider defaultTheme="light" storageKey="app-theme">
-				<UpdateBanner />
+				<HttpBanners />
 				<App />
-				<MaintenanceOverlay />
-				<ConnectionDialog />
 				<UpdateDialog />
 				<Toaster position="top-center" richColors />
 			</ThemeProvider>

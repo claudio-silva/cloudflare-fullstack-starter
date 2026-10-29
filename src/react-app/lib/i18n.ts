@@ -22,16 +22,18 @@
 
 export const defaultMessages = {
 	// Maintenance (lib/http/maintenance.ts)
-	"maintenance.title": "{app} is being updated",
+	"maintenance.title": "{app} is being updated.",
 	"maintenance.body": "Please wait until the service is available again.",
 	"maintenance.countdown": "Checking again in {seconds}s…",
 	"maintenance.checking": "Checking…",
 
-	// Lost connection (lib/http/connection.ts)
-	"connection.title": "Can't reach {app}",
-	"connection.body": "Check your internet connection. What you were doing is on hold and will carry on when the connection returns.",
+	// Lost connection (lib/http/connectivity.ts)
+	"connection.title": "No connection to {app}.",
+	"connection.held": "What you were doing is on hold and will carry on when the connection returns.",
 	"connection.countdown": "Trying again in {seconds}s…",
 	"connection.checking": "Trying again…",
+	"connection.waitingForNetwork": "Waiting for the network…",
+	"connection.reconnecting": "Connection restored. Sending what was on hold…",
 	"connection.retry": "Try now",
 	"connection.cancel": "Cancel",
 	"connection.cancelled": "The operation was cancelled.",

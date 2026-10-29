@@ -24,11 +24,11 @@ export function VerifyEmail() {
 				}
 
 				// Let the browser follow the redirect to properly set the session cookie
-				// "responses": every answer is handled below; a lost connection is still ridden out.
+				// handles: null — every answer is handled below; a lost connection is still ridden out.
 				const response = await http(`/api/auth/verify-email?token=${encodeURIComponent(token)}&callbackURL=/`, {
 					method: "GET",
 					credentials: "include",
-					handles: "responses",
+					handles: null,
 				});
 
 				if (response.ok || response.redirected) {
