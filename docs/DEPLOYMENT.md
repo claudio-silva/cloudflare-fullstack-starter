@@ -139,7 +139,7 @@ It comes from the committed file, not from the tag, so every builder — this sc
 
 With `APP_VERSION_FROM=starter` (a build variable, see below) the release field is `starter.version` instead, for the build and for `deploy:production` alike. Only the starter's own repository needs it: see [The starter's own releases](#the-starters-own-releases).
 
-**A production deploy is always started by `npm run deploy:production`, and always carries a tag.** Pushing or merging into the deployment branch without one deploys nothing. The reason is simple: a deploy triggered by a bare push puts code online with no version attached to it, and then two different builds answer to the same version number.
+**A production deploy is always started by `npm run deploy:production`, and always carries a tag.** Pushing or merging into the deployment branch without one deploys nothing: a CI production deploy first checks that the commit carries the `vX.Y.Z` tag of the version it reports (`bin/lib/release-tag.ts`, looked up on `origin` when the CI clone has no tags), and fails otherwise. The reason is simple: a deploy triggered by a bare push puts code online with no version attached to it, and then two different builds answer to the same version number.
 
 ```bash
 npm run deploy:production              # patch
@@ -171,8 +171,8 @@ The starter releases itself with this same command, and its demos are deployed b
 
 - **Version field.** `APP_VERSION_FROM=starter` in `.env.production` and `.env.preview`. `deploy:production` bumps and tags `starter.version`, the builds report it, and `version` stays at the `0.0.1` new projects start from. Without it the starter would commit `version: 3.x` to `main`, and every new project would be born at that version, with the next major release a hard update for no reason.
 - **Mode.** `DEPLOY_MODE=workers-builds`, so the committed `deploy.config.ts` keeps `manual` for projects.
-- **Production demo** — Worker `cloudflare-fullstack-starter-production`, its own D1 (`D1_DATABASE_ID`), `DEMO_MODE`. Workers Builds watches `release` with automatic builds off; `deploy:production` promotes `main` to `release` and calls the deploy hook (`DEPLOY_HOOK_URL`). It shows the latest release.
-- **Preview demo** — Worker `cloudflare-fullstack-starter-preview`, its own D1, `DEMO_MODE`. Workers Builds builds every push to `main` (`DEPLOY_BRANCH=main`), so it shows the work in progress as `X.Y.Z+preview.<sha>`.
+- **Production demo** — Worker `cloudflare-fullstack-starter-production`, its own D1 (`D1_DATABASE_ID`), `DEMO_MODE`. Workers Builds builds every push to `release`, and only `deploy:production` pushes there, after the tag. It shows the latest release.
+- **Preview demo** — Worker `cloudflare-fullstack-starter-preview`, its own D1, `DEMO_MODE`. Its Workers Builds branch is `main` (`DEPLOY_BRANCH=main`), so every push shows the work in progress as `X.Y.Z+preview.<sha>`.
 - **CI gate.** `release` is a protected branch requiring the `build-and-lint` and `e2e` checks of `ci.yml`, for administrators too; `deploy:production` waits for them, as described above.
 
 A release of the starter is then: write its `UPGRADING.md` entry, and run `npm run deploy:production -- --minor` (or `--patch` / `--major`, by what an upgrade breaks).
@@ -211,13 +211,20 @@ No CI. `npm run deploy:production` does everything from your machine. The defaul
 
 GitHub or GitLab.com only; **self-hosted GitHub or GitLab is not supported** — use `external-ci` there. Per Worker: dashboard → Workers & Pages → the Worker → Settings → Builds → connect the repository.
 
-| Setting | Value |
-|---|---|
-| Build command | `npm ci && npm run build:production` — add `&& npm run lint && npx tsc -b && npm test` if you want CI to gate on tests |
-| Deploy command | `npm run deploy:ci -- --env production` |
-| Branch | the deployment branch (`release` by default) |
+| Setting | Production Worker | Preview Worker |
+|---|---|---|
+| Git branch | the deployment branch (`release` by default) | the preview branch (`preview` by default) |
+| Build command | `npm run build:production` | `npm run build:preview` |
+| Deploy command | `npm run deploy:ci -- --env production` | `npm run deploy:ci -- --env preview` |
+| Enable Preview Builds | **off** | **off** |
+| Root directory | empty (the repository root) | empty |
+| API token | *Create new token* | the same token |
 
-Workers Builds triggers on **branch pushes, never on tags**, so leave automatic branch builds disabled and put the **deploy hook** URL in `.env.production` as `DEPLOY_HOOK_URL`. `deploy:production` posts to it after pushing the tag, which keeps "no deploy without a tag" true.
+Workers Builds installs the dependencies itself, from the lockfile, and takes Node from `.nvmrc`. Add `&& npm run lint && npx tsc -b && npm test` to the build command if you want it to gate on tests too.
+
+*Enable Preview Builds* would build every push to any other branch as a Cloudflare "Preview" of the same Worker, with settings of its own; the preview environment here is a Worker of its own (`[env.preview]`), so leave it off on both. The preview Worker's *production* branch is your preview branch.
+
+Workers Builds builds **every push to its branch** (it has no switch for that) and never a tag. `deploy:production` therefore pushes the tag first and promotes the branch after; the deploy then refuses any commit without its release tag, so a push to the branch made by hand fails rather than deploys.
 
 The build command is an ordinary shell command: if it exits non-zero the build fails and the deploy step never runs. So CI *can* gate on tests. What it cannot do is run service containers or browsers, so a Postgres/MySQL matrix and Playwright stay in GitHub Actions.
 

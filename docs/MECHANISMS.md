@@ -615,8 +615,11 @@ another `workers-builds`, the same command would do two different things.
 All three run the same `bin/deploy-pipeline.ts`, so a CI deploy and a laptop
 deploy cannot drift apart. `--local` forces the local path in any mode.
 
-Workers Builds triggers on branch pushes and **never on tags**, so in that mode
-a deploy hook is what keeps "no deploy without a tag" true.
+Workers Builds triggers on every branch push and **never on tags**, so in that
+mode the deploy itself keeps "no deploy without a tag" true: in CI, the
+production pipeline refuses a commit that does not carry the `vX.Y.Z` tag of
+its version, and `deploy:production` pushes the tag before it promotes the
+branch.
 
 **The mode is also the off switch for CI.** Setting it to `manual` turns CI
 deploys off without touching the CI configuration: deploy jobs start with
@@ -701,15 +704,16 @@ sign-in and profile forms then show it like any other error.
 
 **Why a secret and not a variant of the template:** everything that makes a
 deployment a demo — `DEMO_*`, the database id (`D1_DATABASE_ID`), the
-deploy hook — lives on that deployment. The repository stays the template, a
+Workers Builds connection — lives on that deployment. The repository stays the template, a
 project created from it is not a demo, and there is nothing to strip out.
 
 The starter's own demos are two such deployments, built by Cloudflare Workers
 Builds with the build variables `D1_DATABASE_ID`, `APP_VERSION_FROM=starter`
 (report — and release — the template's version rather than the app's `0.0.1`)
 and `DEPLOY_MODE=workers-builds`. The production demo shows the latest
-release: the starter's own `npm run deploy:production` promotes `release` and
-calls its deploy hook. The preview demo builds every push to `main`. This is
+release: the starter's own `npm run deploy:production` tags it and promotes
+`release`, which Workers Builds builds. The preview demo builds every push to
+`main`. This is
 the starter using its own pipeline; a project made from the template inherits
 none of it. See `docs/DEPLOYMENT.md`, *The starter's own releases*.
 

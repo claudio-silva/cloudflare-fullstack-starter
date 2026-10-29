@@ -48,6 +48,24 @@ npm run test:e2e       # from 2.0.0 on, optional
 
 ---
 
+## 3.4.1 — 2026-10-29
+
+Workers Builds without a deploy hook: the guarantee that only a tagged release reaches production now lives in the deploy itself.
+
+### Breaking changes
+
+1. **A CI production deploy refuses a commit without its release tag.** `bin/deploy-pipeline.ts`, in CI with `--env production`, checks that `HEAD` carries `vX.Y.Z` for the version it reports (new `bin/lib/release-tag.ts`; the tag is looked up on `origin` when the CI clone has none), and fails otherwise. When it cannot reach `origin` it says so and deploys. 3.3.0 promised that a push to the deployment branch without a tag deploys nothing, but nothing enforced it.
+2. **No more deploy hook.** Workers Builds builds every push to its branch and has no switch to stop it, so the documented setup — automatic builds off, a deploy hook called by `deploy:production` — could not be built. `deploy:production` no longer reads `DEPLOY_HOOK_URL`: in `workers-builds` mode, pushing the tag and then promoting the branch is the trigger.
+3. **Workers Builds settings in `docs/DEPLOYMENT.md`:** build command `npm run build:production` (Workers Builds installs dependencies itself; `npm ci &&` installed them twice), *Enable Preview Builds* off, and the settings of the preview Worker.
+
+### Required actions
+
+- Take `bin/lib/release-tag.ts` and the change to `test/scripts/release.test.ts`; merge `bin/deploy-pipeline.ts`, `bin/deploy-production.ts` and `bin/sync-secrets.ts` (comment only).
+- In `workers-builds` mode: delete `DEPLOY_HOOK_URL` from `.env.production` and the deploy hook in the dashboard (it would build a second time); set the build commands and *Enable Preview Builds* as `docs/DEPLOYMENT.md` shows. In other modes, nothing to do.
+- Verify: `npm test`; in a CI mode, `npm run deploy:production -- --dry-run`.
+
+---
+
 ## 3.4.0 — 2026-10-29
 
 Lighter dependencies (React lint rules from `eslint-plugin-react-x`, the shadcn/ui components as the CLI writes them), and release tooling the starter now uses on itself: a CI gate in `deploy:production`, the `APP_VERSION_FROM` release field, and the preview version suffix.

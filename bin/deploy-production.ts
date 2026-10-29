@@ -4,7 +4,8 @@
  *
  * Whatever `deployConfig.mode` says, **the release is always started by this
  * command**, and always carries a version tag. A merge into the deployment
- * branch with no tag deploys nothing. That is deliberate: an automated deploy
+ * branch with no tag deploys nothing: the CI deploy refuses a commit without
+ * its tag (bin/lib/release-tag.ts). That is deliberate: an automated deploy
  * triggered by a bare push puts code online with no version attached to it,
  * and two different builds then answer to the same version number.
  *
@@ -287,13 +288,10 @@ async function main(): Promise<void> {
 	if (mode !== "manual") {
 		// Promote by fast-forward: the deployment branch only ever holds commits
 		// that already passed through main.
+		// The push is the trigger: Workers Builds builds every push to its
+		// branch (it has no switch for that), and the pipeline refuses a commit
+		// without its release tag, which was pushed above.
 		run("git", ["push", "origin", `main:${cfg.branch}`]);
-		const hookUrl = parseEnvFile(resolve(process.cwd(), `.env.${ENV}`)).DEPLOY_HOOK_URL ?? process.env.DEPLOY_HOOK_URL;
-		if (mode === "workers-builds" && hookUrl) {
-			console.log("Triggering the Workers Builds deploy hook …");
-			const res = await fetch(hookUrl, { method: "POST" });
-			if (!res.ok) die(`deploy hook returned HTTP ${res.status}`);
-		}
 		await waitForVersion(version);
 	}
 

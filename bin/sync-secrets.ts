@@ -30,7 +30,7 @@ const NON_SECRET_KEYS = new Set([
 	"D1_DATABASE_ID",
 	"APP_VERSION_FROM",
 ]);
-/** Deploy settings (bin/lib/deploy-config.ts), including DEPLOY_HOOK_URL: tooling, not the Worker's. */
+/** Deploy settings (bin/lib/deploy-config.ts): tooling, not the Worker's. */
 const NON_SECRET_PREFIXES = ["DEPLOY_"];
 // Cloudflare aggressively rate-limits `wrangler secret put`. A short pause
 // between successive puts noticeably reduces 429s on bursts of >5 secrets.

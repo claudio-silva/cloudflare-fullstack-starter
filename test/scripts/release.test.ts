@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { readVersion, resolveBuildInfo, versionField } from "../../bin/lib/build-info";
 import { githubRepo, summarizeChecks, type CheckRun } from "../../bin/lib/ci-checks";
+import { checkReleaseTag, parseLsRemoteTag } from "../../bin/lib/release-tag";
 import { nextVersion } from "../../bin/lib/release-version";
 
 // A project created from the template: its own version, the starter's beside it.
@@ -122,5 +123,30 @@ describe("CI checks", () => {
 		expect(githubRepo("ssh://git@github.com/o/r.git")).toBe("o/r");
 		expect(githubRepo("git@gitlab.com:o/r.git")).toBeNull();
 		expect(githubRepo("https://github.example.com/o/r.git")).toBeNull();
+	});
+});
+
+describe("release tag of a CI production deploy", () => {
+	const head = "b626e5f6689b9b0257cb84fdc6d7944ebf9f5232";
+
+	it("reads the commit of an annotated or a lightweight tag from ls-remote", () => {
+		const annotated = `9645509 refs/tags/v3.4.0\n${head}\trefs/tags/v3.4.0^{}\nabc1234\trefs/tags/v3.4.0-rc\n`;
+		expect(parseLsRemoteTag(annotated, "v3.4.0")).toBe(head);
+		expect(parseLsRemoteTag(`${head}\trefs/tags/v3.4.0\n`, "v3.4.0")).toBe(head);
+		expect(parseLsRemoteTag("abc1234\trefs/tags/v3.4.0-rc\n", "v3.4.0")).toBeNull();
+		expect(parseLsRemoteTag("", "v3.4.0")).toBeNull();
+	});
+
+	it("deploys only the commit its version's tag points at", () => {
+		expect(checkReleaseTag("3.4.0", head, () => head)).toEqual({ ok: true });
+		expect(checkReleaseTag("3.4.0", head, () => null)).toEqual({
+			ok: false,
+			reason: "b626e5f reports 3.4.0 but there is no tag v3.4.0",
+		});
+		expect(checkReleaseTag("3.4.0", head, () => "29fc6d5a89ef6d93250e548f261f2f7555febd96")).toMatchObject({ ok: false });
+	});
+
+	it("lets the deploy through, with a note, when the tag cannot be looked up", () => {
+		expect(checkReleaseTag("3.4.0", head, () => undefined)).toMatchObject({ ok: true, note: expect.stringContaining("not checked") });
 	});
 });

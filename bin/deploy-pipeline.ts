@@ -38,6 +38,7 @@ import { execFileSync } from "node:child_process";
 import { connectToDatabase } from "../src/cli/utils/db";
 import { loadDeployConfig, type DeployEnv } from "./lib/deploy-config";
 import { resolveBuildInfo } from "./lib/build-info";
+import { checkReleaseTag } from "./lib/release-tag";
 import type { MigrationStatus } from "../src/shared/migration-types";
 
 type Stage = "build" | "migrate-expand" | "migrate-breaking" | "deploy" | "migrate-contract";
@@ -105,6 +106,19 @@ async function main(): Promise<void> {
 	}
 	const skipBuild = args.includes("--skip-build");
 	const dryRun = args.includes("--dry-run");
+
+	// A production deploy is a release: CI deploys only a commit carrying the
+	// tag of its version, which only `deploy:production` creates. A push to the
+	// deployment branch made any other way fails here, before touching anything.
+	if (isCi() && env === "production") {
+		const { version } = resolveBuildInfo(undefined, env);
+		const head = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf-8" }).trim();
+		const check = checkReleaseTag(version, head);
+		if (!check.ok) {
+			throw new Error(`Not a release: ${check.reason}. Production is deployed with npm run deploy:production.`);
+		}
+		console.log(check.note ? `Release tag: ${check.note}` : `Release tag: v${version} ✓`);
+	}
 
 	const client = await connectToDatabase(env);
 	const pending: MigrationStatus[] = (await client.migrations()).filter((m) => !m.applied);
