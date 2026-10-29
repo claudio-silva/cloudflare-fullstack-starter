@@ -175,6 +175,7 @@ export function UserList() {
 							<Button
 								variant="ghost"
 								size="sm"
+								className="hover:bg-foreground/10"
 								disabled={selected.size === 0 || deleting}
 								onClick={() => setToDelete([...selected])}
 							>
@@ -227,7 +228,11 @@ export function UserList() {
 											Role
 										</SortHeader>
 									</TableHead>
-									<TableHead className={STATUS_COL}>Status</TableHead>
+									<TableHead className={STATUS_COL}>
+										<SortHeader field="status" {...sortProps}>
+											Status
+										</SortHeader>
+									</TableHead>
 									<TableHead className={CREATED_COL}>
 										<SortHeader field="createdAt" {...sortProps}>
 											Created

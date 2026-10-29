@@ -100,6 +100,12 @@ describe("admin API", () => {
 		// Disabled takes precedence over the session.
 		await call(`/users/${target.id}`, { method: "PATCH", body: { emailVerified: false } });
 		expect((await find()).status).toBe("disabled");
+		// Sorted by status, a disabled user comes after the active ones ascending, and first descending.
+		const byStatus = async (dir: string) =>
+			((await (await call(`/users?sort=status&dir=${dir}&pageSize=100`)).json()) as { users: Row[] }).users.map((u) => u.status);
+		const asc = await byStatus("asc");
+		expect(asc.indexOf("active")).toBeLessThan(asc.indexOf("disabled"));
+		expect((await byStatus("desc"))[0]).toBe("disabled");
 		await call(`/users/${target.id}`, { method: "PATCH", body: { emailVerified: true } });
 
 		// Sign-in with a wrong password is a failure; signing out is recorded.

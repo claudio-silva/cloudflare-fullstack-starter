@@ -38,7 +38,7 @@ export function AdminSidebar() {
 					</SidebarMenu>
 				</SidebarGroup>
 			</SidebarContent>
-			<SidebarFooter className="h-(--admin-footer-h) justify-center border-t border-sidebar-border px-2 py-2">
+			<SidebarFooter className="h-(--admin-footer-h) justify-center px-2 py-2">
 				<SidebarMenu>
 					<SidebarMenuItem>
 						<SidebarMenuButton asChild tooltip="Back to the app">

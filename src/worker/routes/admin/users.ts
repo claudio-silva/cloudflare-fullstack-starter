@@ -93,6 +93,10 @@ async function assertEmailFree(c: AppContext, email: string, exceptId?: string) 
 	}
 }
 
+const USER_COLUMNS = ["id", "name", "email", "role", "emailVerified", "createdAt", "updatedAt"] as const;
+/** Ascending: most present first. */
+const STATUS_RANK: Record<AdminUser["status"], number> = { active: 0, idle: 1, offline: 2, disabled: 3 };
+
 /** `GET /?q=&page=1&pageSize=20&sort=createdAt&dir=desc` */
 adminUsers.get("/", async (c) => {
 	const db = createDb(c.env);
@@ -110,9 +114,18 @@ adminUsers.get("/", async (c) => {
 		);
 	}
 
+	// The status comes from the sessions, not from a column: sort by it after
+	// computing it, for everyone who matches, then cut the page.
+	if (sort === "status") {
+		const all = await present(c, await filtered.select(USER_COLUMNS).orderBy("createdAt", "desc").orderBy("id").execute());
+		const sign = dir === "asc" ? 1 : -1;
+		all.sort((a, b) => sign * (STATUS_RANK[a.status] - STATUS_RANK[b.status]) || (a.idleSeconds ?? 0) - (b.idleSeconds ?? 0));
+		return c.json<AdminUserList>({ users: all.slice((page - 1) * pageSize, page * pageSize), total: all.length, page, pageSize });
+	}
+
 	const [rows, count] = await Promise.all([
 		filtered
-			.select(["id", "name", "email", "role", "emailVerified", "createdAt", "updatedAt"])
+			.select(USER_COLUMNS)
 			.orderBy(sort, dir)
 			.orderBy("id")
 			.limit(pageSize)

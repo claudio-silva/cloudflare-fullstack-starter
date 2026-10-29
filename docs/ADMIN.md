@@ -186,6 +186,8 @@ sessions (`userStatus()` in `src/shared/admin-users.ts`):
 | Disabled (red dot) | not `emailVerified`; wins over the other two |
 | — (no pill) | no live session |
 
+The column sorts too (active, idle, signed out, disabled). The status comes from the sessions, so that sort is done in the Worker over everyone who matches the search, then paged.
+
 "Last seen" is the latest `sessions.updatedAt` of the user's unexpired sessions.
 Better Auth touches it at most once per `session.updateAge`, which the starter
 sets to 60 seconds (`middleware/auth.ts`), so idle time is accurate to about a

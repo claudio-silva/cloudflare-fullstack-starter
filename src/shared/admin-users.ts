@@ -76,7 +76,7 @@ export type ActivityEvent = {
 
 export type AdminUserActivity = { events: ActivityEvent[]; total: number; page: number; pageSize: number };
 
-export const USER_SORT_FIELDS = ["name", "email", "role", "createdAt"] as const;
+export const USER_SORT_FIELDS = ["name", "email", "role", "status", "createdAt"] as const;
 export type UserSortField = (typeof USER_SORT_FIELDS)[number];
 
 export type AdminUserList = {
