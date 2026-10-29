@@ -38,7 +38,7 @@ export function AdminSidebar() {
 					</SidebarMenu>
 				</SidebarGroup>
 			</SidebarContent>
-			<SidebarFooter className="bg-(--admin-sidebar-footer)">
+			<SidebarFooter className="bg-(--admin-sidebar-footer) py-3">
 				<SidebarMenu>
 					<SidebarMenuItem>
 						<SidebarMenuButton asChild tooltip="Back to the app">
@@ -63,7 +63,7 @@ function TopLevelItem({ item, onNavigate }: { item: AdminNavItem; onNavigate: ()
 	if (!item.children) {
 		return (
 			<SidebarMenuItem>
-				<SidebarMenuButton asChild tooltip={item.title} isActive={isUnder(pathname, item.path!)} className="font-bold data-[active=true]:font-bold">
+				<SidebarMenuButton asChild tooltip={item.title} isActive={isUnder(pathname, item.path!)} className="font-bold data-[active=true]:bg-(--admin-sidebar-active) data-[active=true]:font-bold">
 					<Link to={item.path!} onClick={onNavigate}>
 						{Icon && <Icon />}
 						<span>{item.title}</span>
@@ -80,8 +80,7 @@ function TopLevelItem({ item, onNavigate }: { item: AdminNavItem; onNavigate: ()
 					{/* Collapsed to icons, a group has nowhere to open: expand the sidebar instead. */}
 					<SidebarMenuButton
 						tooltip={item.title}
-						isActive={isActive(item, pathname)}
-						className="font-bold data-[active=true]:font-bold"
+						className="font-bold"
 						onClick={() => state === "collapsed" && setOpen(true)}
 					>
 						{Icon && <Icon />}
@@ -101,11 +100,12 @@ function TopLevelItem({ item, onNavigate }: { item: AdminNavItem; onNavigate: ()
 function SubItems({ items, onNavigate }: { items: AdminNavItem[]; onNavigate: () => void }) {
 	const { pathname } = useLocation();
 	return (
-		<SidebarMenuSub>
+		// Only the left edge moves with the level: the right end lines up with level 1.
+		<SidebarMenuSub className="mr-0 pr-0">
 			{items.map((item) => (
 				<SidebarMenuSubItem key={item.title}>
 					{item.path ? (
-						<SidebarMenuSubButton asChild isActive={isUnder(pathname, item.path)}>
+						<SidebarMenuSubButton asChild isActive={isUnder(pathname, item.path)} className="data-[active=true]:bg-(--admin-sidebar-active) data-[active=true]:font-bold">
 							<Link to={item.path} onClick={onNavigate}>
 								{item.icon && <item.icon />}
 								<span>{item.title}</span>

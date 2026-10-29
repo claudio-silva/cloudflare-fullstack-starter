@@ -71,7 +71,6 @@ export function UserForm() {
 	const isMe = !isNew && id === myId;
 
 	const [user, setUser] = useState<AdminUserDetail | null | "missing">(null);
-	const [reloads, setReloads] = useState(0);
 	const [deleting, setDeleting] = useState(false);
 	const schema = useMemo(() => formSchema(isNew), [isNew]);
 	const form = useForm<FormValues, unknown, z.output<typeof schema>>({ resolver: zodResolver(schema), defaultValues: EMPTY });
@@ -92,7 +91,7 @@ export function UserForm() {
 		return () => {
 			current = false;
 		};
-	}, [id, reloads, form]);
+	}, [id, form]);
 
 	const onSubmit = async (values: z.output<typeof schema>) => {
 		const { password, ...fields } = values;
@@ -111,14 +110,8 @@ export function UserForm() {
 				else toast.error(error.error);
 				return;
 			}
-			const saved = (await res.json()) as AdminUser;
-			if (isNew) {
-				toast.success("User created.");
-				navigate(`/admin/users/${saved.id}`, { replace: true });
-			} else {
-				toast.success(password ? "User saved. They have been signed out everywhere." : "User saved.");
-				setReloads((n) => n + 1);
-			}
+			toast.success(isNew ? "User created." : password ? "User saved. They have been signed out everywhere." : "User saved.");
+			navigate("/admin/users");
 		} catch (error) {
 			if (!isHandledHttpError(error)) toast.error("The user could not be saved.");
 		}

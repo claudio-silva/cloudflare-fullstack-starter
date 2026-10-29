@@ -105,8 +105,8 @@ so the rest of the app keeps the starter's theme. In light mode:
 
 | Part | Colour |
 |---|---|
-| Sidebar, white text and icons | `#555` |
-| Sidebar footer, hover and the active item | `#666` |
+| Sidebar, white text and icons | `#333` |
+| Sidebar footer, and the current page's item (bold) | `#444` |
 | Page background, outside the cards | `#f8f8f8` |
 | Page footer | `#f4f4f4` |
 | A list's search bar (the input stays white) | `#f4f4f4` |
@@ -157,6 +157,10 @@ The form and the API validate with the same schemas (`src/shared/admin-users.ts`
 It shows the [HTTP layer](MECHANISMS.md#the-http-layer) in use: failures are
 shown by the layer, except the 409 for an email already in use, which the form
 takes (`handles: [409]`) and shows next to the field.
+
+The list has a row-number column, and a **Select** toggle in its toolbar that
+adds a checkbox column (with select-all in the heading) and enables **Delete**
+for the selected rows. Saving the form returns to the list.
 
 Rules the API enforces:
 

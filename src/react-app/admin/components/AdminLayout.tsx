@@ -25,8 +25,7 @@ export function AdminLayout() {
 		<div className="flex min-h-full flex-col bg-(--admin-bg)">
 			<div className="flex flex-1 flex-col">{allowed ? <Outlet /> : <Forbidden inArea />}</div>
 			<footer className="border-t bg-(--admin-footer) text-xs text-muted-foreground">
-				{/* Lined up with the pages (AdminPage). */}
-				<div className="mx-auto flex w-full max-w-6xl flex-wrap justify-between gap-2 px-4 py-4 md:px-8">
+				<div className="flex w-full flex-wrap justify-between gap-2 px-4 py-1 md:px-8">
 					<span>
 						© {YEAR} {config.appName}
 					</span>

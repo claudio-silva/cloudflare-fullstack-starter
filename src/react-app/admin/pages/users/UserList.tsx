@@ -1,7 +1,21 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowDown, ArrowUp, ArrowUpDown, Plus, Search, Users } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, ListChecks, Plus, Search, Trash2, Users, X } from "lucide-react";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+	AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Toggle } from "@/components/ui/toggle";
+import { Spinner } from "@/components/ui/spinner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
@@ -24,6 +38,8 @@ import { formatDate } from "./format";
 import { RoleBadge, StatusBadge, UserAvatar } from "./user-ui";
 
 const PAGE_SIZE = 20;
+/** The row-number column: 40px wide, whatever the content. */
+const ORDINAL = "w-[40px] min-w-[40px] max-w-[40px] px-0 text-center";
 
 /**
  * The listing half of the CRUD example. Search, sort and page live in the URL,
@@ -40,6 +56,10 @@ export function UserList() {
 	const [search, setSearch] = useState(q);
 	const searchTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 	const [data, setData] = useState<AdminUserList | null>(null);
+	const [reloads, setReloads] = useState(0);
+	const [selecting, setSelecting] = useState(false);
+	const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set());
+	const [deleting, setDeleting] = useState(false);
 
 	const update = (changes: Record<string, string | null>) =>
 		setParams(
@@ -67,18 +87,54 @@ export function UserList() {
 		// A failed request is shown by the HTTP layer; the list stays as it was.
 		http(`/api/admin/users?${query}`)
 			.then((res) => res.json() as Promise<AdminUserList>)
-			.then((list) => current && setData(list))
+			.then((list) => {
+				if (!current) return;
+				setData(list);
+				setSelected(new Set());
+			})
 			.catch((error: unknown) => {
 				if (!isHandledHttpError(error)) toast.error("The list could not be loaded.");
 			});
 		return () => {
 			current = false;
 		};
-	}, [q, page, sort, dir]);
+	}, [q, page, sort, dir, reloads]);
 
 	const pages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
 	const toggleSort = (field: UserSortField) =>
 		update({ sort: field, dir: sort === field && dir === "asc" ? "desc" : "asc", page: null });
+
+	const rows = data?.users ?? [];
+	const allSelected = rows.length > 0 && rows.every((u) => selected.has(u.id));
+	const toggleRow = (id: string) =>
+		setSelected((prev) => {
+			const next = new Set(prev);
+			if (!next.delete(id)) next.add(id);
+			return next;
+		});
+	const toggleAll = () => setSelected(allSelected ? new Set() : new Set(rows.map((u) => u.id)));
+	const toggleSelecting = (on: boolean) => {
+		setSelecting(on);
+		setSelected(new Set());
+	};
+
+	const deleteSelected = async () => {
+		setDeleting(true);
+		let done = 0;
+		try {
+			// One at a time: the server's rules (yourself, the last admin) apply to each.
+			for (const id of selected) {
+				await http(`/api/admin/users/${id}`, { method: "DELETE" });
+				done++;
+			}
+			toast.success(done === 1 ? "User deleted." : `${done} users deleted.`);
+		} catch (error) {
+			if (!isHandledHttpError(error)) toast.error("The users could not be deleted.");
+		} finally {
+			setDeleting(false);
+			setReloads((n) => n + 1);
+		}
+	};
 
 	const sortProps = { sort, dir, onSort: toggleSort } as const;
 
@@ -103,11 +159,43 @@ export function UserList() {
 						</InputGroupAddon>
 						<InputGroupInput placeholder="Search by name or email" value={search} onChange={(e) => onSearch(e.target.value)} />
 					</InputGroup>
-					{data && (
-						<span className="text-sm text-muted-foreground">
-							{data.total} {data.total === 1 ? "user" : "users"}
-						</span>
-					)}
+					<div className="flex items-center gap-2">
+						{data && (
+							<span className="mr-2 text-sm text-muted-foreground">
+								{selecting && selected.size > 0 ? `${selected.size} selected` : `${data.total} ${data.total === 1 ? "user" : "users"}`}
+							</span>
+						)}
+						<Toggle variant="outline" size="sm" pressed={selecting} onPressedChange={toggleSelecting} aria-label="Select users" className="bg-background">
+							<ListChecks />
+							Select
+						</Toggle>
+						<AlertDialog>
+							<AlertDialogTrigger asChild>
+								<Button variant="destructive" size="sm" disabled={!selecting || selected.size === 0 || deleting}>
+									{deleting ? <Spinner /> : <Trash2 />}
+									Delete
+								</Button>
+							</AlertDialogTrigger>
+							<AlertDialogContent>
+								<AlertDialogHeader>
+									<AlertDialogTitle>Delete {selected.size === 1 ? "this user" : `${selected.size} users`}?</AlertDialogTitle>
+									<AlertDialogDescription>
+										Their accounts and everything attached to them are removed, and they are signed out. This cannot be undone.
+									</AlertDialogDescription>
+								</AlertDialogHeader>
+								<AlertDialogFooter>
+									<AlertDialogCancel className={ACTION_BUTTON}>
+										<X />
+										Cancel
+									</AlertDialogCancel>
+									<AlertDialogAction variant="destructive" onClick={deleteSelected} className={ACTION_BUTTON}>
+										<Trash2 />
+										Delete
+									</AlertDialogAction>
+								</AlertDialogFooter>
+							</AlertDialogContent>
+						</AlertDialog>
+					</div>
 				</div>
 				<CardContent className="px-0">
 					{data && data.users.length === 0 ? (
@@ -124,7 +212,18 @@ export function UserList() {
 						<Table>
 							<TableHeader className="bg-(--admin-table-head)">
 								<TableRow>
-									<TableHead className="pl-4">
+									<TableHead className={`${ORDINAL} font-bold`}>#</TableHead>
+									{selecting && (
+										<TableHead className="w-10">
+											<Checkbox
+												checked={allSelected ? true : selected.size > 0 ? "indeterminate" : false}
+												onCheckedChange={toggleAll}
+												disabled={rows.length === 0}
+												aria-label="Select all users"
+											/>
+										</TableHead>
+									)}
+									<TableHead>
 										<SortHeader field="name" {...sortProps}>
 											User
 										</SortHeader>
@@ -144,13 +243,24 @@ export function UserList() {
 							</TableHeader>
 							<TableBody>
 								{data
-									? data.users.map((user) => (
+									? data.users.map((user, i) => (
 											<TableRow
 												key={user.id}
 												className="cursor-pointer"
-												onClick={() => navigate(`/admin/users/${user.id}`)}
+												data-state={selected.has(user.id) ? "selected" : undefined}
+												onClick={() => (selecting ? toggleRow(user.id) : navigate(`/admin/users/${user.id}`))}
 											>
-												<TableCell className="pl-4">
+												<TableCell className={`${ORDINAL} text-muted-foreground`}>{(data.page - 1) * data.pageSize + i + 1}</TableCell>
+												{selecting && (
+													<TableCell className="w-10" onClick={(e) => e.stopPropagation()}>
+														<Checkbox
+															checked={selected.has(user.id)}
+															onCheckedChange={() => toggleRow(user.id)}
+															aria-label={`Select ${user.name || user.email}`}
+														/>
+													</TableCell>
+												)}
+												<TableCell>
 													<div className="flex items-center gap-3">
 														<UserAvatar name={user.name} email={user.email} />
 														<div className="min-w-0">
@@ -177,7 +287,15 @@ export function UserList() {
 										))
 									: Array.from({ length: 5 }, (_, i) => (
 											<TableRow key={i}>
-												<TableCell className="pl-4">
+												<TableCell className={ORDINAL}>
+													<Skeleton className="mx-auto h-4 w-4" />
+												</TableCell>
+												{selecting && (
+													<TableCell className="w-10">
+														<Skeleton className="size-4" />
+													</TableCell>
+												)}
+												<TableCell>
 													<div className="flex items-center gap-3">
 														<Skeleton className="size-8 rounded-full" />
 														<Skeleton className="h-4 w-40" />

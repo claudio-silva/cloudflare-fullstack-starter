@@ -4,16 +4,17 @@
  * which only the admin sidebar uses.
  */
 :root {
-	--sidebar-background: 0 0% 33.3%; /* #555 */
+	--sidebar-background: 0 0% 20%; /* #333 */
 	--sidebar-foreground: 0 0% 100%;
 	--sidebar-primary: 0 0% 100%;
 	--sidebar-primary-foreground: 0 0% 20%;
-	--sidebar-accent: 0 0% 40%; /* #666: hover and current page */
+	--sidebar-accent: 0 0% 24%; /* #3d3d3d: hover */
 	--sidebar-accent-foreground: 0 0% 100%;
-	--sidebar-border: 0 0% 40%;
+	--sidebar-border: 0 0% 27%;
 	--sidebar-ring: 0 0% 80%;
 
-	--admin-sidebar-footer: #666;
+	--admin-sidebar-footer: #444;
+	--admin-sidebar-active: #444; /* the current page */
 	--admin-bg: #f8f8f8; /* around the cards */
 	--admin-footer: #f4f4f4;
 	--admin-toolbar: #f4f4f4; /* a list's search bar */
@@ -32,6 +33,7 @@
 	--sidebar-ring: 0 0% 60%;
 
 	--admin-sidebar-footer: #262626;
+	--admin-sidebar-active: #262626;
 	--admin-bg: #111;
 	--admin-footer: #161616;
 	--admin-toolbar: #161616;
