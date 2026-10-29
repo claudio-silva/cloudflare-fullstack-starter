@@ -280,7 +280,7 @@ export function UserList() {
 												<TableCell className={MENU_COL} onClick={(e) => e.stopPropagation()}>
 													<DropdownMenu>
 														<DropdownMenuTrigger asChild>
-															<Button variant="ghost" size="icon" className="size-8" aria-label={`Actions for ${user.name || user.email}`}>
+															<Button variant="ghost" size="icon" className="size-8 text-muted-foreground/60 hover:text-muted-foreground" aria-label={`Actions for ${user.name || user.email}`}>
 																<EllipsisVertical />
 															</Button>
 														</DropdownMenuTrigger>
