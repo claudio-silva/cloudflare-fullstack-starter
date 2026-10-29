@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { http, isHandledHttpError } from "@/lib/http";
-import type { ActivityEvent, AdminUserActivity } from "../../../../shared/admin-users";
+import { describeBrowser, type ActivityEvent, type AdminUserActivity } from "../../../../shared/admin-users";
 import { PageBar } from "../../components/PageBar";
 import { ORDINAL } from "../../styles";
 import { formatDateTime } from "./format";
@@ -111,7 +111,7 @@ function EventRow({ event, ordinal }: { event: ActivityEvent; ordinal: number })
 			<TableCell className="truncate">{event.ip ?? "—"}</TableCell>
 			<TableCell>{event.country ?? "—"}</TableCell>
 			<TableCell className="truncate text-muted-foreground" title={event.userAgent ?? undefined}>
-				{event.userAgent ?? "—"}
+				{describeBrowser(event.userAgent)}
 			</TableCell>
 		</TableRow>
 	);

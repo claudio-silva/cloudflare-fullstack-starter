@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { app } from "../src/worker/index";
+import { describeBrowser } from "../src/shared/admin-users";
 
 // The "test" environment stubs the session with a fixed user; the admin area
 // is about roles, so these run with real sign-ins ("local" keeps everything else as in dev).
@@ -123,8 +124,29 @@ describe("admin API", () => {
 		expect(kinds).toContain("sign-out");
 		expect(kinds).toContain("failed");
 
+		const row = await find();
+		expect((row as Row & { lastSignInAt: string | null }).lastSignInAt).not.toBeNull();
 		const detail = (await (await call(`/users/${target.id}`)).json()) as { lastSignOutAt: string | null };
 		expect(detail.lastSignOutAt).not.toBeNull();
+	});
+});
+
+describe("describeBrowser", () => {
+	it("names the browser and the kind of device", () => {
+		const ua = {
+			chrome: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+			edge: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0",
+			safariPhone: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
+			firefoxAndroid: "Mozilla/5.0 (Android 15; Mobile; rv:132.0) Gecko/132.0 Firefox/132.0",
+			chromeTablet: "Mozilla/5.0 (Linux; Android 14; SM-X710) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+		};
+		expect(describeBrowser(ua.chrome)).toBe("Chrome · Desktop");
+		expect(describeBrowser(ua.edge)).toBe("Edge · Desktop");
+		expect(describeBrowser(ua.safariPhone)).toBe("Safari · Mobile");
+		expect(describeBrowser(ua.firefoxAndroid)).toBe("Firefox · Mobile");
+		expect(describeBrowser(ua.chromeTablet)).toBe("Chrome · Tablet");
+		expect(describeBrowser("curl/8.7.1")).toBe("curl/8.7.1");
+		expect(describeBrowser(null)).toBe("—");
 	});
 });
 

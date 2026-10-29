@@ -23,11 +23,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
 import { http, isHandledHttpError } from "@/lib/http";
-import type { AdminUserList, UserSortField } from "../../../../shared/admin-users";
+import { USER_SORT_FIELDS, type AdminUserList, type UserSortField } from "../../../../shared/admin-users";
 import { AdminPage } from "../../components/AdminPage";
 import { PageBar } from "../../components/PageBar";
 import { ACTION_BUTTON, ORDINAL } from "../../styles";
-import { formatDate } from "./format";
+import { formatDate, formatDateTime, formatIdle } from "./format";
 import { RoleBadge, StatusBadge, UserAvatar } from "./user-ui";
 
 const PAGE_SIZE = 20;
@@ -37,6 +37,8 @@ const CHECKBOX = "border-neutral-500 dark:border-neutral-400";
 /** Fixed to the widest content each can hold: "Superadmin", "Disabled", a long date. */
 const ROLE_COL = "w-[110px] min-w-[110px] whitespace-nowrap";
 const STATUS_COL = "hidden w-[110px] min-w-[110px] whitespace-nowrap sm:table-cell";
+const SIGN_IN_COL = "hidden w-[150px] min-w-[150px] whitespace-nowrap lg:table-cell";
+const IDLE_COL = "hidden w-[100px] min-w-[100px] whitespace-nowrap lg:table-cell";
 const CREATED_COL = "hidden w-[90px] min-w-[90px] whitespace-nowrap md:table-cell";
 /** As wide as the row-number column, with the box in the middle. */
 const SELECT_COL = "w-[50px] min-w-[50px] max-w-[50px] px-0";
@@ -51,7 +53,9 @@ export function UserList() {
 	const [params, setParams] = useSearchParams();
 	const q = params.get("q") ?? "";
 	const page = Math.max(1, Number(params.get("page")) || 1);
-	const sort = (params.get("sort") as UserSortField) || "createdAt";
+	const sortParam = params.get("sort");
+	/** null: the server's own order, newest first. */
+	const sort = USER_SORT_FIELDS.find((f) => f === sortParam) ?? null;
 	const dir = params.get("dir") === "asc" ? "asc" : "desc";
 
 	const [search, setSearch] = useState(q);
@@ -86,7 +90,7 @@ export function UserList() {
 
 	useEffect(() => {
 		let current = true;
-		const query = new URLSearchParams({ q, page: String(page), pageSize: String(PAGE_SIZE), sort, dir });
+		const query = new URLSearchParams({ q, page: String(page), pageSize: String(PAGE_SIZE), ...(sort ? { sort, dir } : {}) });
 		// A failed request is shown by the HTTP layer; the list stays as it was.
 		http(`/api/admin/users?${query}`)
 			.then((res) => res.json() as Promise<AdminUserList>)
@@ -105,7 +109,14 @@ export function UserList() {
 
 	const pages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
 	const toggleSort = (field: UserSortField) =>
-		update({ sort: field, dir: sort === field && dir === "asc" ? "desc" : "asc", page: null });
+		// Ascending, then descending, then back to no sort.
+		update(
+			sort !== field
+				? { sort: field, dir: "asc", page: null }
+				: dir === "asc"
+					? { sort: field, dir: "desc", page: null }
+					: { sort: null, dir: null, page: null },
+		);
 
 	const rows = data?.users ?? [];
 	const allSelected = rows.length > 0 && rows.every((u) => selected.has(u.id));
@@ -233,6 +244,12 @@ export function UserList() {
 											Status
 										</SortHeader>
 									</TableHead>
+									<TableHead className={SIGN_IN_COL}>
+										<SortHeader field="lastSignInAt" {...sortProps}>
+											Last sign-in
+										</SortHeader>
+									</TableHead>
+									<TableHead className={IDLE_COL}>Idle</TableHead>
 									<TableHead className={CREATED_COL}>
 										<SortHeader field="createdAt" {...sortProps}>
 											Created
@@ -278,6 +295,8 @@ export function UserList() {
 												<TableCell className={STATUS_COL}>
 													<StatusBadge status={user.status} />
 												</TableCell>
+												<TableCell className={`${SIGN_IN_COL} text-muted-foreground`}>{formatDateTime(user.lastSignInAt)}</TableCell>
+												<TableCell className={`${IDLE_COL} text-muted-foreground`}>{formatIdle(user.idleSeconds)}</TableCell>
 												<TableCell className={`${CREATED_COL} text-muted-foreground`}>{formatDate(user.createdAt)}</TableCell>
 												<TableCell className={MENU_COL} onClick={(e) => e.stopPropagation()}>
 													<DropdownMenu>
@@ -318,6 +337,12 @@ export function UserList() {
 												<TableCell className={STATUS_COL}>
 													<Skeleton className="h-5 w-16" />
 												</TableCell>
+												<TableCell className={SIGN_IN_COL}>
+													<Skeleton className="h-4 w-24" />
+												</TableCell>
+												<TableCell className={IDLE_COL}>
+													<Skeleton className="h-4 w-12" />
+												</TableCell>
 												<TableCell className={CREATED_COL}>
 													<Skeleton className="h-4 w-24" />
 												</TableCell>
@@ -354,7 +379,7 @@ export function UserList() {
 	);
 }
 
-type SortHeaderProps = { field: UserSortField; sort: UserSortField; dir: "asc" | "desc"; onSort: (field: UserSortField) => void; children: ReactNode };
+type SortHeaderProps = { field: UserSortField; sort: UserSortField | null; dir: "asc" | "desc"; onSort: (field: UserSortField) => void; children: ReactNode };
 
 function SortHeader({ field, sort, dir, onSort, children }: SortHeaderProps) {
 	const Icon = sort !== field ? ArrowUpDown : dir === "asc" ? ArrowUp : ArrowDown;

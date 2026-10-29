@@ -52,6 +52,8 @@ export type AdminUser = {
 	status: UserStatus;
 	/** Seconds since the user's most recent session was last used; null when they have none. */
 	idleSeconds: number | null;
+	/** The most recent successful sign-in in `login_events`; null when none is recorded. */
+	lastSignInAt: string | null;
 	createdAt: string;
 	updatedAt: string;
 };
@@ -60,7 +62,6 @@ export type AdminUserDetail = AdminUser & {
 	/** Better Auth provider ids: "credential" (password), "google", … */
 	signInMethods: string[];
 	activeSessions: number;
-	lastSignInAt: string | null;
 	lastSignOutAt: string | null;
 };
 
@@ -76,7 +77,7 @@ export type ActivityEvent = {
 
 export type AdminUserActivity = { events: ActivityEvent[]; total: number; page: number; pageSize: number };
 
-export const USER_SORT_FIELDS = ["name", "email", "role", "status", "createdAt"] as const;
+export const USER_SORT_FIELDS = ["name", "email", "role", "status", "lastSignInAt", "createdAt"] as const;
 export type UserSortField = (typeof USER_SORT_FIELDS)[number];
 
 export type AdminUserList = {
@@ -85,3 +86,27 @@ export type AdminUserList = {
 	page: number;
 	pageSize: number;
 };
+
+/**
+ * "Chrome · Desktop" from a User-Agent string: the browser's name and whether
+ * it is a phone, a tablet or a computer. Good enough to recognise a sign-in,
+ * not a fingerprint: an iPad in desktop mode says it is a Mac, and anything the
+ * list below does not know falls back to the raw string. Order matters, as most
+ * browsers also claim to be Chrome and Safari.
+ */
+export function describeBrowser(userAgent: string | null): string {
+	if (!userAgent) return "—";
+	const ua = userAgent;
+	const names: [RegExp, string][] = [
+		[/Edg(e|A|iOS)?\//, "Edge"],
+		[/OPR\/|Opera/, "Opera"],
+		[/SamsungBrowser/, "Samsung Internet"],
+		[/Firefox\/|FxiOS/, "Firefox"],
+		[/Chrome\/|CriOS/, "Chrome"],
+		[/Safari\//, "Safari"],
+	];
+	const name = names.find(([pattern]) => pattern.test(ua))?.[1];
+	if (!name) return ua.length > 40 ? `${ua.slice(0, 40)}…` : ua; // curl, bots, apps
+	const device = /iPad|Tablet/i.test(ua) || (/Android/i.test(ua) && !/Mobile/i.test(ua)) ? "Tablet" : /Mobi|iPhone|iPod|Android/i.test(ua) ? "Mobile" : "Desktop";
+	return `${name} · ${device}`;
+}

@@ -186,7 +186,11 @@ sessions (`userStatus()` in `src/shared/admin-users.ts`):
 | Disabled (red dot) | not `emailVerified`; wins over the other two |
 | — (no pill) | no live session |
 
-The column sorts too (active, idle, signed out, disabled). The status comes from the sessions, so that sort is done in the Worker over everyone who matches the search, then paged.
+The column sorts too (active, idle, signed out, disabled), as does **Last sign-in**. Both come from the sessions and the log, not from a column, so those sorts are done in the Worker over everyone who matches the search, then paged.
+
+Every sortable heading cycles through three states: ascending, descending, and no sort (back to newest first, with no arrow). The **Idle** column is the time since the user's latest session was used.
+
+The Activity tab's **Browser** column is `describeBrowser()` (`src/shared/admin-users.ts`), a small User-Agent reading ("Chrome · Desktop"; Mobile and Tablet too). It is deliberately not a library or a fingerprint: an iPad in desktop mode reports itself as a Mac. If you need exact devices, record what the page knows (`navigator.userAgentData`, `maxTouchPoints`) in a header of the sign-in request and store it in `login_events`.
 
 "Last seen" is the latest `sessions.updatedAt` of the user's unexpired sessions.
 Better Auth touches it at most once per `session.updateAge`, which the starter

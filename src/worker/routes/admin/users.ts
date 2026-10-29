@@ -46,8 +46,30 @@ async function idleSecondsFor(db: ReturnType<typeof createDb>, ids: string[]): P
 	return idle;
 }
 
+/** Each user's most recent successful sign-in; users who never signed in are absent. */
+async function lastSignInFor(db: ReturnType<typeof createDb>, ids: string[]): Promise<Map<string, string>> {
+	const last = new Map<string, string>();
+	if (ids.length === 0) return last;
+	const rows = await db
+		.selectFrom("login_events")
+		.select(["user_id", (eb) => eb.fn.max("created_at").as("at")])
+		.where("user_id", "in", ids)
+		.where("success", "=", dbBool(true))
+		// Rows from before sign-outs were recorded have no kind: they are sign-ins.
+		.where((eb) => eb.or([eb("event", "is", null), eb("event", "=", "sign-in")]))
+		.groupBy("user_id")
+		.execute();
+	for (const r of rows) {
+		const at = toIso(r.at);
+		if (r.user_id && at) last.set(r.user_id, at);
+	}
+	return last;
+}
+
 async function present(c: AppContext, rows: UserRow[]): Promise<AdminUser[]> {
-	const idle = await idleSecondsFor(createDb(c.env), rows.map((u) => u.id));
+	const db = createDb(c.env);
+	const ids = rows.map((u) => u.id);
+	const [idle, lastSignIn] = await Promise.all([idleSecondsFor(db, ids), lastSignInFor(db, ids)]);
 	return rows.map((u) => {
 		const idleSeconds = idle.get(u.id) ?? null;
 		const emailVerified = Boolean(u.emailVerified);
@@ -59,6 +81,7 @@ async function present(c: AppContext, rows: UserRow[]): Promise<AdminUser[]> {
 			emailVerified,
 			status: userStatus(emailVerified, idleSeconds),
 			idleSeconds,
+			lastSignInAt: lastSignIn.get(u.id) ?? null,
 			createdAt: toIso(u.createdAt) ?? "",
 			updatedAt: toIso(u.updatedAt) ?? "",
 		};
@@ -114,12 +137,13 @@ adminUsers.get("/", async (c) => {
 		);
 	}
 
-	// The status comes from the sessions, not from a column: sort by it after
-	// computing it, for everyone who matches, then cut the page.
-	if (sort === "status") {
+	// The status and the last sign-in come from sessions and the log, not from a
+	// column: sort by them after computing them, for everyone who matches, then cut the page.
+	if (sort === "status" || sort === "lastSignInAt") {
 		const all = await present(c, await filtered.select(USER_COLUMNS).orderBy("createdAt", "desc").orderBy("id").execute());
 		const sign = dir === "asc" ? 1 : -1;
-		all.sort((a, b) => sign * (STATUS_RANK[a.status] - STATUS_RANK[b.status]) || (a.idleSeconds ?? 0) - (b.idleSeconds ?? 0));
+		const key = (u: AdminUser) => (sort === "status" ? STATUS_RANK[u.status] : u.lastSignInAt ? Date.parse(u.lastSignInAt) : -Infinity);
+		all.sort((a, b) => sign * (key(a) - key(b)) || 0);
 		return c.json<AdminUserList>({ users: all.slice((page - 1) * pageSize, page * pageSize), total: all.length, page, pageSize });
 	}
 
@@ -140,24 +164,18 @@ adminUsers.get("/", async (c) => {
 adminUsers.get("/:id", async (c) => {
 	const db = createDb(c.env);
 	const user = await findUser(c, c.req.param("id"));
-	const lastEvent = (kind: "sign-in" | "sign-out") => {
-		let query = db.selectFrom("login_events").select("created_at").where("user_id", "=", user.id).where("success", "=", dbBool(true));
-		// Rows from before sign-outs were recorded have no kind: they are sign-ins.
-		query = kind === "sign-out" ? query.where("event", "=", "sign-out") : query.where((eb) => eb.or([eb("event", "is", null), eb("event", "=", "sign-in")]));
-		return query.orderBy("created_at", "desc").limit(1).executeTakeFirst();
-	};
-	const [accounts, sessions, lastSignIn, lastSignOut, [detail]] = await Promise.all([
+	const lastSignOutQuery = () =>
+		db.selectFrom("login_events").select("created_at").where("user_id", "=", user.id).where("success", "=", dbBool(true)).where("event", "=", "sign-out").orderBy("created_at", "desc").limit(1).executeTakeFirst();
+	const [accounts, sessions, lastSignOut, [detail]] = await Promise.all([
 		db.selectFrom("accounts").select("providerId").where("userId", "=", user.id).execute(),
 		db.selectFrom("sessions").select((eb) => eb.fn.countAll<number>().as("n")).where("userId", "=", user.id).executeTakeFirst(),
-		lastEvent("sign-in"),
-		lastEvent("sign-out"),
+		lastSignOutQuery(),
 		present(c, [user]),
 	]);
 	return c.json<AdminUserDetail>({
 		...detail,
 		signInMethods: accounts.map((a) => a.providerId),
 		activeSessions: Number(sessions?.n ?? 0),
-		lastSignInAt: lastSignIn ? (toIso(lastSignIn.created_at) ?? null) : null,
 		lastSignOutAt: lastSignOut ? (toIso(lastSignOut.created_at) ?? null) : null,
 	});
 });
