@@ -195,7 +195,7 @@ A worktree needs its own dependencies, local settings and database, and its own 
 | Dev server | `bin/worktree-dev [port]` | Writes the port into `.env.local` (`APP_BASE_URL`, `CLI_API_URL`) and starts `npm run dev` on it; with no port, it picks a free one |
 | Tear down | stop the dev server, then `git worktree remove <path>` | Nothing else: the database and settings live inside the worktree |
 
-**Under Paseo**, `paseo.json` already does this: it runs `bin/worktree-setup` when it creates the worktree and offers `bin/worktree-dev` as the `dev` service, which it stops on archive. Start that service rather than `npm run dev`. **Without Paseo**, run the commands above yourself: `bin/worktree-setup` once, then `bin/worktree-dev` in the background.
+**Under Paseo**, `paseo.json` already does this: it runs `bin/worktree-setup` when it creates the worktree and offers `bin/worktree-dev` as the `dev` service, which it stops on archive. Start that service rather than `npm run dev`. **Without Paseo** — including a worktree Claude Code created (`claude --worktree`, a subagent with `isolation: worktree`), which it checks out but does not set up — run the commands above yourself: `bin/worktree-setup` once, then `bin/worktree-dev` in the background.
 
 - **Open the app at the `APP_BASE_URL` in `.env.local`**, not at another hostname such as a proxy's: sign-in accepts only that origin.
 - **E2E and the auth CLI** read the port from `.env.local`, so start the dev server first. Otherwise they would reach whatever server holds port 5173, which is usually the main checkout's.
