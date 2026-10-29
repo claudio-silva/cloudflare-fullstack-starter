@@ -12,6 +12,7 @@
  *   tsx bin/sync-secrets.ts <environment>
  *   tsx bin/sync-secrets.ts production
  *   tsx bin/sync-secrets.ts preview
+ *   tsx bin/sync-secrets.ts preview --force   # even if the file has not changed
  */
 
 import { spawnSync } from "child_process";
@@ -30,8 +31,11 @@ const NON_SECRET_KEYS = new Set([
 	"D1_DATABASE_ID",
 	"APP_VERSION_FROM",
 ]);
-/** Deploy settings (bin/lib/deploy-config.ts): tooling, not the Worker's. */
-const NON_SECRET_PREFIXES = ["DEPLOY_"];
+/**
+ * Deploy settings (bin/lib/deploy-config.ts) and the URL the CLI calls
+ * (CLI_API_URL_<ENV>): tooling, not the Worker's.
+ */
+const NON_SECRET_PREFIXES = ["DEPLOY_", "CLI_API_URL"];
 // Cloudflare aggressively rate-limits `wrangler secret put`. A short pause
 // between successive puts noticeably reduces 429s on bursts of >5 secrets.
 const SECRET_PUT_DELAY_MS = 350;
@@ -133,7 +137,7 @@ async function main() {
 	const currentHash = computeFileHash(envFile);
 	const storedHash = getStoredHash(env);
 
-	if (currentHash === storedHash) {
+	if (currentHash === storedHash && !args.includes("--force")) {
 		console.log(`✓ Secrets for ${env} are up to date (no changes detected)`);
 		process.exit(0);
 	}

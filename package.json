@@ -40,6 +40,7 @@
 		"check": "tsc -b && vite build && wrangler deploy --dry-run",
 		"sync-secrets": "tsx bin/sync-secrets.ts",
 		"sync-build-vars": "tsx bin/sync-build-vars.ts",
+		"setup:ci": "tsx bin/setup-ci.ts",
 		"maintenance": "tsx bin/maintenance.ts",
 		"maintenance:status": "tsx bin/maintenance.ts status --env production",
 		"deploy:preview": "tsx bin/deploy-pipeline.ts --env preview",

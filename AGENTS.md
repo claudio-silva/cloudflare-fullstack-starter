@@ -177,6 +177,7 @@ npm run auth show-user
 npm run build                  # Build for production
 npm run deploy:production      # Versioned release: secrets + build vars + build + deploy + tag + migrate (patch; --minor/--major)
 npm run deploy:preview         # Same steps on preview, without versioning
+npm run setup:ci               # Connect Cloudflare Workers Builds to GitHub (idempotent; --dry-run). Needs the user's approval: it deploys
 
 # Logs (deployed environments only)
 npm run tail:preview           # Stream logs from preview

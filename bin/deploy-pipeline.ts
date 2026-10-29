@@ -30,6 +30,11 @@
  * If anything fails the window stays OPEN on purpose, so nobody reaches a
  * half-migrated database, and a report goes out by email.
  *
+ * The very first deploy of an environment has no Worker to ask about pending
+ * migrations, and nobody to serve while the schema is created, so it deploys
+ * first, then syncs the secrets (they need a Worker to attach to), then
+ * applies every migration.
+ *
  * Usage:
  *   tsx bin/deploy-pipeline.ts --env <preview|production> [--skip-build] [--dry-run]
  */
@@ -39,6 +44,7 @@ import { connectToDatabase } from "../src/cli/utils/db";
 import { loadDeployConfig, type DeployEnv } from "./lib/deploy-config";
 import { resolveBuildInfo } from "./lib/build-info";
 import { checkReleaseTag } from "./lib/release-tag";
+import { resolveWorkerName, workerExists } from "./lib/worker";
 import type { MigrationStatus } from "../src/shared/migration-types";
 
 type Stage = "build" | "migrate-expand" | "migrate-breaking" | "deploy" | "migrate-contract";
@@ -92,6 +98,35 @@ async function reportFailure(env: DeployEnv, stage: Stage, error: unknown): Prom
 	}
 }
 
+/** First deploy of an environment: nothing to keep serving, so deploy, then secrets, then the schema. */
+async function firstDeploy(env: DeployEnv, workerName: string, skipBuild: boolean, dryRun: boolean): Promise<void> {
+	console.log(`First deploy of ${env}: Worker "${workerName}" does not exist yet.`);
+	console.log("  Order: build, deploy, secrets, every migration");
+	if (dryRun) {
+		console.log("(dry run — nothing changed)");
+		return;
+	}
+	let stage: Stage = "build";
+	try {
+		if (!skipBuild) {
+			if (!isCi()) run("npx", ["tsx", "bin/sync-build-vars.ts", env]);
+			run("npm", ["run", `build:${env}`]);
+		}
+		stage = "deploy";
+		deployWorker(false);
+		// CI does not hold the .env files; the secrets were synced by whoever set CI up.
+		if (!isCi()) run("npx", ["tsx", "bin/sync-secrets.ts", env, "--force"]);
+		stage = "migrate-expand";
+		run("npx", ["tsx", "bin/db.ts", "migrate", "--env", env, "--wait-for-deploy"]);
+	} catch {
+		// The failing command has printed its own error. Running this again is
+		// safe: if the deploy went through, the next run is an ordinary one.
+		console.error(`\n✗ First deploy of ${env} failed at "${stage}".`);
+		process.exit(1);
+	}
+	console.log(`✓ ${env} deployed for the first time.`);
+}
+
 async function main(): Promise<void> {
 	const args = process.argv.slice(2);
 	const envIdx = args.indexOf("--env");
@@ -121,7 +156,17 @@ async function main(): Promise<void> {
 	}
 
 	const client = await connectToDatabase(env);
-	const pending: MigrationStatus[] = (await client.migrations()).filter((m) => !m.applied);
+	let migrations: MigrationStatus[];
+	try {
+		migrations = await client.migrations();
+	} catch (error) {
+		// Only a Worker that certainly does not exist means a first deploy. One
+		// that exists but does not answer is a real problem, not a fresh start.
+		const workerName = resolveWorkerName("wrangler.toml", env);
+		if (workerExists(workerName) !== false) throw error;
+		return firstDeploy(env, workerName, skipBuild, dryRun);
+	}
+	const pending = migrations.filter((m) => !m.applied);
 	const byKind = (kind: string) => pending.filter((m) => m.compatibility === kind);
 	const breaking = byKind("breaking");
 	const contract = byKind("contract");

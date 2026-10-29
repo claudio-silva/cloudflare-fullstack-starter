@@ -655,17 +655,26 @@ The default Cloudflare Email Service adapter uses the `EMAIL` binding in `wrangl
 
 ### Preview/Production
 
-**One-time setup:**
+**One-time setup, the fast way** — on GitHub, with the project's own repository as `origin` and `main` pushed:
+
+```bash
+npm run setup:ci
+```
+
+It creates the D1 databases, fills `.env.preview` / `.env.production` (generated secrets, `workers.dev` URLs), deploys each environment for the first time, connects Cloudflare Workers Builds, syncs build variables and secrets, and protects the release branch. Safe to run again; `--dry-run` shows the plan. From then on, a push to the preview branch updates preview and `npm run deploy:production` releases through CI. It needs a user API token in `.env.setup.local`, and once per account a click in the dashboard, which it explains. → [Setting it up](docs/DEPLOYMENT.md#setting-it-up-npm-run-setupci)
+
+Before going live, set up email: onboard your sender domain in Cloudflare Email Service (default) or configure another provider ([docs/EMAIL.md](docs/EMAIL.md)), and make `config.email.fromAddress` match the `allowed_sender_addresses` in `wrangler.toml` (`npm run init` does it).
+
+**One-time setup, by hand** — deploying from your machine, without CI:
 1. Create D1 databases in the Cloudflare dashboard (one for preview, one for production)
-2. Set up email: onboard your sender domain in Cloudflare Email Service (default), or configure another provider (see [docs/EMAIL.md](docs/EMAIL.md))
-3. Run `npm run init` or update `src/config.ts` and `wrangler.toml` so `config.email.fromAddress` matches the `allowed_sender_addresses` entries
-4. Update `wrangler.toml` with the real database IDs (replacing the placeholder values)
-5. Add your secrets to `.env.preview` and `.env.production`:
+2. Set up email, as above
+3. Update `wrangler.toml` with the real database IDs (replacing the placeholder values)
+4. Add your secrets to `.env.preview` and `.env.production`:
    ```bash
    echo "CLI_API_KEY=<your-generated-key>" >> .env.production
    echo "BETTER_AUTH_SECRET=<another-generated-key>" >> .env.production
    ```
-6. Deploy:
+5. Deploy. The first deploy of an environment creates its Worker, then runs every migration:
    ```bash
    npm run deploy:production
    ```
@@ -748,6 +757,7 @@ Releases, deploy modes, migrations and maintenance are summarised here; the reas
 | `workers-builds` | Cloudflare Workers Builds, connected to your GitHub or GitLab.com repo |
 | `external-ci` | Your own CI (self-hosted GitLab, GitHub Actions, …), triggered by the release tag |
 
+- **`npm run setup:ci`** sets up `workers-builds` on GitHub in one command.
 - **In the CI modes**, `deploy:production` waits for CI on the release commit, pushes the tag, promotes the deployment branch and waits for the Worker to report the new version. Protect the deployment branch with required checks to make CI a hard gate.
 - **`--local`** deploys from your machine, whatever the mode.
 - **To switch CI deploys off for a while** — a runner that is down, a frozen period — set the mode to `manual` and commit. Each CI deploy job then stops at its first step, green, without installing or building.
@@ -768,6 +778,7 @@ In both cases the open app does not fail: its requests are held, a banner tells 
 ```bash
 npm run deploy:production    # Versioned release (patch; --minor/--major); --local to build here
 npm run deploy:preview       # Build, migrate and deploy preview
+npm run setup:ci             # Connect Workers Builds (both envs, idempotent; --dry-run)
 npm run maintenance -- status --env production   # on | off | status
 npm run db -- logins --env production            # who has signed in, and how many
 ```

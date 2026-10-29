@@ -33,25 +33,12 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { cf } from "./lib/cloudflare-api";
+import { parseEnvFile } from "./lib/deploy-config";
+import { resolveWorkerName } from "./lib/worker";
 
-const CF_API = "https://api.cloudflare.com/client/v4";
 const HASH_DIR = ".wrangler/build-vars";
 const SETUP_ENV_FILE = ".env.setup.local";
-
-function parseEnvFile(filePath: string): Record<string, string> {
-	const out: Record<string, string> = {};
-	if (!existsSync(filePath)) return out;
-	for (const line of readFileSync(filePath, "utf-8").split("\n")) {
-		const m = line.trim().match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
-		if (!m) continue;
-		let value = m[2];
-		if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-			value = value.slice(1, -1);
-		}
-		out[m[1]] = value;
-	}
-	return out;
-}
 
 const SECRET_BUILD_KEYS = new Set(["CLI_API_KEY"]);
 const PLAIN_BUILD_KEYS = new Set(["DEPLOY_MODE", "DEPLOY_BRANCH", "D1_DATABASE_ID", "APP_VERSION_FROM"]);
@@ -61,39 +48,6 @@ const isBuildKey = (key: string) =>
 function flag(args: string[], name: string): string | undefined {
 	const i = args.indexOf(name);
 	return i === -1 ? undefined : args[i + 1];
-}
-
-/**
- * Worker name for the wrangler env: `[env.<env>] name = "..."` if set, else wrangler's own
- * default `<top-level name>-<env>` (which is also what vite.config.ts bakes into the build).
- */
-function resolveWorkerName(configPath: string, wranglerEnv: string): string {
-	const content = readFileSync(configPath, "utf-8");
-	const envStart = content.indexOf(`[env.${wranglerEnv}]`);
-	if (envStart !== -1) {
-		const rest = content.slice(envStart + `[env.${wranglerEnv}]`.length);
-		const next = rest.search(/^\s*\[/m);
-		const block = next === -1 ? rest : rest.slice(0, next);
-		const m = block.match(/^\s*name\s*=\s*"([^"]+)"/m);
-		if (m) return m[1];
-	}
-	const top = content.match(/^name\s*=\s*"([^"]+)"/m);
-	if (!top) throw new Error(`No Worker name found in ${configPath}`);
-	return `${top[1]}-${wranglerEnv}`;
-}
-
-async function cf<T>(token: string, method: string, path: string, body?: unknown): Promise<T> {
-	const res = await fetch(`${CF_API}${path}`, {
-		method,
-		headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-		body: body ? JSON.stringify(body) : undefined,
-	});
-	const json = (await res.json().catch(() => null)) as { success?: boolean; result?: T; errors?: { message: string }[] } | null;
-	if (!res.ok || !json?.success) {
-		const detail = json?.errors?.map((e) => e.message).join("; ") ?? `HTTP ${res.status}`;
-		throw new Error(`${method} ${path}: ${detail}`);
-	}
-	return json.result as T;
 }
 
 async function main(): Promise<void> {

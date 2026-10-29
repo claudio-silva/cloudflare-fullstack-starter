@@ -209,7 +209,34 @@ No CI. `npm run deploy:production` does everything from your machine. The defaul
 
 ### `workers-builds` — Cloudflare Workers Builds
 
-GitHub or GitLab.com only; **self-hosted GitHub or GitLab is not supported** — use `external-ci` there. Per Worker: dashboard → Workers & Pages → the Worker → Settings → Builds → connect the repository.
+GitHub or GitLab.com only; **self-hosted GitHub or GitLab is not supported** — use `external-ci` there.
+
+#### Setting it up: `npm run setup:ci`
+
+On GitHub, one command does the whole setup, for preview and production:
+
+```bash
+npm run setup:ci -- --dry-run   # what it would do
+npm run setup:ci                # do it; safe to run again
+npm run setup:ci -- --env preview
+```
+
+Before it: the project has its own GitHub repository as `origin` (not the starter's), `main` is pushed, `gh` is logged in, and `.env.setup.local` holds a **user** API token with *Workers Scripts: Edit*, *D1: Edit* and *Workers CI: Edit* (without one, the command prints a link that opens the token page with most of it ticked; the account id is detected).
+
+Each step checks before it changes anything:
+
+1. **`.env.<env>`** — created from `env/<env>.env.template` if missing; empty `BETTER_AUTH_SECRET` / `CLI_API_KEY` generated; `example.com` URLs replaced by the Worker's `workers.dev` URL; the D1 database found or created by its `database_name`, its id written as `D1_DATABASE_ID` (only while `wrangler.toml` holds the placeholder). A value you set is never touched.
+2. **The Worker** — deployed once from your machine if it does not exist: `deploy:preview` for preview, `deploy:production --local` for production, which makes that deploy the first release (it asks first; `--yes` does not).
+3. **The trigger** — created, or corrected to the table below: the branch, the build and deploy commands.
+4. **Build variables and secrets** — `sync-build-vars` and `sync-secrets`.
+5. **The release branch** — protected by a GitHub ruleset that requires the GitHub Actions checks found on `main`, with no bypass. A ruleset works before the branch exists, so the first release is gated too. Left alone if the branch already has protection; on a private repository of a free plan GitHub refuses, and the command says so.
+6. **`deploy.config.ts`** — `mode: "workers-builds"`. Commit and push it: CI deploys stay off until the mode reaches the branch.
+
+One step needs a browser, once per account: Workers Builds deploys with a build token that only the dashboard creates, and reads the repository through the Cloudflare GitHub app. When either is missing the command says what to click (connect any of the Workers in the dashboard — the settings typed there do not matter, the next run corrects them) and stops; run it again afterwards.
+
+#### The settings, by hand
+
+Per Worker: dashboard → Workers & Pages → the Worker → Settings → Builds → connect the repository.
 
 | Setting | Production Worker | Preview Worker |
 |---|---|---|
@@ -228,7 +255,7 @@ Workers Builds builds **every push to its branch** (it has no switch for that) a
 
 The build command is an ordinary shell command: if it exits non-zero the build fails and the deploy step never runs. So CI *can* gate on tests. What it cannot do is run service containers or browsers, so a Postgres/MySQL matrix and Playwright stay in GitHub Actions.
 
-To make those GitHub Actions checks a hard gate, protect the deployment branch: GitHub → Settings → Branches → a rule for `release` with *Require status checks to pass* (pick the jobs of your CI workflow) and *Do not allow bypassing*. A push of a commit without passing checks is then refused by GitHub itself, whoever pushes it. `deploy:production` waits for the checks of its release commit before promoting, so the protection costs a release nothing but that wait.
+To make those GitHub Actions checks a hard gate, protect the deployment branch (`setup:ci` does it with a ruleset; by hand: GitHub → Settings → Rules → a branch ruleset for `release` with *Require status checks to pass*, the jobs of your CI workflow, and no bypass list). A push of a commit without passing checks is then refused by GitHub itself, whoever pushes it. `deploy:production` waits for the checks of its release commit before promoting, so the protection costs a release nothing but that wait.
 
 ### `external-ci` — your own CI
 
