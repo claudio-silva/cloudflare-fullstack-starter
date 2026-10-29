@@ -64,7 +64,7 @@ src/
 
 src/cli/                    # CLI commands (auth user management + db utilities)
 src/config.ts               # Global app configuration (app name, etc.)
-bin/                        # CLI entry points (init, auth, db)
+bin/                        # CLI entry points (init, auth, db) and worktree scripts
 test/                       # Vitest worker integration tests (D1 migrations applied)
 e2e/                        # Playwright smoke tests
 ```
@@ -182,6 +182,26 @@ npm run deploy:preview         # Same steps on preview, without versioning
 npm run tail:preview           # Stream logs from preview
 npm run tail:production        # Stream logs from production
 ```
+
+## Working in a git worktree
+
+> Applies only to an agent working in a git worktree, not in the main checkout.
+
+A worktree needs its own dependencies, local settings and database, and its own dev server port. Two scripts in `bin/` do it:
+
+| Step | Command | What it does |
+|---|---|---|
+| Set up (once) | `bin/worktree-setup` | `npm ci`, a copy of the source checkout's `.env.local`, and a snapshot of its local D1 database (test users and content included) |
+| Dev server | `bin/worktree-dev [port]` | Writes the port into `.env.local` (`APP_BASE_URL`, `CLI_API_URL`) and starts `npm run dev` on it; with no port, it picks a free one |
+| Tear down | stop the dev server, then `git worktree remove <path>` | Nothing else: the database and settings live inside the worktree |
+
+**Under Paseo**, `paseo.json` already does this: it runs `bin/worktree-setup` when it creates the worktree and offers `bin/worktree-dev` as the `dev` service, which it stops on archive. Start that service rather than `npm run dev`. **Without Paseo**, run the commands above yourself: `bin/worktree-setup` once, then `bin/worktree-dev` in the background.
+
+- **Open the app at the `APP_BASE_URL` in `.env.local`**, not at another hostname such as a proxy's: sign-in accepts only that origin.
+- **E2E and the auth CLI** read the port from `.env.local`, so start the dev server first. Otherwise they would reach whatever server holds port 5173, which is usually the main checkout's.
+- **The local database is a copy**: changes stay in the worktree and go with it. `bin/worktree-setup --fresh-db` copies it again.
+- **Only local files are copied.** Without `.env.preview`, `.env.production` and `.env.setup.local`, a worktree cannot reach Cloudflare. Don't copy them in.
+- **Don't** push to `main` (it deploys the preview), or run `deploy:*`, `sync-*`, `setup:ci` or remote `db:*` commands. Commit on the worktree's branch; merging is the user's call.
 
 ## Common Tasks
 

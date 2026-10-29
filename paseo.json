@@ -1,0 +1,11 @@
+{
+  "worktree": {
+    "setup": "bin/worktree-setup"
+  },
+  "scripts": {
+    "dev": {
+      "type": "service",
+      "command": "bin/worktree-dev"
+    }
+  }
+}

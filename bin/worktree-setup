@@ -1,0 +1,48 @@
+#!/bin/bash
+# Prepare a git worktree of this project to run on its own: dependencies, the
+# source checkout's local settings, and a copy of its local database (test
+# users and content included).
+#
+# Run once from the new worktree:
+#   git worktree add ../my-feature -b my-feature origin/main
+#   cd ../my-feature && bin/worktree-setup
+# Paseo runs it by itself (paseo.json). Running it again keeps the worktree's
+# own .env.local and database; pass --fresh-db to copy the database again.
+#
+# Only local files are copied. Without .env.preview, .env.production and
+# .env.setup.local, a worktree cannot reach Cloudflare.
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+if [ "$(git rev-parse --path-format=absolute --git-dir)" = "$(git rev-parse --path-format=absolute --git-common-dir)" ]; then
+	echo "worktree-setup: this is the main checkout, not a worktree." >&2
+	exit 1
+fi
+SRC="${PASEO_SOURCE_CHECKOUT_PATH:-$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")}"
+
+# Installed once; again only when the lockfile has changed since.
+if [ ! -d node_modules ] || [ package-lock.json -nt node_modules/.package-lock.json ]; then npm ci; fi
+
+# Local settings: the source checkout's, or the template's.
+if [ ! -f .env.local ]; then
+	if [ -f "$SRC/.env.local" ]; then cp "$SRC/.env.local" .env.local; else cp env/local.env.template .env.local; fi
+	echo "✓ .env.local"
+fi
+# bin/worktree-dev writes the worktree's port into these.
+for key in APP_BASE_URL CLI_API_URL; do
+	grep -q "^$key=" .env.local || printf '\n%s=\n' "$key" >> .env.local
+done
+
+# Local D1: a consistent snapshot (sqlite3 .backup), even while the source's
+# dev server is writing to it.
+D1=.wrangler/state/v3/d1/miniflare-D1DatabaseObject
+if [ -d "$SRC/$D1" ] && { [ ! -d "$D1" ] || [ "${1:-}" = "--fresh-db" ]; }; then
+	mkdir -p "$D1"
+	for db in "$SRC/$D1"/*.sqlite; do
+		rm -f "$D1/$(basename "$db")"-{wal,shm}
+		sqlite3 "$db" ".backup '$D1/$(basename "$db")'"
+	done
+	echo "✓ local database copied from $SRC"
+fi
+
+echo "Worktree ready. Start its dev server with bin/worktree-dev."

@@ -1,0 +1,32 @@
+#!/bin/bash
+# Start the dev server of a git worktree on a port of its own, so that it runs
+# beside the main checkout's (5173) and other worktrees'.
+#
+#   bin/worktree-dev [port]
+#
+# The port is the argument, else $PASEO_PORT (Paseo runs this as the `dev`
+# service, see paseo.json), else a free one. It is written into .env.local
+# (APP_BASE_URL, CLI_API_URL) first: sign-in accepts only the origin in
+# APP_BASE_URL, and the auth CLI and the E2E tests read the port from there.
+#
+# In the main checkout it is plain `npm run dev` on 5173.
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+if [ "$(git rev-parse --path-format=absolute --git-dir)" = "$(git rev-parse --path-format=absolute --git-common-dir)" ]; then
+	exec npm run dev -- --port 5173 --strictPort
+fi
+if [ ! -f .env.local ] || [ ! -d node_modules ]; then
+	echo "worktree-dev: run bin/worktree-setup first." >&2
+	exit 1
+fi
+
+PORT="${1:-${PASEO_PORT:-}}"
+if [ -z "$PORT" ]; then
+	PORT="$(node -e "const s=require('net').createServer().listen(0,'127.0.0.1',()=>{console.log(s.address().port);s.close()})")"
+fi
+
+sed -i.bak -E "s#^(APP_BASE_URL|CLI_API_URL)=.*#\1=http://localhost:$PORT#" .env.local
+rm -f .env.local.bak
+echo "Dev server: http://localhost:$PORT"
+exec npm run dev -- --port "$PORT" --strictPort --host "${HOST:-127.0.0.1}"
