@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { EllipsisVertical, ListChecks, RotateCw, Search, Trash2, X, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -22,7 +22,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Toggle } from "@/components/ui/toggle";
 import { http, isHandledHttpError } from "@/lib/http";
 import { cn } from "@/lib/utils";
-import { nextSort, type SortDir } from "../sort";
+import { listParams, type ListQuery } from "../../../shared/admin-list";
+import { nextSort } from "../sort";
+import { useAdminList, type AdminList } from "../use-admin-list";
 import { ACTION_BUTTON, ORDINAL } from "../styles";
 import { PageBar } from "./PageBar";
 import { SortHeader } from "./SortHeader";
@@ -33,12 +35,20 @@ import { SortHeader } from "./SortHeader";
  * loading and empty states every list here shares. docs/ADMIN_TABLE.md has the
  * guide; the props below are the reference.
  *
- * The endpoint answers `GET <url>?page=&pageSize=[&q=][&sort=&dir=]` with
- * `{ total, page, pageSize, items }` (the rows' key can be another: `rows`).
+ * Where the rows come from, from the simplest to the most open:
+ *
+ *  - `url`: the table asks `GET <url>?p=1&ps=20[&q=…][&s=-field]` and reads
+ *    `{ items, total }` (src/shared/admin-list.ts); `params` adds parameters
+ *    (an external filter form, say), `queryParams` replaces the standard ones;
+ *  - `load`: any request, given the list's state;
+ *  - neither: the page passes `data` itself (a websocket, a store), and reads
+ *    the state from `useAdminList`, which it hands to the table as `list`.
  */
 
-/** What every list endpoint returns besides its rows. */
-export type ListPage = { total: number; page: number; pageSize: number };
+export type { ListQuery } from "../../../shared/admin-list";
+
+/** What a list endpoint returns by default. */
+export type ListResponse<T> = { items: T[]; total: number };
 
 export type AdminColumn<T> = {
 	/** Unique in the table. The sort key sent to the server, unless `sortKey` says otherwise. */
@@ -88,22 +98,47 @@ export type BulkAction<T> = {
 
 export type Confirmation = { title: ReactNode; description?: ReactNode; action?: string };
 
-export type AdminTableProps<T, D extends ListPage = ListPage & { items: T[] }> = {
-	/** The list endpoint. */
-	url: string;
-	/** Sent with every request, e.g. a filter or the locale. */
+export type AdminTableProps<T, D = ListResponse<T>> = {
+	/** The list endpoint, asked with the standard query (`p`, `ps`, `q`, `s`). */
+	url?: string;
+	/** Added to every request's query, e.g. an external filter form's fields or the locale. A change loads again from page 1's state as it is. */
 	params?: Record<string, string | undefined>;
+	/** Replaces the standard query parameters, for an endpoint that speaks another protocol. `params` are still added. */
+	queryParams?: (list: ListQuery) => Record<string, string>;
+	/**
+	 * Replaces the request: loads a page for the list's state. Called again when
+	 * the state, `params` or `reloadKey` change. Without `url` and `load`, the
+	 * rows come from `data`.
+	 */
+	load?: (list: ListQuery) => Promise<D>;
+	/** Rows loaded outside the table; `null` until there are some. Only when there is no `url` or `load`. */
+	data?: D | null;
+	/** With `data`: a load is under way, so the rows show dimmed. */
+	loading?: boolean;
+	/** With `data`: the load failed, so the table offers Try again (which calls `onReload`). */
+	failed?: boolean;
+	/** With `data`: the table needs the rows again (Try again, or an action finished). */
+	onReload?: () => void;
 	/** Takes the rows out of the response. Defaults to its `items`. */
 	rows?: (data: D) => T[];
+	/** Takes the total out of the response. Defaults to its `total`. */
+	total?: (data: D) => number;
+	/**
+	 * The list's state (page, search, sort), from `useAdminList`, for a page
+	 * that reads or changes it outside the table. Without it the table keeps
+	 * its own, as `state` and `pageSize` say.
+	 */
+	list?: AdminList;
 	/** Identifies a row. Defaults to its `id`. */
 	rowKey?: (row: T) => string;
 	columns: AdminColumn<T>[];
-	/** Rows per page. Default 20. */
+	/** Rows per page. Default 20. (With `list`, its own.) */
 	pageSize?: number;
 	/**
 	 * Where search, sort and page are kept. `"url"` (default): in the address,
 	 * so returning to the page brings the list back as it was. `"local"`: in the
 	 * component, for a table that is part of another page (a tab, a panel).
+	 * (With `list`, its own.)
 	 */
 	state?: "url" | "local";
 	/** What a row is, for the count and the messages: `["user", "users"]`. Default `["record", "records"]`. */
@@ -145,45 +180,11 @@ const PANEL_HEIGHT = "h-64";
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-/** Search, sort and page, in the URL or in the component. */
-function useListState(mode: "url" | "local") {
-	const [params, setParams] = useSearchParams();
-	const [local, setLocal] = useState<Record<string, string>>({});
-	const read = (key: string) => (mode === "url" ? params.get(key) : local[key]) ?? null;
-	const update = (changes: Record<string, string | null>) => {
-		if (mode === "local") {
-			setLocal((prev) => {
-				const next = { ...prev };
-				for (const [key, value] of Object.entries(changes)) {
-					if (value) next[key] = value;
-					else delete next[key];
-				}
-				return next;
-			});
-			return;
-		}
-		setParams(
-			(prev) => {
-				const next = new URLSearchParams(prev);
-				for (const [key, value] of Object.entries(changes)) {
-					if (value) next.set(key, value);
-					else next.delete(key);
-				}
-				return next;
-			},
-			{ replace: true },
-		);
-	};
-	return { read, update };
-}
-
-export function AdminTable<T, D extends ListPage = ListPage & { items: T[] }>(props: AdminTableProps<T, D>) {
+export function AdminTable<T, D = ListResponse<T>>(props: AdminTableProps<T, D>) {
 	const {
 		url,
 		params,
 		columns,
-		pageSize = 20,
-		state = "url",
 		noun = ["record", "records"],
 		search: searchPlaceholder,
 		intro,
@@ -196,22 +197,30 @@ export function AdminTable<T, D extends ListPage = ListPage & { items: T[] }>(pr
 		empty,
 		reloadKey,
 	} = props;
-	const rowsOf = props.rows ?? ((data: D) => (data as unknown as { items: T[] }).items);
+	const rowsOf = props.rows ?? ((data: D) => (data as unknown as ListResponse<T>).items);
+	const totalOf = props.total ?? ((data: D) => (data as unknown as ListResponse<T>).total);
 	const keyOf = props.rowKey ?? ((row: T) => String((row as { id: unknown }).id));
 	const navigate = useNavigate();
 
-	const list = useListState(state);
-	const q = list.read("q") ?? "";
-	const page = Math.max(1, Number(list.read("page")) || 1);
+	const own = useAdminList({ state: props.state, pageSize: props.pageSize });
+	const list = props.list ?? own;
+	const { q, page, pageSize, dir } = list;
 	const sortable = columns.filter((c) => c.sortable).map((c) => c.sortKey ?? c.id);
-	const sortParam = list.read("sort");
-	const sort = sortable.find((s) => s === sortParam) ?? null;
-	const dir: SortDir = list.read("dir") === "asc" ? "asc" : "desc";
+	const sort = sortable.find((s) => s === list.sort) ?? null;
+	/** The rows come from the page (`data`), not from a request of the table's. */
+	const external = !url && !props.load;
 
 	const [searchText, setSearchText] = useState(q);
+	const [seenQ, setSeenQ] = useState(q);
+	if (q !== seenQ) {
+		// The search changed from outside (another page, a form): show it in the box.
+		setSeenQ(q);
+		if (q !== searchText.trim()) setSearchText(q);
+	}
 	const searchTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-	const [data, setData] = useState<D | null>(null);
-	const [failed, setFailed] = useState(false);
+	/** The last page loaded, with the state it was loaded for. */
+	const [loaded, setLoaded] = useState<{ data: D; page: number; pageSize: number } | null>(null);
+	const [loadFailed, setLoadFailed] = useState(false);
 	const [reloads, setReloads] = useState(0);
 	const [selecting, setSelecting] = useState(false);
 	const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set());
@@ -219,59 +228,69 @@ export function AdminTable<T, D extends ListPage = ListPage & { items: T[] }>(pr
 	/** The open confirmation, and what it runs once confirmed. */
 	const [pending, setPending] = useState<{ confirm: Confirmation; destructive?: boolean; icon?: LucideIcon; run: () => Promise<void> } | null>(null);
 
+	// The latest functions, so a new one each render does not load again.
+	const loader = useRef({ load: props.load, queryParams: props.queryParams });
+	useEffect(() => {
+		loader.current = { load: props.load, queryParams: props.queryParams };
+	});
+
 	const paramsKey = JSON.stringify(params ?? {});
 	const plural = noun[1];
 	/** The request the current inputs make; the list is loading until the answer to it is in. */
 	const requestKey = JSON.stringify([url, paramsKey, page, pageSize, q, sort, dir, reloads, String(reloadKey)]);
 	const [settledKey, setSettledKey] = useState<string | null>(null);
-	const loading = settledKey !== requestKey;
 	useEffect(() => {
+		if (external) return;
 		let current = true;
-		const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
-		if (q) query.set("q", q);
-		if (sort) {
-			query.set("sort", sort);
-			query.set("dir", dir);
-		}
-		for (const [key, value] of Object.entries(JSON.parse(paramsKey) as Record<string, string | undefined>)) {
-			if (value !== undefined) query.set(key, value);
-		}
-		// A failure is shown by the HTTP layer; the list keeps what it had.
-		http(`${url}${url.includes("?") ? "&" : "?"}${query}`)
-			.then((res) => res.json() as Promise<D>)
+		const query: ListQuery = { page, pageSize, q, sort, dir };
+		const { load, queryParams } = loader.current;
+		const request = load
+			? load(query)
+			: (() => {
+					const search = new URLSearchParams(queryParams ? queryParams(query) : listParams(query));
+					for (const [key, value] of Object.entries(JSON.parse(paramsKey) as Record<string, string | undefined>)) {
+						if (value !== undefined) search.set(key, value);
+					}
+					return http(`${url}${url!.includes("?") ? "&" : "?"}${search}`).then((res) => res.json() as Promise<D>);
+				})();
+		// A failure has been shown by the HTTP layer; the list keeps what it had.
+		request
 			.then((next) => {
 				if (!current) return;
-				setData(next);
-				setFailed(false);
+				setLoaded({ data: next, page, pageSize });
+				setLoadFailed(false);
 				setSelected(new Set());
 			})
 			.catch((error: unknown) => {
 				if (!current) return;
-				setFailed(true);
+				setLoadFailed(true);
 				if (!isHandledHttpError(error)) toast.error(`The ${plural} could not be loaded.`);
 			})
 			.finally(() => current && setSettledKey(requestKey));
 		return () => {
 			current = false;
 		};
-	}, [url, paramsKey, page, pageSize, q, sort, dir, plural, requestKey]);
+	}, [external, url, paramsKey, page, pageSize, q, sort, dir, plural, requestKey]);
 
-	const reload = () => setReloads((n) => n + 1);
-	const rows = data ? rowsOf(data) : [];
-	const pages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
-	const firstOrdinal = data ? (data.page - 1) * data.pageSize + 1 : 1;
+	const shown = external ? (props.data ? { data: props.data, page, pageSize } : null) : loaded;
+	const loading = external ? Boolean(props.loading) || !props.data : settledKey !== requestKey;
+	const failed = external ? Boolean(props.failed) : loadFailed;
+	const reload = () => (external ? props.onReload?.() : setReloads((n) => n + 1));
+	const rows = shown ? rowsOf(shown.data) : [];
+	const total = shown ? totalOf(shown.data) : 0;
+	const pages = Math.max(1, Math.ceil(total / pageSize));
+	const firstOrdinal = shown ? (shown.page - 1) * shown.pageSize + 1 : 1;
+	/** Only rows on screen: rows that went away (pushed data, a reload) are no longer selected. */
+	const selectedRows = rows.filter((r) => selected.has(keyOf(r)));
 
 	const onSearch = (value: string) => {
 		setSearchText(value);
 		clearTimeout(searchTimer.current);
 		// Search as the user types, once they pause.
-		searchTimer.current = setTimeout(() => list.update({ q: value.trim() || null, page: null }), 300);
+		searchTimer.current = setTimeout(() => list.update({ q: value.trim() }), 300);
 	};
-	const onSort = (field: string) => {
-		const next = nextSort({ sort, dir }, field);
-		list.update({ sort: next.sort, dir: next.sort ? next.dir : null, page: null });
-	};
-	const onPage = (n: number) => list.update({ page: n > 1 ? String(n) : null });
+	const onSort = (field: string) => list.update(nextSort({ sort, dir }, field));
+	const onPage = (n: number) => list.update({ page: n });
 
 	// Deleting is the common bulk action, so it is built in.
 	const deleteRows = deletable
@@ -326,7 +345,7 @@ export function AdminTable<T, D extends ListPage = ListPage & { items: T[] }>(pr
 		else void go();
 	};
 
-	const allSelected = rows.length > 0 && rows.every((r) => selected.has(keyOf(r)));
+	const allSelected = rows.length > 0 && selectedRows.length === rows.length;
 	const toggleRow = (id: string) =>
 		setSelected((prev) => {
 			const next = new Set(prev);
@@ -388,21 +407,20 @@ export function AdminTable<T, D extends ListPage = ListPage & { items: T[] }>(pr
 									variant="ghost"
 									size="sm"
 									className="hover:bg-foreground/10"
-									disabled={selected.size === 0 || busy}
+									disabled={selectedRows.length === 0 || busy}
 									onClick={() => {
-										const ids = [...selected];
-										const chosen = rows.filter((r) => selected.has(keyOf(r)));
-										perform(() => action.run(ids, chosen), action.confirm?.(ids.length), action.destructive, action.icon);
+										const ids = selectedRows.map(keyOf);
+										perform(() => action.run(ids, selectedRows), action.confirm?.(ids.length), action.destructive, action.icon);
 									}}
 								>
 									{busy ? <Spinner /> : action.icon && <action.icon />}
 									{action.label}
 								</Button>
 							))}
-						{data && (
+						{shown && (
 							<span className="text-sm text-muted-foreground">
-								{selecting && selected.size > 0 ? `${selected.size} selected of ` : ""}
-								{data.total} {data.total === 1 ? noun[0] : noun[1]}
+								{selecting && selectedRows.length > 0 ? `${selectedRows.length} selected of ` : ""}
+								{total} {total === 1 ? noun[0] : noun[1]}
 							</span>
 						)}
 					</div>
@@ -416,7 +434,7 @@ export function AdminTable<T, D extends ListPage = ListPage & { items: T[] }>(pr
 									<TableHead className={NARROW}>
 										<Checkbox
 											className={CHECKBOX}
-											checked={allSelected ? true : selected.size > 0 ? "indeterminate" : false}
+											checked={allSelected ? true : selectedRows.length > 0 ? "indeterminate" : false}
 											onCheckedChange={() => setSelected(allSelected ? new Set() : new Set(rows.map(keyOf)))}
 											disabled={rows.length === 0}
 											aria-label={`Select all ${noun[1]}`}
@@ -441,10 +459,10 @@ export function AdminTable<T, D extends ListPage = ListPage & { items: T[] }>(pr
 								)}
 							</TableRow>
 						</TableHeader>
-						<TableBody aria-busy={loading} className={cn(data && loading && "opacity-60 transition-opacity")}>
-							{!data
+						<TableBody aria-busy={loading} className={cn(shown && loading && "opacity-60 transition-opacity")}>
+							{!shown
 								? panel(
-										failed ? (
+										failed && !loading ? (
 											<div className="flex flex-col items-center gap-3">
 												<span>The {noun[1]} could not be loaded.</span>
 												<Button variant="outline" size="sm" onClick={reload}>

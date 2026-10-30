@@ -10,6 +10,7 @@ import { demoIp } from "../../middleware/demo";
 import { createPasswordUser, deleteUser, liveSessionsFor, revokeSessions, setPassword, statsFor, wouldRemoveLastAdmin } from "../../lib/users";
 import { requestOrigin } from "../../lib/login-log";
 import { hasRole, type Role } from "../../../shared/roles";
+import { parseListQuery } from "../../../shared/admin-list";
 import {
 	IDLE_AFTER_SECONDS,
 	USER_SORT_FIELDS,
@@ -19,12 +20,10 @@ import {
 	ACTIVITY_SORT_FIELDS,
 	describeBrowser,
 	type ActivityEvent,
-	type ActivitySortField,
 	type AdminUser,
 	type AdminUserActivity,
 	type AdminUserDetail,
 	type AdminUserList,
-	type UserSortField,
 } from "../../../shared/admin-users";
 
 /**
@@ -96,7 +95,8 @@ async function assertEmailFree(c: AppContext, email: string, exceptId?: string) 
 const USER_COLUMNS = ["users.id", "users.name", "users.email", "users.role", "users.image", "users.emailVerified", "users.disabled", "users.createdAt", "users.updatedAt"] as const;
 
 /**
- * `GET /?q=&page=1&pageSize=20&sort=createdAt&dir=desc`
+ * `GET /?p=1&ps=20&q=&s=-createdAt` (the admin lists' protocol, src/shared/admin-list.ts),
+ * newest first unless sorted.
  *
  * Every sort is done in SQL, so the list stays one query however many users
  * there are: `users` joined to the live sessions (last use) and `user_stats`
@@ -105,13 +105,12 @@ const USER_COLUMNS = ["users.id", "users.name", "users.email", "users.role", "us
  */
 adminUsers.get("/", async (c) => {
 	const db = createDb(c.env);
-	const q = c.req.query("q")?.trim().toLowerCase();
-	const page = Math.max(1, Number(c.req.query("page")) || 1);
 	// D1 binds at most 100 parameters per query, and a page's ids are bound in `present`.
-	const pageSize = Math.min(50, Math.max(1, Number(c.req.query("pageSize")) || 20));
-	const sortParam = c.req.query("sort") as UserSortField;
-	const sort = USER_SORT_FIELDS.includes(sortParam) ? sortParam : "createdAt";
-	const dir = c.req.query("dir") === "asc" ? "asc" : "desc";
+	const list = parseListQuery((name) => c.req.query(name), { sortable: USER_SORT_FIELDS, maxPageSize: 50 });
+	const { page, pageSize } = list;
+	const q = list.q.toLowerCase();
+	const sort = list.sort ?? "createdAt";
+	const dir = list.sort ? list.dir : "desc";
 
 	const now = new Date();
 	const live = db
@@ -212,7 +211,7 @@ adminUsers.post("/:id/sign-out", async (c) => {
 const ACTIVITY_KINDS = ["sign-out", "session-expired", "session-revoked"] as const;
 
 /**
- * `GET /:id/activity?page=1&pageSize=10&sort=&dir=&locale=`: the user's
+ * `GET /:id/activity?p=1&ps=10&s=&locale=`: the user's
  * sign-ins (failed ones too), sign-outs and ended sessions, newest first unless
  * sorted. Newest first is a page of an indexed query; other sorts read the
  * user's whole history, because the browser and the country name are worked
@@ -221,11 +220,8 @@ const ACTIVITY_KINDS = ["sign-out", "session-expired", "session-revoked"] as con
 adminUsers.get("/:id/activity", async (c) => {
 	const db = createDb(c.env);
 	const user = await findUser(c, c.req.param("id"));
-	const page = Math.max(1, Number(c.req.query("page")) || 1);
-	const pageSize = Math.min(100, Math.max(1, Number(c.req.query("pageSize")) || 10));
-	const sortParam = c.req.query("sort") as ActivitySortField;
-	const sort = c.req.query("sort") && ACTIVITY_SORT_FIELDS.includes(sortParam) ? sortParam : null;
-	const sign = c.req.query("dir") === "asc" ? 1 : -1;
+	const { page, pageSize, sort, dir } = parseListQuery((name) => c.req.query(name), { sortable: ACTIVITY_SORT_FIELDS, pageSize: 10 });
+	const sign = dir === "asc" ? 1 : -1;
 
 	const ofUser = db
 		.selectFrom("login_events")

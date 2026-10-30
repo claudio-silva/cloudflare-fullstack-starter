@@ -50,30 +50,100 @@ export function Orders() {
 ```
 
 That is a complete page: search, sorting, pages, numbering, loading and empty
-states. Search, sort and page are kept in the URL, so coming back from an
-order brings the list back as it was.
+states. Search, sort and page are kept in the URL (`/admin/orders?p=2&q=smith&s=-total`),
+so coming back from an order brings the list back as it was.
 
 ## What the endpoint answers
 
+Every list speaks the same protocol (`src/shared/admin-list.ts`):
+
 ```
-GET /api/admin/orders?page=2&pageSize=20&q=smith&sort=total&dir=desc
-→ { "items": [ … ], "total": 134, "page": 2, "pageSize": 20 }
+GET /api/admin/orders?p=2&ps=20&q=smith&s=-total
+→ { "items": [ … ], "total": 134 }
 ```
 
-- `q` only when there is a search, `sort` and `dir` only while a column sorts.
-  With no `sort`, the server uses its own default order.
-- `sort` is the column's `id` (or its `sortKey`). The server must check it
-  against a list of the columns it can sort, as `src/worker/routes/admin/users.ts`
-  does; never put it in SQL unchecked.
+| Parameter | |
+|---|---|
+| `p` | The page, from 1 |
+| `ps` | Rows per page |
+| `q` | The search, only when there is one |
+| `s` | The sort, only while a column sorts: the column's `id` (or `sortKey`), descending with a leading `-`. Without it the server uses its own order |
+
+The server reads them with `parseListQuery`, which also checks the sort
+against the columns it can sort, so the value that reaches the query is one of
+them or `null`; never put an unchecked one in SQL:
+
+```ts
+import { parseListQuery } from "../../../shared/admin-list";
+
+const ORDER_SORTS = ["number", "customer", "total", "createdAt"] as const;
+
+orders.get("/", async (c) => {
+	const { page, pageSize, q, sort, dir } = parseListQuery((name) => c.req.query(name), { sortable: ORDER_SORTS, maxPageSize: 50 });
+	// … WHERE for q, ORDER BY sort ?? "createdAt", LIMIT pageSize OFFSET (page - 1) * pageSize
+	return c.json({ items, total });
+});
+```
+
 - Rows under another key: `rows={(data) => data.orders}`, with the response type
-  as the second type parameter, `AdminTable<Order, OrderList>`.
+  as the second type parameter, `AdminTable<Order, OrderList>`; a total under
+  another key: `total={(data) => data.count}`.
 - A row is identified by its `id`; `rowKey` when it is something else.
-- `params` adds fixed parameters, e.g. a filter or `locale` (the activity list
-  sends it so the server sorts country names in the page's language).
 
 Sort and page on the server, not in the browser, so the list stays one query
-and one page however many rows there are. `users.ts` shows how: every sortable
-column is an `ORDER BY`, with empty values last in either direction.
+and one page however many rows there are. `src/worker/routes/admin/users.ts`
+shows how: every sortable column is an `ORDER BY`, with empty values last in
+either direction.
+
+## Extending or replacing the protocol
+
+Each step keeps the whole table (toolbar, selection, actions, states) and
+changes only where the rows come from:
+
+| Need | Use |
+|---|---|
+| More criteria: an advanced search form, a filter, the locale | `params={{ status, from, to }}`: added to every request; a change loads again. Reset the page when they change (below) |
+| An endpoint that speaks another protocol (`offset`/`limit`, `sort`/`order`) | `queryParams={(list) => ({ offset: String((list.page - 1) * list.pageSize), limit: String(list.pageSize) })}`: replaces `p`, `ps`, `q`, `s`; `params` are still added |
+| Another kind of request (GraphQL, an RPC, a POST with a body) | `load={(list) => fetchOrders(list)}`: returns the response; the table still shows loading, failures and Try again. Called again when the state, `params` or `reloadKey` change |
+| Rows that arrive by themselves (a websocket, a shared store) | No `url` or `load`: pass `data` (null until there is some), and `loading`, `failed`, `onReload` if they apply |
+
+`list` in `queryParams` and `load` is the list's state, `{ page, pageSize, q, sort, dir }`.
+
+### Reading or changing the state outside the table
+
+`useAdminList()` (`src/react-app/admin/use-admin-list.ts`) holds the state the
+table would otherwise keep inside: in the address (`state: "url"`, default) or
+in the page (`"local"`). Give it to the table as `list` and the page can read
+it, change it, or load with it:
+
+```tsx
+const list = useAdminList({ pageSize: 50 });
+const [filters, setFilters] = useState<OrderFilters>({});
+
+<OrderFilterForm
+	onSubmit={(next) => {
+		setFilters(next);
+		list.update({ page: 1 });
+	}}
+/>
+<AdminTable<Order> url="/api/admin/orders" params={filters} list={list} columns={COLUMNS} noun={["order", "orders"]} search="Search orders" />
+```
+
+With rows pushed from elsewhere, the page subscribes with the state and hands
+the result over:
+
+```tsx
+const list = useAdminList({ state: "local" });
+const { page, pageSize, q, sort, dir } = list;
+const [data, setData] = useState<ListResponse<Order> | null>(null);
+useEffect(() => ordersSocket.subscribe({ page, pageSize, q, sort, dir }, setData), [page, pageSize, q, sort, dir]);
+
+<AdminTable<Order> data={data} list={list} columns={COLUMNS} noun={["order", "orders"]} search="Search orders" />
+```
+
+`list.update({ … })` changes any of `page`, `pageSize`, `q`, `sort`, `dir`; a
+new search, sort or page size goes back to page 1 unless `page` is given too.
+The table checks `sort` against its sortable columns before using it.
 
 ## Columns
 
@@ -99,13 +169,17 @@ email (`UserList.tsx`), the activity list a badge with a detail beside it
 
 | Prop | Default | |
 |---|---|---|
-| `url` | required | The list endpoint |
+| `url` | | The list endpoint, asked with the protocol above |
+| `params` | none | Added to every request's query |
+| `queryParams` / `load` / `data` | | Replace the query, the request, or the request altogether: *Extending or replacing the protocol* |
+| `rows` / `total` | `data.items` / `data.total` | Take the rows and the total out of the response |
+| `list` | the table's own | The state from `useAdminList`, when the page needs it |
 | `columns` | required | See above |
 | `noun` | `["record", "records"]` | Used in the count, the messages and the dialogs: give it |
-| `search` | no search box | The box's placeholder; the text goes to the server as `q` |
+| `search` | no search box | The box's placeholder; the text goes to the server as `q`. A change of `q` from outside shows in the box |
 | `intro` | nothing | Text or markup in the toolbar, beside the search box or in its place |
-| `pageSize` | 20 | Rows per page. D1 binds at most 100 parameters per query, so keep pages modest |
-| `state` | `"url"` | `"local"` for a list that is part of another page (a tab, a panel): two lists on one page must not share the URL's `q`, `page` and `sort` |
+| `pageSize` | 20 | Ignored with `list`. Rows per page. D1 binds at most 100 parameters per query, so keep pages modest |
+| `state` | `"url"` | Ignored with `list`. `"local"` for a list that is part of another page (a tab, a panel): two lists on one page must not share the address's `p`, `q` and `s` |
 | `ordinal` | true | The `#` column |
 | `rowHref` | rows do nothing | Where a click on a row leads |
 | `onRowClick` | | What a click does, when it is not a link |

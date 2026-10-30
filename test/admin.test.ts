@@ -4,6 +4,7 @@ import { app } from "../src/worker/index";
 import { pruneExpiredAuthRows } from "../src/worker/lib/expired-auth-rows";
 import { createDb } from "../src/worker/db";
 import { describeBrowser } from "../src/shared/admin-users";
+import { listParams, parseListQuery } from "../src/shared/admin-list";
 
 // The "test" environment stubs the session with a fixed user; the admin area
 // is about roles, so these run with real sign-ins ("local" keeps everything else as in dev).
@@ -73,6 +74,20 @@ describe("admin API", () => {
 		expect((await call(`/users/${id}`)).status).toBe(404);
 	});
 
+	it("lists with the admin lists' protocol: p, ps, q and s", async () => {
+		const { call } = await userWithRole("superadmin");
+		const page = async (query: string) => (await (await call(`/users?${query}`)).json()) as { users: { email: string }[]; total: number; page: number; pageSize: number };
+		const all = await page("ps=50");
+		expect(all.total).toBeGreaterThan(1);
+		const second = await page("p=2&ps=1");
+		expect(second).toMatchObject({ page: 2, pageSize: 1, total: all.total });
+		expect(second.users).toHaveLength(1);
+		expect(second.users[0].email).toBe(all.users[1].email);
+		const byEmail = (await page("s=email&ps=50")).users.map((u) => u.email);
+		expect(byEmail).toEqual([...byEmail].sort());
+		expect((await page("s=-email&ps=50")).users.map((u) => u.email)).toEqual([...byEmail].reverse());
+	});
+
 	it("a superadmin cannot demote, deactivate or delete themselves", async () => {
 		const me = await userWithRole("superadmin");
 		expect((await me.call(`/users/${me.id}`, { method: "PATCH", body: { role: "user" } })).status).toBe(403);
@@ -107,7 +122,7 @@ describe("admin API", () => {
 		expect(refused.status).toBeGreaterThanOrEqual(400);
 		// Sorted by status, a disabled user comes after the active ones ascending, and first descending.
 		const byStatus = async (dir: string) =>
-			((await (await call(`/users?sort=status&dir=${dir}&pageSize=100`)).json()) as { users: Row[] }).users.map((u) => u.status);
+			((await (await call(`/users?s=${dir === "desc" ? "-" : ""}status&ps=100`)).json()) as { users: Row[] }).users.map((u) => u.status);
 		const asc = await byStatus("asc");
 		expect(asc.indexOf("active")).toBeLessThan(asc.indexOf("disabled"));
 		expect((await byStatus("desc"))[0]).toBe("disabled");
@@ -135,7 +150,7 @@ describe("admin API", () => {
 
 		// Sorted by event, ascending and descending; the count is in the detail.
 		const sortedKinds = async (dir: string) =>
-			((await (await call(`/users/${target.id}/activity?sort=kind&dir=${dir}`)).json()) as { events: { kind: string }[] }).events.map((e) => e.kind);
+			((await (await call(`/users/${target.id}/activity?s=${dir === "desc" ? "-" : ""}kind`)).json()) as { events: { kind: string }[] }).events.map((e) => e.kind);
 		expect(await sortedKinds("asc")).toEqual([...kinds].sort());
 		expect(await sortedKinds("desc")).toEqual([...kinds].sort().reverse());
 
@@ -153,7 +168,7 @@ describe("admin API", () => {
 
 		// Sorted by idle time, users without a session come last in either direction.
 		for (const dir of ["asc", "desc"]) {
-			const users = ((await (await call(`/users?sort=idleSeconds&dir=${dir}&pageSize=100`)).json()) as { users: Row[] }).users;
+			const users = ((await (await call(`/users?s=${dir === "desc" ? "-" : ""}idleSeconds&ps=100`)).json()) as { users: Row[] }).users;
 			const idle = users.map((u) => (u as Row & { idleSeconds: number | null }).idleSeconds);
 			expect(idle.slice(idle.findIndex((v) => v === null)).every((v) => v === null)).toBe(true);
 		}
@@ -214,6 +229,18 @@ describe("session endings in the log", () => {
 		expect(ips).toContain("203.0.113.x");
 		expect(ips).not.toContain("203.0.113.7");
 		expect(((await (await asDemo("")).json()) as { currentSession: { ip: string } }).currentSession.ip).toBe("203.0.113.x");
+	});
+});
+
+describe("list query protocol", () => {
+	it("writes and reads the same state, checking the sort", () => {
+		const query = { page: 3, pageSize: 25, q: "smith", sort: "createdAt", dir: "desc" as const };
+		expect(listParams(query)).toEqual({ p: "3", ps: "25", q: "smith", s: "-createdAt" });
+		const params = new URLSearchParams(listParams(query));
+		expect(parseListQuery((name) => params.get(name) ?? undefined, { sortable: ["createdAt"] })).toEqual(query);
+		expect(parseListQuery(() => undefined, { sortable: ["name"], pageSize: 10 })).toEqual({ page: 1, pageSize: 10, q: "", sort: null, dir: "asc" });
+		const bad = new URLSearchParams("p=-4&ps=9999&s=password");
+		expect(parseListQuery((name) => bad.get(name) ?? undefined, { sortable: ["name"], maxPageSize: 50 })).toMatchObject({ page: 1, pageSize: 50, sort: null });
 	});
 });
 
