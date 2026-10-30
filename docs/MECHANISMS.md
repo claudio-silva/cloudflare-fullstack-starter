@@ -710,6 +710,13 @@ and a published password on a writable app is an invitation to abuse. The
   to be in the Worker: there is no zone, so no WAF or dashboard rule applies.
   It is not specific to demos, and stays on in every deployment that declares
   the binding.
+- **Visitors' addresses stay private.** Everyone signs in to the same account,
+  so its sessions and sign-in log fill with strangers' IPs. The admin area
+  shows them with the last part hidden (`203.0.113.x`, `demoIp()`), and Better
+  Auth's `GET /api/auth/list-sessions`, which the UI does not use, answers 403
+  (`demo_hidden`). Only the display changes: the log keeps the full addresses
+  for whoever reads the database (`npm run db -- logins`), so the demo account
+  can be a superadmin and show the whole admin area.
 
 `GET /api/demo` returns `DEMO_EMAIL` / `DEMO_PASSWORD` so the sign-in page can
 offer them, and answers 404 outside demo mode. The account itself is created

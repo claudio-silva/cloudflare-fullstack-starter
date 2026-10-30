@@ -196,6 +196,26 @@ describe("session endings in the log", () => {
 		await pruneExpiredAuthRows(local);
 		expect(await kinds()).toContain("session-expired");
 	});
+
+	it("in demo mode, shows visitors' IPs masked", async () => {
+		// Signed in once only, from a known address, so it is also the current session. Better Auth
+		// takes the session's address from X-Forwarded-For, the log from CF-Connecting-IP.
+		const email = `demo-ip-${Date.now()}@example.com`;
+		const created = await app.request("/api/cli/users", { method: "POST", headers: { ...json, ...cliKey }, body: JSON.stringify({ email, password: "password-123", name: "Demo", role: "superadmin" }) }, local);
+		const me = { id: ((await created.json()) as { userId: string }).userId };
+		const signIn = await app.request(
+			"/api/auth/sign-in/email",
+			{ method: "POST", headers: { ...json, "CF-Connecting-IP": "203.0.113.7", "X-Forwarded-For": "203.0.113.7" }, body: JSON.stringify({ email, password: "password-123" }) },
+			local,
+		);
+		const cookie = signIn.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ");
+		const asDemo = (path: string) => app.request(`/api/admin/users/${me.id}${path}`, { headers: { cookie } }, { ...local, DEMO_MODE: "1" });
+
+		const ips = ((await (await asDemo("/activity")).json()) as { events: { ip: string | null }[] }).events.map((e) => e.ip);
+		expect(ips).toContain("203.0.113.x");
+		expect(ips).not.toContain("203.0.113.7");
+		expect(((await (await asDemo("")).json()) as { currentSession: { ip: string } }).currentSession.ip).toBe("203.0.113.x");
+	});
 });
 
 describe("describeBrowser", () => {

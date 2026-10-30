@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { app } from "../src/worker/index";
 import { createEmailSender } from "../src/worker/adapters/email";
 import type { AppEnv } from "../src/worker/types/env";
+import { maskIp } from "../src/worker/middleware/demo";
 
 /**
  * Demo mode (src/worker/middleware/demo.ts) is what makes a public deployment
@@ -56,6 +57,21 @@ describe("demo mode", () => {
 		expect((await call("/api/demo", {}, env as AppEnv)).status).toBe(404);
 		expect((await call("/api/profile", { method: "DELETE" }, env as AppEnv)).status).toBe(200);
 	});
+
+	it("does not list the shared account's sessions, which hold other visitors' IPs", async () => {
+		const res = await call("/api/auth/list-sessions");
+		expect(res.status).toBe(403);
+		expect(await res.json()).toMatchObject({ code: "demo_hidden" });
+		expect((await call("/api/auth/list-sessions", {}, env as AppEnv)).status).not.toBe(403);
+	});
+
+	it.each([
+		["203.0.113.5", "203.0.113.x"],
+		["::ffff:203.0.113.5", "::ffff:203.0.113.x"],
+		["2001:db8:85a3:8d3:1319:8a2e:370:7348", "2001:db8:85a3::x"],
+		["2001:db8::1", "2001:db8::x"],
+		["::1", "::x"],
+	])("masks %s as %s", (ip, masked) => expect(maskIp(ip)).toBe(masked));
 
 	it("sends no email, whatever asks it to", async () => {
 		const send = vi.fn();

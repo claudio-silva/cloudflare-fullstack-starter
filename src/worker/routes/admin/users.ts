@@ -6,6 +6,7 @@ import type { Database } from "../../types/database";
 import { createDb, databaseKind, dbBool, dbNow, dbSecondsBetween, toIso } from "../../db";
 import { AppError } from "../../lib/errors";
 import { requireRole } from "../../middleware/roles";
+import { demoIp } from "../../middleware/demo";
 import { createPasswordUser, deleteUser, liveSessionsFor, revokeSessions, setPassword, statsFor, wouldRemoveLastAdmin } from "../../lib/users";
 import { requestOrigin } from "../../lib/login-log";
 import { hasRole, type Role } from "../../../shared/roles";
@@ -196,7 +197,7 @@ adminUsers.get("/:id", async (c) => {
 		lastSignOutAt: lastSignOut ? (toIso(lastSignOut.created_at) ?? null) : null,
 		signIns: Number(stats?.sign_ins ?? 0),
 		failedSignIns: Number(stats?.failed_sign_ins ?? 0),
-		currentSession: current ? { ip: current.ipAddress, country: lastSignIn?.country ?? null } : null,
+		currentSession: current ? { ip: demoIp(c.env, current.ipAddress), country: lastSignIn?.country ?? null } : null,
 		activityCount: Number(events?.n ?? 0),
 	});
 });
@@ -262,7 +263,7 @@ adminUsers.get("/:id/activity", async (c) => {
 		method: r.method,
 		actor: r.actor,
 		durationSeconds: r.duration_seconds === null ? null : Number(r.duration_seconds),
-		ip: r.ip,
+		ip: demoIp(c.env, r.ip),
 		country: r.country,
 		userAgent: r.user_agent,
 		createdAt: toIso(r.created_at) ?? "",

@@ -24,6 +24,10 @@ import { fail, failForAuthClient } from "../lib/errors";
  *  - **Sign-in rate limit** per IP (`AUTH_RATE_LIMITER`, see src/worker/index.ts),
  *    which on `*.workers.dev` has to be in the Worker: there is no zone, so
  *    no WAF or dashboard rate-limiting rule applies.
+ *  - **Visitors' addresses stay private.** Every visitor signs in to the same
+ *    account, so its sessions and sign-in log hold strangers' IPs: the admin
+ *    area shows them masked (`maskIp`), and Better Auth's session list, which
+ *    the UI does not use, is refused.
  *
  * The credentials are served by `GET /api/demo` so the sign-in form can offer
  * them; that route answers 404 outside demo mode.
@@ -41,7 +45,24 @@ const ALLOWED_WRITES = [
 	"/api/cli/", // the deploy's migrations; protected by CLI_API_KEY
 ];
 
+/** Reads the demo refuses: they would show other visitors' sessions, with their IPs. */
+const HIDDEN_READS = ["/api/auth/list-sessions"];
+
+/** In demo mode, an IP with its last part hidden (`203.0.113.x`, `2001:db8:85a3::x`); otherwise as is. */
+export function demoIp(env: Pick<AppEnv, "DEMO_MODE">, ip: string | null): string | null {
+	return ip && isDemo(env) ? maskIp(ip) : ip;
+}
+
+export function maskIp(ip: string): string {
+	if (ip.includes(".")) return ip.replace(/\.[^.:]*$/, ".x");
+	const head = ip.split("::")[0].split(":").filter(Boolean).slice(0, 3);
+	return `${head.join(":")}::x`;
+}
+
 export async function demoMiddleware(c: AppContext, next: () => Promise<void>) {
+	if (isDemo(c.env) && HIDDEN_READS.includes(c.req.path)) {
+		return failForAuthClient(c, 403, "This is a public demo: sessions are not listed.", { code: "demo_hidden", level: "info", log: `demo: refused ${c.req.method} ${c.req.path}` });
+	}
 	if (!isDemo(c.env) || SAFE_METHODS.has(c.req.method) || !c.req.path.startsWith("/api/")) return next();
 	if (ALLOWED_WRITES.some((prefix) => c.req.path.startsWith(prefix))) return next();
 
