@@ -887,6 +887,7 @@ For long-term retention or external analysis, you can forward logs via Cloudflar
 - [What this starter gives you, and why](docs/MECHANISMS.md) — migrations, maintenance mode, versioning, deploy modes, secrets, sign-in log, backups, database portability
 - [Deployment, versions and migrations](docs/DEPLOYMENT.md) — what each deploy does, git-tag releases, expand/contract migrations, maintenance, Workers Builds and your own CI
 - [The admin area](docs/ADMIN.md) — roles, the example backoffice, adding pages, removing it <!-- [admin-area-line] -->
+- [Admin lists](docs/ADMIN_TABLE.md) — `AdminTable`, the one table every admin list is built from <!-- [admin-area-line] -->
 - [Dependencies](docs/DEPENDENCIES.md) — why each third-party package is here, what was left out, and when to revisit
 - [Vite ↔ Cloudflare Bridge](docs/VITE_CLOUDFLARE_BRIDGE.md) — how the project bridges Vite's dev conventions with Cloudflare's deployment model (env config baking, secrets sync, cross-platform build scripts)
 

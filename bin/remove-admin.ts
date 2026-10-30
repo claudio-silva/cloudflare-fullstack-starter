@@ -34,6 +34,7 @@ const OWN_PATHS = [
 	"src/react-app/lib/admin-util.ts",
 	"test/admin.test.ts",
 	"docs/ADMIN.md",
+	"docs/ADMIN_TABLE.md",
 	SELF,
 ];
 
@@ -49,7 +50,7 @@ const UNMARKED_LINES: Record<string, RegExp[]> = {
 };
 
 /** Left behind after removing, these would point at something gone. */
-const LEFTOVER = /routes\/admin|@\/admin\/|shared\/admin-users|lib\/admin-util|ADMIN\.md|admin:remove|admin-area/;
+const LEFTOVER = /routes\/admin|@\/admin\/|shared\/admin-users|lib\/admin-util|ADMIN(_TABLE)?\.md|admin:remove|admin-area/;
 
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");

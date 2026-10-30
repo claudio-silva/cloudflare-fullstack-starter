@@ -89,6 +89,7 @@ Roles are in `src/shared/roles.ts` (`user` < `admin` < `superadmin`); `session.u
 ### The admin area
 `/admin` is an example backoffice (admins and up, 403 otherwise) that a project may restyle or remove. To add a page there see `docs/ADMIN.md`; `npm run admin:remove` removes the whole area.
 When working on the area, keep it removable: put a helper only it uses in `src/react-app/lib/admin-util.ts` (deleted with it) rather than a new file under `lib/`, and mark whatever it adds to a shared file with the markers described in `docs/ADMIN.md`, *Removing it*.
+**Lists in the admin area use `AdminTable`** (`src/react-app/admin/components/AdminTable.tsx`, guide in `docs/ADMIN_TABLE.md`): it brings the toolbar, search, sorting, row numbers, selection, bulk and row actions, pages and the loading and empty states, so every list looks and behaves the same. Configure it through its props (columns, `cell` renderers, `rowActions`, `bulkActions`, `deletable`, `intro`, `empty`, `state`) rather than building a table from `components/ui/table`; reach for something else only when a list genuinely does not fit it (then say why in a comment). The app's own pages, outside `/admin`, are not bound by it: their design is the app's.
 <!-- [/admin-area] -->
 
 ### Adding API Endpoints

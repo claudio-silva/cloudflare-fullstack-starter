@@ -65,7 +65,7 @@ npm run auth set-role -- -u you@example.com -r superadmin
 | `src/react-app/admin/nav.ts` | Menu helpers: what a role sees, the current page's trail, the menu style chosen |
 | `src/react-app/admin/admin.css` | The area's colours, light and dark |
 | `src/react-app/admin/styles.ts` | Shared classes, such as the action buttons' width |
-| `src/react-app/admin/components/` | `AdminLayout` (frame and footer), `AdminSidebar`, `AdminTopNav`, `AdminPage` (breadcrumbs and title), 403/404 |
+| `src/react-app/admin/components/` | `AdminLayout` (frame and footer), `AdminSidebar`, `AdminTopNav`, `AdminPage` (breadcrumbs and title), `AdminTable` (every list: see [ADMIN_TABLE.md](ADMIN_TABLE.md)), 403/404 |
 | `src/react-app/admin/pages/` | `Dashboard`, `users/UserList`, `users/UserForm` |
 | `src/worker/routes/admin/` | The API, `/api/admin/*`: admins and up; `users.ts` superadmins only |
 | `src/shared/admin-users.ts` | The users API's validation (zod) and types, shared by the Worker and the form |
@@ -146,6 +146,10 @@ band (see [Panels](#panels)). Both stay if the area is removed.
      );
    }
    ```
+
+   A list is an `AdminTable` inside the page: columns, the endpoint, and
+   whatever the list needs beyond the defaults. See
+   [ADMIN_TABLE.md](ADMIN_TABLE.md).
 
 2. Add its route in `AdminRoutes.tsx` (`<Route path="orders" element={<Orders />} />`).
 3. Add it to `nav` in `config.ts`, inside a group or at the top level. A
@@ -299,7 +303,7 @@ npm run admin:remove -- --dry-run    # only lists what it would do
 
 `bin/remove-admin.ts` deletes the area's own files (`src/react-app/admin/`,
 `src/worker/routes/admin/`, `src/shared/admin-users.ts`, `src/react-app/lib/admin-util.ts`,
-`test/admin.test.ts`, this file and itself) and strips what the area added to shared files. Those
+`test/admin.test.ts`, this file, `ADMIN_TABLE.md` and itself) and strips what the area added to shared files. Those
 additions are marked: a block from a line containing `[admin-area]` to one
 containing `[/admin-area]`, or a single line containing `[admin-area-line]`.
 It also removes its own `admin:remove` script from `package.json`. If a marker
