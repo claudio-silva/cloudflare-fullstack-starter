@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import { ClipboardList, History, LogOut, Save, Trash2, UserX, X } from "lucide-react";
+import { ClipboardList, History, LogOut, UserX, X } from "lucide-react";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { ActionBar, ButtonCancel, ButtonDelete, ButtonSave, useRecordForm, type SaveResult } from "@/components/actions";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -77,12 +78,10 @@ const toValues = (user: AdminUser): FormValues => ({
 export function UserForm() {
 	const { id } = useParams();
 	const isNew = id === undefined;
-	const navigate = useNavigate();
 	const myId = authClient.useSession().data?.user.id;
 	const isMe = !isNew && id === myId;
 
 	const [user, setUser] = useState<AdminUserDetail | null | "missing">(null);
-	const [deleting, setDeleting] = useState(false);
 	const [signingOut, setSigningOut] = useState(false);
 	const schema = useMemo(() => formSchema(isNew), [isNew]);
 	const form = useForm<FormValues, unknown, z.output<typeof schema>>({ resolver: zodResolver(schema), defaultValues: EMPTY });
@@ -105,10 +104,15 @@ export function UserForm() {
 		};
 	}, [id, form]);
 
-	const onSubmit = async (values: z.output<typeof schema>) => {
-		const { name, email, role, enabled, emailVerified, password } = values;
-		const body = { name, email, role, enabled, emailVerified, ...(password ? { password } : {}) };
-		try {
+	// The action buttons save through it (and announce it: a toast by default); saving returns to the list.
+	const record = useRecordForm({
+		form,
+		afterSave: "back",
+		backTo: "/admin/users",
+		deleteUrl: isNew ? undefined : `/api/admin/users/${id}`,
+		onSave: async (values): Promise<SaveResult> => {
+			const { name, email, role, enabled, emailVerified, password } = values;
+			const body = { name, email, role, enabled, emailVerified, ...(password ? { password } : {}) };
 			// 409 is ours: an email already in use belongs next to the field.
 			const res = await http(isNew ? "/api/admin/users" : `/api/admin/users/${id}`, {
 				method: isNew ? "POST" : "PATCH",
@@ -120,14 +124,11 @@ export function UserForm() {
 				const error = (await res.json()) as ApiErrorBody;
 				if (error.code === "email_taken") form.setError("email", { message: error.error });
 				else toast.error(error.error);
-				return;
+				return false;
 			}
-			toast.success(isNew ? "User created." : password ? "User saved. They have been signed out everywhere." : "User saved.");
-			navigate("/admin/users");
-		} catch (error) {
-			if (!isHandledHttpError(error)) toast.error("The user could not be saved.");
-		}
-	};
+			return { message: isNew ? "User created." : password ? "User saved. They have been signed out everywhere." : "User saved." };
+		},
+	});
 
 	const onSignOutEverywhere = async () => {
 		if (!user || user === "missing") return;
@@ -147,18 +148,6 @@ export function UserForm() {
 			if (!isHandledHttpError(error)) toast.error("The sessions could not be ended.");
 		} finally {
 			setSigningOut(false);
-		}
-	};
-
-	const onDelete = async () => {
-		setDeleting(true);
-		try {
-			await http(`/api/admin/users/${id}`, { method: "DELETE" });
-			toast.success("User deleted.");
-			navigate("/admin/users");
-		} catch (error) {
-			if (!isHandledHttpError(error)) toast.error("The user could not be deleted.");
-			setDeleting(false);
 		}
 	};
 
@@ -190,7 +179,6 @@ export function UserForm() {
 	const hasPassword = methods.includes("credential");
 	const usesGoogle = methods.includes("google");
 	const otherMethods = methods.filter((m) => m !== "credential").map(methodLabel).join(" or ") || "another method";
-	const { isSubmitting, isDirty } = form.formState;
 
 	return (
 		<AdminPage
@@ -218,7 +206,7 @@ export function UserForm() {
 			)}
 			<TabsContent value="details">
 			<Form {...form}>
-				<form onSubmit={form.handleSubmit(onSubmit)} className="grid items-start gap-6 lg:grid-cols-3">
+				<form {...record.formProps} className="grid items-start gap-6 lg:grid-cols-3">
 					<div className="space-y-6 lg:col-span-2">
 						<Panel title="Details" description="Who the user is and what they may do." bodyClassName="grid gap-5 sm:grid-cols-2">
 								<FormField
@@ -352,20 +340,6 @@ export function UserForm() {
 									)}
 								/>
 						</Panel>
-
-						<div className="flex justify-end gap-2">
-							<Button type="button" variant="outline" asChild className={ACTION_BUTTON}>
-								<Link to="/admin/users">
-									<X />
-									Cancel
-								</Link>
-							</Button>
-							<Button type="submit" disabled={isSubmitting || (!isNew && !isDirty)} className={ACTION_BUTTON}>
-								{/* The spinner takes the icon's place while saving. */}
-								{isSubmitting ? <Spinner /> : <Save />}
-								{isNew ? "Create user" : "Save changes"}
-							</Button>
-						</div>
 					</div>
 
 					{!isNew && user && (
@@ -454,40 +428,20 @@ export function UserForm() {
 									</AlertDialog>
 							</Panel>
 
-							{!isMe && (
-								<Panel tone="danger" title="Delete user" description="Removes the account, its sign-in methods and sessions. Its history stays in the sign-in log. This cannot be undone.">
-										<AlertDialog>
-											<AlertDialogTrigger asChild>
-												<Button type="button" variant="destructive" disabled={deleting} className={ACTION_BUTTON}>
-													{deleting ? <Spinner /> : <Trash2 />}
-													Delete user
-												</Button>
-											</AlertDialogTrigger>
-											<AlertDialogContent>
-												<AlertDialogHeader>
-													<AlertDialogTitle>Delete {user.name || user.email}?</AlertDialogTitle>
-													<AlertDialogDescription>
-														The account and everything attached to it is removed, and the user is signed out. This cannot be undone.
-													</AlertDialogDescription>
-												</AlertDialogHeader>
-												<AlertDialogFooter>
-													<AlertDialogCancel className={ACTION_BUTTON}>
-														<X />
-														Cancel
-													</AlertDialogCancel>
-													<AlertDialogAction variant="destructive" onClick={onDelete} className={ACTION_BUTTON}>
-														<Trash2 />
-														Delete
-													</AlertDialogAction>
-												</AlertDialogFooter>
-											</AlertDialogContent>
-										</AlertDialog>
-								</Panel>
-							)}
 						</div>
 					)}
 				</form>
 			</Form>
+			<ActionBar record={record} className="action-bar-fixed">
+				<ButtonCancel />
+				{!isNew && !isMe && (
+					<ButtonDelete
+						title={`Delete ${user!.name || user!.email}?`}
+						message="The account, its sign-in methods and sessions are removed, and the user is signed out. Its history stays in the sign-in log. This cannot be undone."
+					/>
+				)}
+				<ButtonSave label={isNew ? "Create user" : undefined} />
+			</ActionBar>
 			</TabsContent>
 			{!isNew && (
 				<TabsContent value="activity">

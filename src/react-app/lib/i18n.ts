@@ -64,6 +64,26 @@ export const defaultMessages = {
 	"update.bannerAction": "Update now",
 	"update.requiredTitle": "{app} has been updated.",
 	"update.requiredBody": "This page is running an older version that no longer works with the server. Update it to continue.",
+
+	// Action buttons and their toasts (components/actions/)
+	"actions.save": "Save",
+	"actions.cancel": "Cancel",
+	"actions.back": "Back",
+	"actions.new": "New",
+	"actions.delete": "Delete",
+	"actions.print": "Print",
+	"actions.created": "Created.",
+	"actions.saved": "Saved.",
+	"actions.deleted": "Deleted.",
+	"actions.discarded": "Changes discarded.",
+	"actions.saveFailed": "The changes could not be saved.",
+	"actions.deleteFailed": "It could not be deleted.",
+	"actions.deleteTitle": "Delete this record?",
+	"actions.deleteBody": "This cannot be undone.",
+	"actions.unsavedTitle": "Save your changes?",
+	"actions.unsavedBody": "You have changes that have not been saved yet.",
+	"actions.keepEditing": "Keep editing",
+	"actions.discard": "Discard",
 } as const;
 
 export type MessageKey = keyof typeof defaultMessages;

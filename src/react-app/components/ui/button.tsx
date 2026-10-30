@@ -14,6 +14,8 @@ const buttonVariants = cva(
         // project: a light grey with a darker border on hover (theme variables in index.css) rather than the page's white.
         outline:
           "border bg-button-outline shadow-xs hover:border-button-outline-border-hover dark:border-input dark:hover:border-button-outline-border-hover",
+        // project: for creating (ButtonNew), from the --success theme variable in index.css.
+        success: "bg-success text-success-foreground hover:bg-success/90",
         secondary:
           "bg-secondary text-secondary-foreground hover:bg-secondary/80",
         ghost:

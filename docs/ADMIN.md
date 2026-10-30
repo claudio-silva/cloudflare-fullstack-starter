@@ -123,9 +123,11 @@ so the rest of the app keeps the starter's theme. In light mode:
 Dark mode has its own values in the same file. Change a colour there, not in
 the pages.
 
-Action buttons (Save, New, Cancel, Delete, Back) have icons and one width,
-`ACTION_BUTTON` in `styles.ts`. While saving, a spinner takes the place of the
-Save icon.
+Action buttons (Save, New, Cancel, Delete, Back) are the shared ones in
+`src/react-app/components/actions/` (see [ACTION_BAR.md](ACTION_BAR.md)); the
+area gives them one width, `--action-button-w` in `admin.css`, the same as
+`ACTION_BUTTON` in `styles.ts` for its other buttons. While saving, a spinner
+takes the place of the Save icon.
 
 Two things here are app-wide rather than the area's: outline buttons (Cancel,
 Back, Select) are a light grey, `--button-outline`, whose border darkens on
@@ -140,7 +142,7 @@ band (see [Panels](#panels)). Both stay if the area is removed.
    ```tsx
    export function Orders() {
      return (
-       <AdminPage title="Orders" description="…" actions={<Button>New order</Button>}>
+       <AdminPage title="Orders" description="…" actions={<ActionBar className="action-bar-unstyled"><ButtonNew label="New order" /></ActionBar>}>
          …
        </AdminPage>
      );
@@ -149,7 +151,8 @@ band (see [Panels](#panels)). Both stay if the area is removed.
 
    A list is an `AdminTable` inside the page: columns, the endpoint, and
    whatever the list needs beyond the defaults. See
-   [ADMIN_TABLE.md](ADMIN_TABLE.md).
+   [ADMIN_TABLE.md](ADMIN_TABLE.md). A detail form ends with an `ActionBar`
+   (Cancel, Delete, Save…): see [ACTION_BAR.md](ACTION_BAR.md).
 
 2. Add its route in `AdminRoutes.tsx` (`<Route path="orders" element={<Orders />} />`).
 3. Add it to `nav` in `config.ts`, inside a group or at the top level. A

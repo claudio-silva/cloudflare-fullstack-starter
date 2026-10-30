@@ -1,10 +1,7 @@
-import { Link } from "react-router-dom";
-import { Plus } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { ActionBar, ButtonNew } from "@/components/actions";
 import type { AdminUser, AdminUserList } from "../../../../shared/admin-users";
 import { AdminPage } from "../../components/AdminPage";
 import { AdminTable, type AdminColumn } from "../../components/AdminTable";
-import { ACTION_BUTTON } from "../../styles";
 import { formatDate, formatDateTime, formatDuration, formatIdle } from "./format";
 import { RoleBadge, StatusBadge, UserAvatar } from "./user-ui";
 
@@ -42,12 +39,9 @@ export function UserList() {
 			title="Users"
 			description="Everyone who can sign in to the app."
 			actions={
-				<Button asChild className={ACTION_BUTTON}>
-					<Link to="/admin/users/new">
-						<Plus />
-						New user
-					</Link>
-				</Button>
+				<ActionBar className="action-bar-unstyled">
+					<ButtonNew label="New user" />
+				</ActionBar>
 			}
 		>
 			<AdminTable<AdminUser, AdminUserList>

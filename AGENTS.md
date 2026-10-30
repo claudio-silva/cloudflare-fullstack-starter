@@ -92,6 +92,9 @@ When working on the area, keep it removable: put a helper only it uses in `src/r
 **Lists in the admin area use `AdminTable`** (`src/react-app/admin/components/AdminTable.tsx`, guide in `docs/ADMIN_TABLE.md`): it brings the toolbar, search, sorting, row numbers, selection, bulk and row actions, pages and the loading and empty states, so every list looks and behaves the same. Its endpoints speak one query protocol (`?p=1&ps=20&q=…&s=-field`, read on the server with `parseListQuery` from `src/shared/admin-list.ts`); `params`, `queryParams`, `load` or `data` with `useAdminList` extend or replace it without giving the component up. Configure it through its props (columns, `cell` renderers, `rowActions`, `bulkActions`, `deletable`, `intro`, `empty`, `state`) rather than building a table from `components/ui/table`; reach for something else only when a list genuinely does not fit it (then say why in a comment). The app's own pages, outside `/admin`, are not bound by it: their design is the app's.
 <!-- [/admin-area] -->
 
+### Action buttons
+Forms and lists put their actions in an `ActionBar` with `ButtonSave`, `ButtonCancel`, `ButtonDelete`, `ButtonNew`, `ButtonPrint`, `ButtonBack` (`@/components/actions`), connected to the form with `useRecordForm()`, rather than hand-made buttons: they bring the icons, labels, colours, the dirty check, the delete confirmation and the toasts (global events an app can silence or replace). Class `action-bar-fixed` keeps the bar at the bottom of the viewport; `action-bar-unstyled` drops its rule and spacing (inside a page header, say). Guide: `docs/ACTION_BAR.md`.
+
 ### Adding API Endpoints
 Create one module per feature in `src/worker/routes/` and mount it in `src/worker/index.ts` with `app.route()`. Don't grow `index.ts` with handlers:
 ```typescript

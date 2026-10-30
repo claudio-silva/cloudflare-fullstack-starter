@@ -42,7 +42,7 @@ export function AdminLayout() {
 	const allowed = useNavTrail().every((item) => !item.minRole || hasRole(role, item.minRole));
 
 	const content = (
-		<div className="flex min-h-full flex-col bg-(--admin-bg)">
+		<div className="admin-area flex min-h-full flex-col bg-(--admin-bg)">
 			<div className="flex flex-1 flex-col">{allowed ? <Outlet /> : <Forbidden inArea />}</div>
 			<footer className="flex min-h-(--admin-footer-h) items-center border-t bg-(--admin-footer) text-xs text-muted-foreground">
 				<div className="flex w-full flex-wrap justify-between gap-2 px-4 py-2 md:px-8">

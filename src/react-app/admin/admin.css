@@ -22,6 +22,11 @@
 	--admin-table-foot: #f6f6f6; /* a list's pagination */
 }
 
+/* One width for the action buttons (components/actions), like ACTION_BUTTON in styles.ts. */
+.admin-area {
+	--action-button-w: 10rem;
+}
+
 .dark {
 	--sidebar-background: 0 0% 12%;
 	--sidebar-foreground: 0 0% 98%;

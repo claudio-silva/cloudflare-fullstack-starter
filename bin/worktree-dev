@@ -26,7 +26,10 @@ if [ -z "$PORT" ]; then
 	PORT="$(node -e "const s=require('net').createServer().listen(0,'127.0.0.1',()=>{console.log(s.address().port);s.close()})")"
 fi
 
-sed -i.bak -E "s#^(APP_BASE_URL|CLI_API_URL)=.*#\1=http://localhost:$PORT#" .env.local
+HOST="${HOST:-127.0.0.1}"
+# The address in .env.local is the one Vite prints, so the URL it shows is one sign-in accepts.
+case "$HOST" in 0.0.0.0 | ::) URL_HOST=localhost ;; *) URL_HOST="$HOST" ;; esac
+sed -i.bak -E "s#^(APP_BASE_URL|CLI_API_URL)=.*#\1=http://$URL_HOST:$PORT#" .env.local
 rm -f .env.local.bak
-echo "Dev server: http://localhost:$PORT"
-exec npm run dev -- --port "$PORT" --strictPort --host "${HOST:-127.0.0.1}"
+echo "Dev server: http://$URL_HOST:$PORT"
+exec npm run dev -- --port "$PORT" --strictPort --host "$HOST"

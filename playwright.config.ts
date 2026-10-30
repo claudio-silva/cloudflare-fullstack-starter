@@ -5,11 +5,11 @@ import { defineConfig, devices } from "@playwright/test";
 // Requires a local `.env.local` (copy env/local.env.template) with
 // AUTH_EMAILS_LOCAL_ENABLED=false so sign-up signs the user straight in.
 //
-// The port follows APP_BASE_URL in `.env.local` when it is a localhost URL, so
+// The address follows APP_BASE_URL in `.env.local` when it is a local URL, so
 // a checkout whose dev server runs elsewhere (a Paseo worktree, see paseo.json)
 // tests its own server rather than whichever one holds 5173.
 const appBaseUrl = existsSync(".env.local")
-	? readFileSync(".env.local", "utf-8").match(/^APP_BASE_URL=["']?(http:\/\/localhost:\d+)/m)?.[1]
+	? readFileSync(".env.local", "utf-8").match(/^APP_BASE_URL=["']?(http:\/\/(?:localhost|127\.0\.0\.1):\d+)/m)?.[1]
 	: undefined;
 const baseURL = appBaseUrl ?? "http://localhost:5173";
 const port = new URL(baseURL).port;
