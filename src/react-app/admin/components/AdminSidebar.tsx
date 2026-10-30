@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { ArrowLeft, ChevronRight } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -65,6 +66,9 @@ export function AdminSidebar() {
 function TopLevelItem({ item, onNavigate }: { item: AdminNavItem; onNavigate: () => void }) {
 	const { pathname } = useLocation();
 	const { state, isMobile } = useSidebar();
+	// Closing the popup gives focus back to its button, which would show the
+	// button's tooltip again and leave it there: only Escape (the keyboard) gets it back.
+	const closedByEscape = useRef(false);
 	const Icon = item.icon;
 
 	if (!item.children) {
@@ -94,7 +98,13 @@ function TopLevelItem({ item, onNavigate }: { item: AdminNavItem; onNavigate: ()
 					</DropdownMenuTrigger>
 					{/* In the sidebar's colours, coming out of it: square on the left, its border over the
 					    sidebar's (the button ends 8px short of the sidebar's outer edge). */}
-					<DropdownMenuContent side="right" align="start" sideOffset={7} className="min-w-52 rounded-l-none border-sidebar-border bg-sidebar text-sidebar-foreground">
+					<DropdownMenuContent side="right" align="start" sideOffset={7} className="min-w-52 rounded-l-none border-sidebar-border bg-sidebar text-sidebar-foreground"
+						onEscapeKeyDown={() => (closedByEscape.current = true)}
+						onCloseAutoFocus={(event) => {
+							if (!closedByEscape.current) event.preventDefault();
+							closedByEscape.current = false;
+						}}
+					>
 						<DropdownMenuLabel className="font-bold">{item.title}</DropdownMenuLabel>
 						<DropdownMenuSeparator className="bg-sidebar-border" />
 						<PopupItems items={item.children} />
