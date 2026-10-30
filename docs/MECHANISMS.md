@@ -735,8 +735,8 @@ and a published password on a writable app is an invitation to abuse. The
 `DEMO_PASSWORD`, so the sign-in page can offer them, and answers 404 outside
 demo mode. `DEMO_EMAIL` may list several addresses, comma-separated, sharing
 the password: the starter's demos have one account per role
-(`user@example.com`, `admin@example.com`, `superadmin@example.com`), each with a
-"Fill in as …" button. The accounts themselves are created once with
+(`user@example.com`, `admin@example.com`, `superadmin@example.com`), and the
+form has a button per role that fills it in. The accounts themselves are created once with
 `npm run auth create-user -- --env production`.
 
 Refusals on `/api/auth/` carry the message in `message` as well as `error`

@@ -91,7 +91,7 @@ export function LoginForm({ onSuccess, showSignupLink = true }: LoginFormProps) 
 								</>
 							) : (
 								<>
-									Sign in with one of its accounts; the password is <strong>{demo[0].password}</strong>.
+									Every account&apos;s password is <strong>{demo[0].password}</strong>. Fill in as:
 								</>
 							)}
 						</span>
@@ -108,7 +108,7 @@ export function LoginForm({ onSuccess, showSignupLink = true }: LoginFormProps) 
 										setPassword(account.password);
 									}}
 								>
-									{demo.length === 1 ? "Fill in" : `Fill in as ${roleLabel(account)}`}
+									{demo.length === 1 ? "Fill in" : roleLabel(account)}
 								</Button>
 							))}
 						</div>
