@@ -24,6 +24,7 @@ import {
 	SidebarRail,
 	useSidebar,
 } from "@/components/ui/sidebar";
+import { cn } from "@/lib/utils";
 import { adminConfig, type AdminNavItem } from "../config";
 import { isActive, isUnder, useRole, visibleNav } from "../nav";
 
@@ -93,9 +94,10 @@ function TopLevelItem({ item, onNavigate }: { item: AdminNavItem; onNavigate: ()
 							<span>{item.title}</span>
 						</SidebarMenuButton>
 					</DropdownMenuTrigger>
-					<DropdownMenuContent side="right" align="start" sideOffset={12} className="min-w-52">
-						<DropdownMenuLabel>{item.title}</DropdownMenuLabel>
-						<DropdownMenuSeparator />
+					{/* In the sidebar's colours, as part of it. */}
+					<DropdownMenuContent side="right" align="start" sideOffset={12} className="min-w-52 border-sidebar-border bg-sidebar text-sidebar-foreground">
+						<DropdownMenuLabel className="font-bold">{item.title}</DropdownMenuLabel>
+						<DropdownMenuSeparator className="bg-sidebar-border" />
 						<PopupItems items={item.children} />
 					</DropdownMenuContent>
 				</DropdownMenu>
@@ -152,14 +154,20 @@ function PopupItems({ items, depth = 0 }: { items: AdminNavItem[]; depth?: numbe
 	return items.map((item) => (
 		<div key={item.title} className={depth ? "pl-3" : undefined}>
 			{item.path ? (
-				<DropdownMenuItem asChild className={isUnder(pathname, item.path) ? "bg-accent font-semibold" : undefined}>
+				<DropdownMenuItem
+					asChild
+					className={cn(
+						"focus:bg-sidebar-accent focus:text-sidebar-accent-foreground [&_svg:not([class*='text-'])]:text-sidebar-foreground/70",
+						isUnder(pathname, item.path) && "bg-(--admin-sidebar-active) font-bold",
+					)}
+				>
 					<Link to={item.path}>
 						{item.icon && <item.icon />}
 						{item.title}
 					</Link>
 				</DropdownMenuItem>
 			) : (
-				<DropdownMenuLabel className="text-xs text-muted-foreground">{item.title}</DropdownMenuLabel>
+				<DropdownMenuLabel className="text-xs text-sidebar-foreground/70">{item.title}</DropdownMenuLabel>
 			)}
 			{item.children && <PopupItems items={item.children} depth={depth + 1} />}
 		</div>
