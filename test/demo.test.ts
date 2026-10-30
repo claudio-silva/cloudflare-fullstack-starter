@@ -49,8 +49,21 @@ describe("demo mode", () => {
 		expect((await call("/api/client-errors", { method: "POST" })).status).toBe(204);
 	});
 
-	it("offers the demo account to the sign-in form", async () => {
-		expect(await (await call("/api/demo")).json()).toEqual({ email: "demo@example.com", password: "demo-password" });
+	it("offers the demo accounts to the sign-in form, lowest role first", async () => {
+		const cliKey = { "x-api-key": env.CLI_API_KEY as string, "content-type": "application/json" };
+		const stamp = Date.now();
+		const [admin, user] = [`admin-${stamp}@example.com`, `user-${stamp}@example.com`];
+		for (const [email, role] of [[admin, "admin"], [user, "user"]]) {
+			await call("/api/cli/users", { method: "POST", headers: cliKey, body: JSON.stringify({ email, password: "password-123", name: role, role }) });
+		}
+		const res = await call("/api/demo", {}, { ...demoEnv, DEMO_EMAIL: ` ${admin}, ${user.toUpperCase()} ,missing@example.com` });
+		expect(await res.json()).toEqual({
+			accounts: [
+				{ email: "missing@example.com", password: "demo-password", role: null },
+				{ email: user, password: "demo-password", role: "user" },
+				{ email: admin, password: "demo-password", role: "admin" },
+			],
+		});
 	});
 
 	it("is off unless the secret says otherwise", async () => {

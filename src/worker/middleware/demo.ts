@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import type { AppBindings, AppContext } from "../types/context";
 import type { AppEnv } from "../types/env";
 import { fail, failForAuthClient } from "../lib/errors";
+import { createDb } from "../db";
+import { ROLES, type Role } from "../../shared/roles";
 
 /**
  * Demo mode: the app as a public, read-only showcase.
@@ -24,13 +26,15 @@ import { fail, failForAuthClient } from "../lib/errors";
  *  - **Sign-in rate limit** per IP (`AUTH_RATE_LIMITER`, see src/worker/index.ts),
  *    which on `*.workers.dev` has to be in the Worker: there is no zone, so
  *    no WAF or dashboard rate-limiting rule applies.
- *  - **Visitors' addresses stay private.** Every visitor signs in to the same
- *    account, so its sessions and sign-in log hold strangers' IPs: the admin
+ *  - **Visitors' addresses stay private.** Visitors share the demo accounts,
+ *    so their sessions and sign-in log hold strangers' IPs: the admin
  *    area shows them masked (`maskIp`), and Better Auth's session list, which
  *    the UI does not use, is refused.
  *
  * The credentials are served by `GET /api/demo` so the sign-in form can offer
- * them; that route answers 404 outside demo mode.
+ * them; that route answers 404 outside demo mode. `DEMO_EMAIL` may list
+ * several accounts (one per role, say), comma-separated; they share
+ * `DEMO_PASSWORD`.
  */
 
 export const isDemo = (env: Pick<AppEnv, "DEMO_MODE">) => env.DEMO_MODE === "1" || env.DEMO_MODE === "true";
@@ -71,12 +75,22 @@ export async function demoMiddleware(c: AppContext, next: () => Promise<void>) {
 	return c.req.path.startsWith("/api/auth/") ? failForAuthClient(c, 403, message, options) : fail(c, 403, message, options);
 }
 
-/** `GET /api/demo`: the demo account, for the sign-in form. */
+export type DemoAccount = { email: string; password: string; role: string | null };
+
+/** `GET /api/demo`: the demo accounts with their roles, lowest first, for the sign-in form. */
 export const demo = new Hono<AppBindings>();
 
-demo.get("/", (c) => {
-	if (!isDemo(c.env) || !c.env.DEMO_EMAIL || !c.env.DEMO_PASSWORD) {
+demo.get("/", async (c) => {
+	const emails = (c.env.DEMO_EMAIL ?? "").split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
+	const password = c.env.DEMO_PASSWORD;
+	if (!isDemo(c.env) || emails.length === 0 || !password) {
 		return fail(c, 404, "Not found.", { code: "not_found" });
 	}
-	return c.json({ email: c.env.DEMO_EMAIL, password: c.env.DEMO_PASSWORD });
+	const rows = await createDb(c.env).selectFrom("users").select(["email", "role"]).where("email", "in", emails).execute();
+	const roleOf = new Map(rows.map((r) => [r.email, r.role ?? null]));
+	const rank = (role: string | null) => (role === null ? -1 : ROLES.indexOf(role as Role));
+	const accounts: DemoAccount[] = emails
+		.map((email) => ({ email, password, role: roleOf.get(email) ?? null }))
+		.sort((a, b) => rank(a.role) - rank(b.role));
+	return c.json({ accounts });
 });

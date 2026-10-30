@@ -8,7 +8,11 @@ import { Alert, AlertDescription } from "../ui/alert";
 import { Eye, EyeOff } from "lucide-react";
 import { GoogleSignInButton } from "./GoogleSignInButton";
 import { config } from "../../../config";
-import { useDemoAccount } from "@/lib/demo";
+import { useDemoAccounts } from "@/lib/demo";
+
+/** "Admin" for an account with the admin role; its address when it has none. */
+const roleLabel = (account: { email: string; role: string | null }) =>
+	account.role ? account.role.charAt(0).toUpperCase() + account.role.slice(1) : account.email;
 
 interface LoginFormProps {
 	onSuccess?: () => void;
@@ -23,8 +27,8 @@ export function LoginForm({ onSuccess, showSignupLink = true }: LoginFormProps) 
 	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState("");
 	const passwordRef = useRef<HTMLInputElement>(null);
-	// The public demo: offer its account, and hide what it would refuse anyway.
-	const demo = useDemoAccount();
+	// The public demo: offer its accounts, and hide what it would refuse anyway.
+	const demo = useDemoAccounts();
 	const isDemo = !!demo;
 
 	useEffect(() => {
@@ -78,22 +82,36 @@ export function LoginForm({ onSuccess, showSignupLink = true }: LoginFormProps) 
 
 			{demo && (
 				<Alert>
-					<AlertDescription className="flex flex-wrap items-center justify-between gap-2">
+					<AlertDescription className="flex flex-col gap-2">
 						<span>
-							This is a read-only demo. Sign in as <strong>{demo.email}</strong> with password{" "}
-							<strong>{demo.password}</strong>.
+							This is a read-only demo.{" "}
+							{demo.length === 1 ? (
+								<>
+									Sign in as <strong>{demo[0].email}</strong> with password <strong>{demo[0].password}</strong>.
+								</>
+							) : (
+								<>
+									Sign in with one of its accounts; the password is <strong>{demo[0].password}</strong>.
+								</>
+							)}
 						</span>
-						<Button
-							type="button"
-							size="sm"
-							variant="outline"
-							onClick={() => {
-								setEmail(demo.email);
-								setPassword(demo.password);
-							}}
-						>
-							Fill in
-						</Button>
+						<div className="flex flex-wrap gap-2">
+							{demo.map((account) => (
+								<Button
+									key={account.email}
+									type="button"
+									size="sm"
+									variant="outline"
+									title={account.email}
+									onClick={() => {
+										setEmail(account.email);
+										setPassword(account.password);
+									}}
+								>
+									{demo.length === 1 ? "Fill in" : `Fill in as ${roleLabel(account)}`}
+								</Button>
+							))}
+						</div>
 					</AlertDescription>
 				</Alert>
 			)}

@@ -2,32 +2,34 @@ import { useEffect, useState } from "react";
 import { http } from "@/lib/http";
 
 /**
- * The demo account, when the app runs as the public demo (the `DEMO_MODE`
- * secret, src/worker/middleware/demo.ts); `null` everywhere else.
+ * The demo accounts, when the app runs as the public demo (the `DEMO_MODE`
+ * secret, src/worker/middleware/demo.ts); `null` everywhere else. Several
+ * when the demo shows each role: lowest role first, sharing one password.
  *
  * Asked once per page load: `GET /api/demo` answers 404 outside demo mode,
  * which this treats as the normal answer, not an error.
  */
-export type DemoAccount = { email: string; password: string };
+export type DemoAccount = { email: string; password: string; role: string | null };
 
-let request: Promise<DemoAccount | null> | null = null;
+let request: Promise<DemoAccount[] | null> | null = null;
 
-function loadDemoAccount(): Promise<DemoAccount | null> {
+function loadDemoAccounts(): Promise<DemoAccount[] | null> {
 	request ??= http("/api/demo", { handles: "all" })
-		.then((res) => (res.ok ? (res.json() as Promise<DemoAccount>) : null))
+		.then(async (res) => (res.ok ? ((await res.json()) as { accounts: DemoAccount[] }).accounts : null))
+		.then((accounts) => (accounts && accounts.length > 0 ? accounts : null))
 		.catch(() => null);
 	return request;
 }
 
-/** `undefined` while asking, then the account or `null`. */
-export function useDemoAccount(): DemoAccount | null | undefined {
-	const [account, setAccount] = useState<DemoAccount | null | undefined>(undefined);
+/** `undefined` while asking, then the accounts or `null`. */
+export function useDemoAccounts(): DemoAccount[] | null | undefined {
+	const [accounts, setAccounts] = useState<DemoAccount[] | null | undefined>(undefined);
 	useEffect(() => {
 		let live = true;
-		void loadDemoAccount().then((value) => live && setAccount(value));
+		void loadDemoAccounts().then((value) => live && setAccounts(value));
 		return () => {
 			live = false;
 		};
 	}, []);
-	return account;
+	return accounts;
 }

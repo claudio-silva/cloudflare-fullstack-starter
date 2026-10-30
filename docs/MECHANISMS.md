@@ -723,17 +723,21 @@ and a published password on a writable app is an invitation to abuse. The
   to be in the Worker: there is no zone, so no WAF or dashboard rule applies.
   It is not specific to demos, and stays on in every deployment that declares
   the binding.
-- **Visitors' addresses stay private.** Everyone signs in to the same account,
-  so its sessions and sign-in log fill with strangers' IPs. The admin area
+- **Visitors' addresses stay private.** Visitors share the demo accounts, so
+  their sessions and sign-in log fill with strangers' IPs. The admin area
   shows them with the last part hidden (`203.0.113.x`, `demoIp()`), and Better
   Auth's `GET /api/auth/list-sessions`, which the UI does not use, answers 403
   (`demo_hidden`). Only the display changes: the log keeps the full addresses
-  for whoever reads the database (`npm run db -- logins`), so the demo account
+  for whoever reads the database (`npm run db -- logins`), so a demo account
   can be a superadmin and show the whole admin area.
 
-`GET /api/demo` returns `DEMO_EMAIL` / `DEMO_PASSWORD` so the sign-in page can
-offer them, and answers 404 outside demo mode. The account itself is created
-once with `npm run auth create-user -- --env production`.
+`GET /api/demo` returns the accounts in `DEMO_EMAIL` with their roles and
+`DEMO_PASSWORD`, so the sign-in page can offer them, and answers 404 outside
+demo mode. `DEMO_EMAIL` may list several addresses, comma-separated, sharing
+the password: the starter's demos have one account per role
+(`user@example.com`, `admin@example.com`, `superadmin@example.com`), each with a
+"Fill in as …" button. The accounts themselves are created once with
+`npm run auth create-user -- --env production`.
 
 Refusals on `/api/auth/` carry the message in `message` as well as `error`
 (`failForAuthClient`), because Better Auth's client reads `message`: the

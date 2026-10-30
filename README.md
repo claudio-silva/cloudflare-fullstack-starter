@@ -489,9 +489,9 @@ And:
 
 Setting the `DEMO_MODE` secret on a deployed Worker turns it into a public showcase — the [live demo](https://cloudflare-fullstack-starter-production.dev-c1b.workers.dev) runs this way:
 
-- **Read-only:** every write under `/api/` is refused with a message the UI shows, except signing in and out. Nobody can change the demo account, sign up, or store anything, so the data never needs resetting.
+- **Read-only:** every write under `/api/` is refused with a message the UI shows, except signing in and out. Nobody can change the demo accounts, sign up, or store anything, so the data never needs resetting.
 - **No email:** the email adapter becomes a no-op, so the app can never be used to send mail.
-- **The account is offered on the sign-in page** (`DEMO_EMAIL` / `DEMO_PASSWORD`), and sign-in attempts are rate-limited per IP.
+- **The accounts are offered on the sign-in page** (`DEMO_EMAIL`, one address or several, and `DEMO_PASSWORD`), one button per role, and sign-in attempts are rate-limited per IP. The live demo has a user, an admin and a superadmin.
 
 Everything that makes a deployment a demo lives on that deployment (Worker secrets, build variables), never in the repository. A project created from the template is not a demo, and has nothing to switch off. → [Demo mode](docs/MECHANISMS.md#demo-mode)
 

@@ -35,7 +35,8 @@ export type AppEnv = {
 	// "1" turns on demo mode (src/worker/middleware/demo.ts): read-only, no email.
 	// A secret on the demo Worker only — never set it in wrangler.toml.
 	DEMO_MODE?: string;
-	// The demo account, offered on the sign-in form in demo mode.
+	// The demo accounts, offered on the sign-in form in demo mode: one address
+	// or several, comma-separated, sharing DEMO_PASSWORD.
 	DEMO_EMAIL?: string;
 	DEMO_PASSWORD?: string;
 };
