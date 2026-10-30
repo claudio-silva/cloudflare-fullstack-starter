@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import { ClipboardList, History, Save, Trash2, UserX, X } from "lucide-react";
+import { ClipboardList, History, LogOut, Save, Trash2, UserX, X } from "lucide-react";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -37,6 +37,7 @@ import { AdminPage } from "../../components/AdminPage";
 import { ACTION_BUTTON, TAB_LIST, TAB_TRIGGER } from "../../styles";
 import { ROLE_LABELS, formatDateTime, formatIdle } from "./format";
 import { UserActivity } from "./UserActivity";
+import { countryName } from "@/lib/countries";
 import { RoleBadge, StatusBadge, UserAvatar } from "./user-ui";
 
 /** The server's rules (src/shared/admin-users.ts), except that editing may leave the password empty. */
@@ -82,6 +83,7 @@ export function UserForm() {
 
 	const [user, setUser] = useState<AdminUserDetail | null | "missing">(null);
 	const [deleting, setDeleting] = useState(false);
+	const [signingOut, setSigningOut] = useState(false);
 	const schema = useMemo(() => formSchema(isNew), [isNew]);
 	const form = useForm<FormValues, unknown, z.output<typeof schema>>({ resolver: zodResolver(schema), defaultValues: EMPTY });
 
@@ -124,6 +126,27 @@ export function UserForm() {
 			navigate("/admin/users");
 		} catch (error) {
 			if (!isHandledHttpError(error)) toast.error("The user could not be saved.");
+		}
+	};
+
+	const onSignOutEverywhere = async () => {
+		if (!user || user === "missing") return;
+		setSigningOut(true);
+		try {
+			await http(`/api/admin/users/${user.id}/sign-out`, { method: "POST" });
+			toast.success("All sessions ended.");
+			setUser({
+				...user,
+				status: user.status === "disabled" ? "disabled" : "offline",
+				idleSeconds: null,
+				activeSessions: 0,
+				currentSession: null,
+				activityCount: user.activityCount + user.activeSessions,
+			});
+		} catch (error) {
+			if (!isHandledHttpError(error)) toast.error("The sessions could not be ended.");
+		} finally {
+			setSigningOut(false);
 		}
 	};
 
@@ -355,11 +378,49 @@ export function UserForm() {
 										<dd className="text-right">{user.idleSeconds === null ? "No" : "Yes"}</dd>
 										<dt className="text-muted-foreground">Idle time</dt>
 										<dd className="text-right">{formatIdle(user.idleSeconds)}</dd>
+										{user.currentSession && (
+											<>
+												<dt className="text-muted-foreground">IP address</dt>
+												<dd className="text-right">{user.currentSession.ip ?? "—"}</dd>
+												<dt className="text-muted-foreground">Country</dt>
+												<dd className="text-right" title={user.currentSession.country ?? undefined}>
+													{countryName(user.currentSession.country)}
+												</dd>
+											</>
+										)}
 										<dt className="text-muted-foreground">Sign-in with</dt>
 										<dd className="text-right">{user.signInMethods.map((m) => (m === "credential" ? "password" : m)).join(", ") || "—"}</dd>
 										<dt className="text-muted-foreground">Sessions</dt>
 										<dd className="text-right">{user.activeSessions}</dd>
 									</dl>
+									<AlertDialog>
+										<AlertDialogTrigger asChild>
+											<Button type="button" variant="outline" disabled={signingOut || user.activeSessions === 0} className="w-full">
+												{signingOut ? <Spinner /> : <LogOut />}
+												Sign out everywhere
+											</Button>
+										</AlertDialogTrigger>
+										<AlertDialogContent>
+											<AlertDialogHeader>
+												<AlertDialogTitle>Sign {isMe ? "yourself" : user.name || user.email} out everywhere?</AlertDialogTitle>
+												<AlertDialogDescription>
+													{isMe
+														? "Every session of yours ends, this one included, and you will have to sign in again."
+														: "Every session of this user ends. They can sign in again with their password."}
+												</AlertDialogDescription>
+											</AlertDialogHeader>
+											<AlertDialogFooter>
+												<AlertDialogCancel className={ACTION_BUTTON}>
+													<X />
+													Cancel
+												</AlertDialogCancel>
+												<AlertDialogAction onClick={onSignOutEverywhere} className={ACTION_BUTTON}>
+													<LogOut />
+													Sign out
+												</AlertDialogAction>
+											</AlertDialogFooter>
+										</AlertDialogContent>
+									</AlertDialog>
 								</CardContent>
 							</Card>
 

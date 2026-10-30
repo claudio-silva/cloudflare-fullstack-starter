@@ -9,6 +9,8 @@ import { http, isHandledHttpError } from "@/lib/http";
 import { describeBrowser, type ActivityEvent, type ActivitySortField, type AdminUserActivity } from "../../../../shared/admin-users";
 import { SortHeader } from "../../components/SortHeader";
 import { nextSort, type SortDir } from "../../sort";
+import { getLocale } from "@/lib/i18n";
+import { countryName } from "@/lib/countries";
 import { PageBar } from "../../components/PageBar";
 import { ORDINAL } from "../../styles";
 import { formatDateTime } from "./format";
@@ -31,7 +33,7 @@ export function UserActivity({ userId }: { userId: string }) {
 
 	useEffect(() => {
 		let current = true;
-		http(`/api/admin/users/${userId}/activity?page=${page}&pageSize=${PAGE_SIZE}${order.sort ? `&sort=${order.sort}&dir=${order.dir}` : ""}`)
+		http(`/api/admin/users/${userId}/activity?page=${page}&pageSize=${PAGE_SIZE}${order.sort ? `&sort=${order.sort}&dir=${order.dir}&locale=${encodeURIComponent(getLocale())}` : ""}`)
 			.then(async (res) => (await res.json()) as AdminUserActivity)
 			.then((data) => {
 				if (current) setActivity(data);
@@ -81,7 +83,7 @@ export function UserActivity({ userId }: { userId: string }) {
 									IP address
 								</SortHeader>
 							</TableHead>
-							<TableHead className="w-[80px]">
+							<TableHead className="w-[130px]">
 								<SortHeader field="country" {...sortProps}>
 									Country
 								</SortHeader>
@@ -139,7 +141,9 @@ function EventRow({ event, ordinal }: { event: ActivityEvent; ordinal: number })
 				</Badge>
 			</TableCell>
 			<TableCell className="truncate">{event.ip ?? "—"}</TableCell>
-			<TableCell>{event.country ?? "—"}</TableCell>
+			<TableCell className="truncate" title={event.country ?? undefined}>
+				{countryName(event.country)}
+			</TableCell>
 			<TableCell className="truncate text-muted-foreground" title={event.userAgent ?? undefined}>
 				{describeBrowser(event.userAgent)}
 			</TableCell>

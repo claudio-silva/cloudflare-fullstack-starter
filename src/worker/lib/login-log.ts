@@ -99,12 +99,46 @@ export async function recordSessionEnds(db: Kysely<Database>, sessions: EndedSes
 	}
 }
 
+/** Where a request came from: the address, browser and (from Cloudflare's edge) country. */
+export type RequestOrigin = { ip: string | null; userAgent: string | null; country: string | null };
+
+export function requestOrigin(c: AppContext): RequestOrigin {
+	const cf = (c.req.raw as Request & { cf?: { country?: string } }).cf;
+	const ip = c.req.header("CF-Connecting-IP") ?? c.req.header("X-Forwarded-For")?.split(",")[0]?.trim() ?? null;
+	return { ip: ip?.slice(0, 64) ?? null, userAgent: c.req.header("User-Agent")?.slice(0, 512) ?? null, country: cf?.country?.slice(0, 2) ?? null };
+}
+
+/**
+ * An account was deleted. The row keeps the id and email of the account, which
+ * no longer exists, and the origin of the request that deleted it (the
+ * administrator's, or the user's own for their profile page). Never throws.
+ */
+export async function recordUserDeleted(db: Kysely<Database>, user: { id: string; email: string }, origin?: RequestOrigin): Promise<void> {
+	try {
+		await db
+			.insertInto("login_events")
+			.values({
+				id: crypto.randomUUID(),
+				user_id: user.id,
+				email: user.email,
+				success: dbBool(true, databaseKind),
+				ip: origin?.ip ?? null,
+				user_agent: origin?.userAgent ?? null,
+				country: origin?.country ?? null,
+				created_at: dbNow(databaseKind),
+				event: "user-deleted",
+			})
+			.execute();
+	} catch (error) {
+		console.error("[auth] could not record the user deletion", error);
+	}
+}
+
 async function insertEvent(
 	c: AppContext,
 	{ email, userId: knownUserId, success, event }: { email: string; userId?: string; success: boolean; event: "sign-in" | "sign-out" },
 ): Promise<void> {
-	const cf = (c.req.raw as Request & { cf?: { country?: string } }).cf;
-	const ip = c.req.header("CF-Connecting-IP") ?? c.req.header("X-Forwarded-For")?.split(",")[0]?.trim() ?? null;
+	const origin = requestOrigin(c);
 
 	const db = createDb(c.env);
 	const userId = knownUserId ?? (email
@@ -118,9 +152,9 @@ async function insertEvent(
 			user_id: userId,
 			email,
 			success: dbBool(success, databaseKind),
-			ip: ip?.slice(0, 64) ?? null,
-			user_agent: c.req.header("User-Agent")?.slice(0, 512) ?? null,
-			country: cf?.country?.slice(0, 2) ?? null,
+			ip: origin.ip,
+			user_agent: origin.userAgent,
+			country: origin.country,
 			created_at: dbNow(databaseKind),
 			event,
 		})

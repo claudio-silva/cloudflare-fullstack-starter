@@ -7,6 +7,7 @@ import { createDb, dbBool, dbNow, toIso } from "../../db";
 import { AppError } from "../../lib/errors";
 import { requireRole } from "../../middleware/roles";
 import { createPasswordUser, deleteUser, revokeSessions, setPassword, wouldRemoveLastAdmin } from "../../lib/users";
+import { requestOrigin } from "../../lib/login-log";
 import { hasRole, type Role } from "../../../shared/roles";
 import {
 	USER_SORT_FIELDS,
@@ -184,20 +185,32 @@ adminUsers.get("/:id", async (c) => {
 	const user = await findUser(c, c.req.param("id"));
 	const lastSignOutQuery = () =>
 		db.selectFrom("login_events").select("created_at").where("user_id", "=", user.id).where("success", "=", dbBool(true)).where("event", "=", "sign-out").orderBy("created_at", "desc").limit(1).executeTakeFirst();
-	const [accounts, sessions, lastSignOut, [detail], events] = await Promise.all([
+	const [accounts, sessions, lastSignOut, [detail], events, current, lastSignIn] = await Promise.all([
 		db.selectFrom("accounts").select("providerId").where("userId", "=", user.id).execute(),
 		db.selectFrom("sessions").select((eb) => eb.fn.countAll<number>().as("n")).where("userId", "=", user.id).executeTakeFirst(),
 		lastSignOutQuery(),
 		present(c, [user]),
 		createDb(c.env).selectFrom("login_events").select((eb) => eb.fn.countAll<number>().as("n")).where("user_id", "=", user.id).executeTakeFirst(),
+		// The session used most recently, if any is still alive.
+		db.selectFrom("sessions").select("ipAddress").where("userId", "=", user.id).where("expiresAt", ">", dbNow()).orderBy("updatedAt", "desc").limit(1).executeTakeFirst(),
+		// `sessions` has no country: it is the one of the latest sign-in.
+		db.selectFrom("login_events").select("country").where("user_id", "=", user.id).where("success", "=", dbBool(true)).where((eb) => eb.or([eb("event", "is", null), eb("event", "=", "sign-in")])).orderBy("created_at", "desc").limit(1).executeTakeFirst(),
 	]);
 	return c.json<AdminUserDetail>({
+		currentSession: current ? { ip: current.ipAddress, country: lastSignIn?.country ?? null } : null,
 		activityCount: Number(events?.n ?? 0),
 		...detail,
 		signInMethods: accounts.map((a) => a.providerId),
 		activeSessions: Number(sessions?.n ?? 0),
 		lastSignOutAt: lastSignOut ? (toIso(lastSignOut.created_at) ?? null) : null,
 	});
+});
+
+/** `POST /:id/sign-out`: ends every session of the user (each one is recorded as revoked). */
+adminUsers.post("/:id/sign-out", async (c) => {
+	const user = await findUser(c, c.req.param("id"));
+	await revokeSessions(createDb(c.env), user.id);
+	return c.body(null, 204);
 });
 
 /** `GET /:id/activity?page=1&pageSize=10&sort=&dir=`: the user's sign-ins (failed ones too) and sign-outs, newest first unless sorted. Pruned like the rest of `login_events`. */
@@ -207,6 +220,14 @@ adminUsers.get("/:id/activity", async (c) => {
 	const pageSize = Math.min(100, Math.max(1, Number(c.req.query("pageSize")) || 10));
 	const sortParam = c.req.query("sort") as ActivitySortField;
 	const sort = ACTIVITY_SORT_FIELDS.includes(sortParam) ? sortParam : "createdAt";
+	// Country names sort in the language the page shows them in.
+	const countryLabel = (code: string) => {
+		try {
+			return new Intl.DisplayNames([c.req.query("locale") || "en"], { type: "region" }).of(code) ?? code;
+		} catch {
+			return code;
+		}
+	};
 	const sign = c.req.query("sort") && c.req.query("dir") === "asc" ? 1 : -1;
 	const rows = await createDb(c.env)
 		.selectFrom("login_events")
@@ -217,7 +238,7 @@ adminUsers.get("/:id/activity", async (c) => {
 		.execute();
 	const all: ActivityEvent[] = rows.map((r) => ({
 		id: r.id,
-		kind: r.event === "sign-in" || !r.event ? (r.success ? "sign-in" : "failed") : r.event,
+		kind: r.event === "sign-out" || r.event === "session-expired" || r.event === "session-revoked" ? r.event : r.success ? "sign-in" : "failed",
 		ip: r.ip,
 		country: r.country,
 		userAgent: r.user_agent,
@@ -226,7 +247,7 @@ adminUsers.get("/:id/activity", async (c) => {
 	// Sorted here, not in SQL: the browser is read from the User-Agent, and the log is short (pruned). Empty values come last.
 	if (c.req.query("sort") && sort !== "createdAt") {
 		const key = (e: ActivityEvent): string | null =>
-			sort === "kind" ? e.kind : sort === "ip" ? e.ip : sort === "country" ? e.country : e.userAgent ? describeBrowser(e.userAgent) : null;
+			sort === "kind" ? e.kind : sort === "ip" ? e.ip : sort === "country" ? (e.country ? countryLabel(e.country) : null) : e.userAgent ? describeBrowser(e.userAgent) : null;
 		all.sort((a, b) => {
 			const ka = key(a);
 			const kb = key(b);
@@ -288,6 +309,6 @@ adminUsers.delete("/:id", async (c) => {
 	if (await wouldRemoveLastAdmin(db, user, null)) {
 		throw new AppError(409, "This is the last administrator: give another user that role first.", { code: "last_admin" });
 	}
-	await deleteUser(db, user);
+	await deleteUser(db, user, requestOrigin(c));
 	return c.body(null, 204);
 });

@@ -6,6 +6,7 @@ import type { Database } from "../types/database";
 import type { AppBindings, AppContext } from "../types/context";
 import { createDb, databaseKind, dbBool, dbNow, toIso } from "../db";
 import { createPasswordUser, deleteUser, revokeSessions, wouldRemoveLastAdmin } from "../lib/users";
+import { requestOrigin } from "../lib/login-log";
 import { ROLES, hasRole, type Role } from "../../shared/roles";
 import { appliedMigrations, clearTable, describeSchema, exportRows, finishTable, importRows, restoreChunkRows, type EncodedRow } from "../db/backup";
 import { migrateDatabase, migrationStatus, pendingMigrations } from "../db/migrations";
@@ -310,7 +311,7 @@ cli.delete("/users/:email", async (c) => {
 		return c.json({ error: "User not found" }, 404);
 	}
 
-	await deleteUser(db, user);
+	await deleteUser(db, user, requestOrigin(c));
 
 	return c.json({ success: true, message: "User deleted successfully" });
 });

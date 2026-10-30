@@ -2,7 +2,7 @@ import bcrypt from "bcryptjs";
 import type { Kysely } from "kysely";
 import type { Database } from "../types/database";
 import { dbBool, dbNow } from "../db";
-import { recordSessionEnds } from "./login-log";
+import { recordSessionEnds, recordUserDeleted, type RequestOrigin } from "./login-log";
 import { ROLES, hasRole, type Role } from "../../shared/roles";
 
 /**
@@ -85,12 +85,17 @@ export async function setPassword(db: Db, user: { id: string; email: string }, p
 		.execute();
 }
 
-/** Deletes the user with everything that refers to them. */
-export async function deleteUser(db: Db, user: { id: string; email: string }): Promise<void> {
+/**
+ * Deletes the user with everything that refers to them, and records it in the
+ * sign-in log (their earlier entries stay, until the log is pruned).
+ * `origin` is the request that asked for it.
+ */
+export async function deleteUser(db: Db, user: { id: string; email: string }, origin?: RequestOrigin): Promise<void> {
 	await db.deleteFrom("sessions").where("userId", "=", user.id).execute();
 	await db.deleteFrom("verifications").where("identifier", "=", user.email).execute();
 	await db.deleteFrom("accounts").where("userId", "=", user.id).execute();
 	await db.deleteFrom("users").where("id", "=", user.id).execute();
+	await recordUserDeleted(db, user, origin);
 }
 
 /** Signs the user out everywhere. */

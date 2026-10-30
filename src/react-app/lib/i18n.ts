@@ -82,6 +82,20 @@ export function setTranslator(fn: Translator | null): void {
 	translator = fn;
 }
 
+let locale: string | null = null;
+
+/** The language names of places (countries) are shown in: the one set with `setLocale()`, else the page's, else the browser's. */
+export function getLocale(): string {
+	// i18n.ts is also compiled where there is no DOM (the Worker's tests), hence `globalThis`.
+	const g = globalThis as { document?: { documentElement: { lang: string } }; navigator?: { language: string } };
+	return locale ?? (g.document?.documentElement.lang || g.navigator?.language || "en");
+}
+
+/** Call it with the app's language when it has a language switch; country names follow it. */
+export function setLocale(next: string | null): void {
+	locale = next;
+}
+
 export function overrideMessages(messages: Partial<Record<MessageKey, string>>): void {
 	overrides = { ...overrides, ...messages };
 }

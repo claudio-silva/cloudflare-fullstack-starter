@@ -76,8 +76,8 @@ export interface AuthLogDatabase {
     user_agent: string | null;
     country: string | null;
     created_at: Timestamp;
-    /** Null (every row before 0006) and "sign-in" are sign-ins. The two session events say how a session ended without a sign-out. */
-    event: "sign-in" | "sign-out" | "session-expired" | "session-revoked" | null;
+    /** Null (every row before 0006) and "sign-in" are sign-ins. The session events say how a session ended without a sign-out; "user-deleted" keeps the user_id and email of an account that no longer exists. */
+    event: "sign-in" | "sign-out" | "session-expired" | "session-revoked" | "user-deleted" | null;
   };
 }
 

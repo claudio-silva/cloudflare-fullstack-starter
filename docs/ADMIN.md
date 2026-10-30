@@ -203,11 +203,13 @@ minute, at the price of one small write per active session per minute.
 
 Two tabs. **Profile** has the form (the password is typed twice) and a panel
 with the status, in-session flag, idle time, last sign-in and last sign-out.
+The panel also shows the IP address and country of the session used last while the user is in session, and **Sign out everywhere** ends every session at once (`POST /api/admin/users/:id/sign-out`; each is logged as revoked). The IP comes from the session; `sessions` keeps no country, so that is the one of the latest sign-in. Countries are stored as ISO codes (Cloudflare's `cf.country`, empty locally) and shown by name through `countryName()` (`lib/countries.ts`), which uses the browser's `Intl.DisplayNames` in the app's language (`getLocale()` / `setLocale()` in `lib/i18n.ts`), so a translation needs nothing more.
+
 **Activity** (with the number of entries beside its name, when not zero) pages through the sign-ins, failed attempts, sign-outs and sessions that ended
 without one (**Session expired**, **Session revoked**) from
 `login_events` (`GET /api/admin/users/:id/activity?page=&pageSize=`), 10 a
 page, in a table styled like the user list; they are pruned after `AUTH_LOG_RETENTION_DAYS`. Sign-outs are
-recorded since migration `0006_login_event_kind`; earlier rows are sign-ins. A session is recorded as expired when Better Auth finds it past its expiry or when the daily cron removes it (dated at the expiry), and as revoked when a password or role change, an admin, the CLI or "sign out of other devices" ends it (`recordSessionEnds()` in `lib/login-log.ts`); both events carry the address and browser of the session itself.
+recorded since migration `0006_login_event_kind`; earlier rows are sign-ins. A session is recorded as expired when Better Auth finds it past its expiry or when the daily cron removes it (dated at the expiry), and as revoked when a password or role change, an admin, the CLI or "sign out of other devices" ends it (`recordSessionEnds()` in `lib/login-log.ts`); both events carry the address and browser of the session itself. Deleting a user adds a `user-deleted` row (id and email of the account, address and browser of whoever deleted it); it never shows in these lists, because the user is gone.
 
 ## Removing it
 

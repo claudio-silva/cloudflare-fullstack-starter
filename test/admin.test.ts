@@ -148,6 +148,14 @@ describe("admin API", () => {
 });
 
 describe("session endings in the log", () => {
+	it("records the deletion of a user", async () => {
+		const { call } = await userWithRole("superadmin");
+		const target = await userWithRole("user");
+		expect((await call(`/users/${target.id}`, { method: "DELETE" })).status).toBe(204);
+		const event = await createDb(local).selectFrom("login_events").select(["email", "event"]).where("user_id", "=", target.id).where("event", "=", "user-deleted").executeTakeFirst();
+		expect(event?.email).toBe(target.email);
+	});
+
 	it("records revoked and expired sessions", async () => {
 		const { call } = await userWithRole("superadmin");
 		const target = await userWithRole("user");
@@ -156,6 +164,13 @@ describe("session endings in the log", () => {
 		// An admin setting a password signs the user out everywhere: their session is revoked.
 		expect((await call(`/users/${target.id}`, { method: "PATCH", body: { password: "new-password-123" } })).status).toBe(200);
 		expect(await kinds()).toContain("session-revoked");
+
+		// The detail says where the live session comes from; "sign out everywhere" ends it and records it.
+		await signInCookie(target.email, "new-password-123");
+		const detail = (await (await call(`/users/${target.id}`)).json()) as { currentSession: unknown; activeSessions: number };
+		expect(detail.currentSession).not.toBeNull();
+		expect((await call(`/users/${target.id}/sign-out`, { method: "POST" })).status).toBe(204);
+		expect(((await (await call(`/users/${target.id}`)).json()) as { activeSessions: number }).activeSessions).toBe(0);
 
 		// A session past its expiry is recorded by the cron before it is deleted.
 		await signInCookie(target.email, "new-password-123");

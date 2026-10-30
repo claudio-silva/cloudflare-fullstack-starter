@@ -63,6 +63,8 @@ export type AdminUserDetail = AdminUser & {
 	signInMethods: string[];
 	activeSessions: number;
 	lastSignOutAt: string | null;
+	/** Where the most recently used session comes from; null when the user is not in session. */
+	currentSession: { ip: string | null; country: string | null } | null;
 	/** Entries in the activity log (the Activity tab's pill). */
 	activityCount: number;
 };

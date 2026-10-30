@@ -4,6 +4,7 @@ import { authMiddleware } from "../middleware/auth";
 import { createDb } from "../db";
 import { fail } from "../lib/errors";
 import { deleteUser } from "../lib/users";
+import { requestOrigin } from "../lib/login-log";
 
 /** Authenticated user routes, mounted at `/api`. */
 export const profile = new Hono<AppBindings>();
@@ -24,7 +25,7 @@ profile.delete("/profile", authMiddleware, async (c) => {
 	const db = createDb(c.env);
 
 	// Delete all user data
-	await deleteUser(db, user);
+	await deleteUser(db, user, requestOrigin(c));
 
 	return c.json({ success: true, message: "Account deleted successfully" });
 });
