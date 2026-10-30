@@ -277,6 +277,8 @@ Workers Builds installs the dependencies itself, from the lockfile, and takes No
 
 Workers Builds builds **every push to its branch** (it has no switch for that) and never a tag. `deploy:production` therefore pushes the tag first and promotes the branch after; the deploy then refuses any commit without its release tag, so a push to the branch made by hand fails rather than deploys.
 
+A push starts its build through GitHub's webhook, and a webhook can be lost: the branch moves and nothing builds. After promoting, `deploy:production` checks that Workers Builds started a build; if none has started after two minutes, it starts one itself through the API (the branch's head, which is the release commit). It needs the token of `.env.setup.local`; without one it only waits for the version.
+
 The build command is an ordinary shell command: if it exits non-zero the build fails and the deploy step never runs. So CI *can* gate on tests. What it cannot do is run service containers or browsers, so a Postgres/MySQL matrix and Playwright stay in GitHub Actions.
 
 To make those GitHub Actions checks a hard gate, protect the deployment branch (`setup:ci` does it with a ruleset; by hand: GitHub → Settings → Rules → a branch ruleset for `release` with *Require status checks to pass*, the jobs of your CI workflow, and no bypass list). A push of a commit without passing checks is then refused by GitHub itself, whoever pushes it. `deploy:production` waits for the checks of its release commit before promoting, so the protection costs a release nothing but that wait.

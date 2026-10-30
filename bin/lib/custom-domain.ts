@@ -10,6 +10,9 @@
  * later deploy keeps it, and the maintenance window finds the hostname there.
  */
 import { spawnSync } from "node:child_process";
+import { Resolver } from "node:dns/promises";
+import { request } from "node:https";
+import type { LookupFunction } from "node:net";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { parse as parseToml } from "smol-toml";
 import { cf, CloudflareApiError } from "./cloudflare-api";
@@ -130,18 +133,47 @@ async function findZone(token: string, accountId: string, hostname: string): Pro
 	);
 }
 
+/**
+ * GET https://<hostname>/api/, the name resolved by public resolvers. Not by
+ * the system's: asked before the record existed, it caches "no such host" for
+ * as long as the zone says (often 30 minutes), long after the record is there.
+ */
+const publicDns = new Resolver();
+publicDns.setServers(["1.1.1.1", "8.8.8.8"]);
+const lookup: LookupFunction = (hostname, options, callback) => {
+	publicDns.resolve4(hostname).then(
+		(addresses) =>
+			options.all ? callback(null, addresses.map((address) => ({ address, family: 4 }))) : callback(null, addresses[0], 4),
+		(error: NodeJS.ErrnoException) => callback(error, ""),
+	);
+};
+function probe(hostname: string): Promise<{ status: number; body: string }> {
+	return new Promise((done, fail) => {
+		const req = request({ host: hostname, path: "/api/", lookup, timeout: 10_000 }, (res) => {
+			let body = "";
+			res.on("data", (chunk) => (body += chunk));
+			res.on("end", () => done({ status: res.statusCode ?? 0, body }));
+		});
+		req.on("timeout", () => req.destroy(new Error("timeout")));
+		req.on("error", fail);
+		req.end();
+	});
+}
+
 /** Wait until https://<hostname>/api/ answers, which needs its DNS record and certificate. */
 async function waitUntilServing(hostname: string, report: DomainReporter, timeoutMs = 600_000): Promise<void> {
 	const deadline = Date.now() + timeoutMs;
 	let last = "";
 	while (Date.now() < deadline) {
 		try {
-			const res = await fetch(`https://${hostname}/api/`, { signal: AbortSignal.timeout(10_000) });
-			const body = (await res.json().catch(() => ({}))) as { status?: string };
-			if (res.ok && body.status) return report.ok(`https://${hostname} serves the Worker`);
-			last = `HTTP ${res.status}`;
+			const { status, body } = await probe(hostname);
+			if (status === 200 && /"status"/.test(body)) {
+				report.ok(`https://${hostname} serves the Worker`);
+				return report.note("a machine that looked the name up before it existed may not see it for a few more minutes (cached \"not found\")");
+			}
+			last = `HTTP ${status}`;
 		} catch (error) {
-			last = (error as { cause?: { code?: string } }).cause?.code ?? (error instanceof Error ? error.message : String(error));
+			last = (error as NodeJS.ErrnoException).code ?? (error instanceof Error ? error.message : String(error));
 		}
 		await new Promise((done) => setTimeout(done, 10_000));
 	}

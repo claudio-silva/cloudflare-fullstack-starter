@@ -37,10 +37,12 @@
 
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { loadDeployConfig, parseEnvFile } from "./lib/deploy-config";
+import { cloudflareCredentials, loadDeployConfig, parseEnvFile } from "./lib/deploy-config";
 import { readVersion, versionField } from "./lib/build-info";
 import { waitForChecks } from "./lib/ci-checks";
 import { nextVersion as computeNextVersion, type BumpKind } from "./lib/release-version";
+import { resolveWorkerName } from "./lib/worker";
+import { ensureBuildStarted } from "./lib/workers-builds";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 
@@ -289,7 +291,13 @@ async function main(): Promise<void> {
 		// Each sync sends only what changed since the last one.
 		run("npx", ["tsx", "bin/sync-build-vars.ts", ENV]);
 		run("npx", ["tsx", "bin/sync-secrets.ts", ENV]);
+		const pushedAt = new Date();
 		run("git", ["push", "origin", `main:${cfg.branch}`]);
+		const { token, accountId } = cloudflareCredentials();
+		if (mode === "workers-builds" && token && accountId) {
+			const how = await ensureBuildStarted({ token, accountId, workerName: resolveWorkerName("wrangler.toml", ENV), branch: cfg.branch, pushedAt }).catch(() => "unknown");
+			if (how !== "unknown") console.log(`✓ Workers Builds is building ${version} (${how === "push" ? "started by the push" : "started through the API"})`);
+		}
 		await waitForVersion(version);
 	}
 
