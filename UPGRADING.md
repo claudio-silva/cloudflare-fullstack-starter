@@ -48,7 +48,7 @@ npm run test:e2e       # from 2.0.0 on, optional
 
 ---
 
-## 3.5.1 — unreleased
+## 3.6.0 — 2026-10-30
 
 A custom domain in one command, with or without CI; `.env` changes reach CI deploys; worktrees on another port and pnpm installs, found in use.
 
@@ -61,10 +61,11 @@ A custom domain in one command, with or without CI; `.env` changes reach CI depl
 5. **New `npm run setup:domain -- <hostname> [--env preview]`** (`bin/setup-domain.ts`, `bin/lib/custom-domain.ts`): attaches the hostname to the environment's Worker through the API, waits until it answers (asking the zone's own nameservers, so no resolver caches "no such host" while the record is being created), adds `routes = [{ pattern = "<hostname>", custom_domain = true }]` under `[env.<env>]` in `wrangler.toml`, then sets `APP_BASE_URL` / `CLI_API_URL_<ENV>` and syncs them. Works with the `.env.setup.local` token or wrangler's login. Once a Worker has routes, wrangler's default turns its `workers.dev` URL off at the next deploy (`workers_dev = true` keeps it).
 6. **`deploy:production` makes sure the release builds.** Workers Builds once started no build for a release push (the webhook was lost). After promoting, it now checks that a build started and, after two minutes without one, starts it through the API (new `bin/lib/workers-builds.ts`).
 7. **`setup:ci` attaches the environment's domain:** `--domain <hostname>` for production, or an `APP_BASE_URL` already set to a domain (as `npm run init` writes). The first deploy of such an environment runs on `workers.dev`, which it used to skip, failing its migrations. `fillEnv()` (`bin/lib/setup-ci.ts`) takes `{ overwrite: true }`.
+8. **`cf()` (`bin/lib/cloudflare-api.ts`) accepts a 200 with an empty body**, which some DELETEs return; it threw.
 
 ### Required actions
 
-- **Take** `pnpm-workspace.yaml`, `bin/worktree-setup`, `bin/setup-domain.ts`, `bin/sync-env.ts`, `bin/lib/custom-domain.ts`, `bin/lib/workers-builds.ts` and `test/scripts/custom-domain.test.ts`. **Merge** `bin/deploy-production.ts`, `bin/setup-ci.ts`, `bin/lib/setup-ci.ts`, `bin/init.ts`, `vitest.config.ts`, `.gitignore` (drop the `pnpm-workspace.yaml` line), the `setup:domain` and `sync-env` scripts in `package.json`, and the worktree section and command lines of `AGENTS.md`.
+- **Take** `pnpm-workspace.yaml`, `bin/worktree-setup`, `bin/setup-domain.ts`, `bin/sync-env.ts`, `bin/lib/custom-domain.ts`, `bin/lib/workers-builds.ts` and `test/scripts/custom-domain.test.ts`. **Merge** `bin/deploy-production.ts`, `bin/setup-ci.ts`, `bin/lib/cloudflare-api.ts`, `bin/lib/setup-ci.ts`, `bin/init.ts`, `vitest.config.ts`, `.gitignore` (drop the `pnpm-workspace.yaml` line), the `setup:domain` and `sync-env` scripts in `package.json`, and the worktree section and command lines of `AGENTS.md`.
 - If a domain is attached to a Worker by hand (dashboard), nothing is required; `npm run setup:domain -- <hostname> --dry-run` shows what it would add to `wrangler.toml`.
 - If your project already has a `pnpm-workspace.yaml` (from `pnpm approve-builds`, or a workspace), merge the build approvals into it. If the starter lives in a subfolder of a pnpm workspace, move them to the workspace root's and delete the subfolder's (`docs/VITE_CLOUDFLARE_BRIDGE.md`).
 - Verify: `npm test` with `APP_BASE_URL` in `.env.local` on a port other than 5173; with pnpm, `pnpm install` runs without `ERR_PNPM_IGNORED_BUILDS`; `npm run deploy:production -- --dry-run`.

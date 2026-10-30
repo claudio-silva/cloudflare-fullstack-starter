@@ -26,6 +26,8 @@ export async function cf<T>(token: string, method: string, path: string, body?: 
 		result?: T;
 		errors?: { code: number; message: string }[];
 	} | null;
+	// Some DELETEs answer 200 with an empty body.
+	if (res.ok && json === null) return undefined as T;
 	if (!res.ok || !json?.success) {
 		const detail = json?.errors?.map((e) => e.message).join("; ") ?? `HTTP ${res.status}`;
 		throw new CloudflareApiError(`${method} ${path}: ${detail}`, res.status, json?.errors?.map((e) => e.code) ?? []);
