@@ -11,10 +11,12 @@
  *
  *   manual          build, migrate and deploy from this machine, then tag.
  *                   The tag follows success, because there is no trigger to arm.
- *   workers-builds  push main, wait for its CI, push the tag, promote the
- *                   branch, then let Cloudflare build. The tag precedes the
- *                   deploy because it is what the build checks.
- *   external-ci     same, with your own CI doing the build.
+ *   workers-builds  push main, wait for its CI, push the tag, sync the
+ *                   build variables and secrets of .env.production, promote
+ *                   the branch, then let Cloudflare build. The tag precedes
+ *                   the deploy because it is what the build checks.
+ *   external-ci     same, with your own CI doing the build (the build
+ *                   variables are Workers Builds', so only secrets apply).
  *
  * In every mode, a commit whose CI failed is not released (GitHub Actions,
  * read through `gh`; see bin/lib/ci-checks.ts). In the CI modes the release
@@ -182,16 +184,6 @@ async function main(): Promise<void> {
 		die("main differs from origin/main; pull/push first");
 	}
 
-	// Secrets live on the Worker, synced from a developer's machine. In a CI
-	// mode nobody syncs them during the deploy, so a stale .env is only
-	// discovered when the new code cannot find a secret it needs.
-	if (mode !== "manual" && !releaseOnly) {
-		const envFile = parseEnvFile(resolve(process.cwd(), `.env.${ENV}`));
-		if (Object.keys(envFile).length > 0) {
-			console.log("Reminder: CI does not sync secrets. Run `npm run sync-secrets -- production` if .env.production changed.");
-		}
-	}
-
 	// --- Version -------------------------------------------------------------
 	// APP_VERSION_FROM decides which field is bumped, as it decides which one the
 	// build reports. Exported, so the local build in manual mode agrees.
@@ -291,6 +283,12 @@ async function main(): Promise<void> {
 		// The push is the trigger: Workers Builds builds every push to its
 		// branch (it has no switch for that), and the pipeline refuses a commit
 		// without its release tag, which was pushed above.
+		// CI never sees .env.production: what the build and the Worker read from
+		// it lives on Cloudflare, and this machine is where it changes. Synced
+		// before the push, so the build that push starts reads the new values.
+		// Each sync sends only what changed since the last one.
+		run("npx", ["tsx", "bin/sync-build-vars.ts", ENV]);
+		run("npx", ["tsx", "bin/sync-secrets.ts", ENV]);
 		run("git", ["push", "origin", `main:${cfg.branch}`]);
 		await waitForVersion(version);
 	}

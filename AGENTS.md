@@ -178,6 +178,8 @@ npm run build                  # Build for production
 npm run deploy:production      # Versioned release: secrets + build vars + build + deploy + tag + migrate (patch; --minor/--major)
 npm run deploy:preview         # Same steps on preview, without versioning
 npm run setup:ci               # Connect Cloudflare Workers Builds to GitHub (idempotent; --dry-run). Needs the user's approval: it deploys
+npm run setup:domain -- <host> # Serve an environment on a custom domain (--env preview; --dry-run). Needs the user's approval: it changes the live URL
+npm run sync-env -- <env>      # Send what changed in .env.<env> (secrets + build variables); before pushing to the preview branch
 
 # Logs (deployed environments only)
 npm run tail:preview           # Stream logs from preview
@@ -276,7 +278,7 @@ Update `src/config.ts` to customize app name, email settings, etc.
 
 **How env files work:**
 - `.env.local` — Loaded during local development (`npm run dev`)
-- `.env.preview` / `.env.production` — Synced to Cloudflare before deploy (secrets to the Worker; `VITE_*` and `CLI_API_URL*` to Workers Builds as build variables)
+- `.env.preview` / `.env.production` — Synced to Cloudflare before deploy (secrets to the Worker; `VITE_*` and `CLI_API_URL*` to Workers Builds as build variables). CI never reads them: it uses what was synced. `deploy:production` syncs in every mode; a CI deploy of preview started by a push needs `npm run sync-env -- preview` first
 
 **Variable access by context:**
 ```typescript

@@ -52,9 +52,10 @@ export const randomSecret = () => randomBytes(32).toString("base64url");
 /**
  * Set `KEY=value` in the text of an env file: replaces the line of a key that
  * holds a placeholder, appends a key that is missing, and never touches a value
- * someone set. Returns the new text and the keys it changed.
+ * someone set — unless `overwrite`, which replaces any value that differs.
+ * Returns the new text and the keys it changed.
  */
-export function fillEnv(content: string, values: Record<string, string>): { content: string; changed: string[] } {
+export function fillEnv(content: string, values: Record<string, string>, { overwrite = false } = {}): { content: string; changed: string[] } {
 	const lines = content.split("\n");
 	const changed: string[] = [];
 	for (const [key, value] of Object.entries(values)) {
@@ -63,7 +64,9 @@ export function fillEnv(content: string, values: Record<string, string>): { cont
 			if (lines.length && lines[lines.length - 1] === "") lines.splice(lines.length - 1, 0, `${key}=${value}`);
 			else lines.push(`${key}=${value}`);
 			changed.push(key);
-		} else if (isPlaceholder(lines[i].trim().slice(key.length + 1).replace(/^["']|["']$/g, ""))) {
+		} else {
+			const current = lines[i].trim().slice(key.length + 1).replace(/^["']|["']$/g, "");
+			if (overwrite ? current === value : !isPlaceholder(current)) continue;
 			lines[i] = `${key}=${value}`;
 			changed.push(key);
 		}

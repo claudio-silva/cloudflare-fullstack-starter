@@ -663,6 +663,14 @@ npm run setup:ci
 
 It creates the D1 databases, fills `.env.preview` / `.env.production` (generated secrets, `workers.dev` URLs), deploys each environment for the first time, connects Cloudflare Workers Builds, syncs build variables and secrets, and protects the release branch. Safe to run again; `--dry-run` shows the plan. From then on, a push to the preview branch updates preview and `npm run deploy:production` releases through CI. It needs a user API token in `.env.setup.local`, and once per account a click in the dashboard, which it explains. → [Setting it up](docs/DEPLOYMENT.md#setting-it-up-npm-run-setupci)
 
+**Your own domain** — with or without CI, once the domain's zone is on your Cloudflare account:
+
+```bash
+npm run setup:domain -- app.example.com          # production; --env preview for preview
+```
+
+It attaches the hostname to the Worker (DNS record and certificate included), records it in `wrangler.toml`, and makes it the app's URL once it answers. Nothing is deployed. `setup:ci -- --domain app.example.com` does the same as part of the CI setup. → [Your own domain](docs/DEPLOYMENT.md#your-own-domain-npm-run-setupdomain)
+
 Before going live, set up email: onboard your sender domain in Cloudflare Email Service (default) or configure another provider ([docs/EMAIL.md](docs/EMAIL.md)), and make `config.email.fromAddress` match the `allowed_sender_addresses` in `wrangler.toml` (`npm run init` does it).
 
 **One-time setup, by hand** — deploying from your machine, without CI:
@@ -680,7 +688,7 @@ Before going live, set up email: onboard your sender domain in Cloudflare Email 
    ```
 
 **Day-to-day:**
-- **Add or update a secret** — edit the relevant `.env.<env>` file and run `npm run sync-secrets -- <env>`. Only what changed is synced; you never need `wrangler secret put`.
+- **Add or update a secret or build variable** — edit the relevant `.env.<env>` file. `deploy:production` and `deploy:preview` send what changed before deploying, in every mode; for a preview deployed by a push to its branch, run `npm run sync-env -- preview` before pushing. You never need `wrangler secret put`.
 - **Add a Cloudflare binding** (D1, KV, R2, …) — add it under `[env.*]` in `wrangler.toml` and it reaches the deploy on its own. Nothing to mirror anywhere.
 
 **What a deploy does** — on your machine or in CI, the same script either way:
@@ -779,6 +787,8 @@ In both cases the open app does not fail: its requests are held, a banner tells 
 npm run deploy:production    # Versioned release (patch; --minor/--major); --local to build here
 npm run deploy:preview       # Build, migrate and deploy preview
 npm run setup:ci             # Connect Workers Builds (both envs, idempotent; --dry-run)
+npm run setup:domain -- app.example.com   # Serve production on your domain (--env preview; --dry-run)
+npm run sync-env -- preview  # Send what changed in .env.preview (secrets + build variables)
 npm run maintenance -- status --env production   # on | off | status
 npm run db -- logins --env production            # who has signed in, and how many
 ```

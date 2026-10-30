@@ -199,6 +199,26 @@ CLOUDFLARE_ACCOUNT_ID=...
 
 Without a token, without a deployed Worker, or before the repository is connected in the dashboard, it prints a notice and exits 0.
 
+## Your own domain: `npm run setup:domain`
+
+Each environment starts on its `workers.dev` URL. To serve one on a domain of yours, with or without CI:
+
+```bash
+npm run setup:domain -- app.example.com --dry-run                # what it would do
+npm run setup:domain -- app.example.com                          # production
+npm run setup:domain -- preview.example.com --env preview
+```
+
+Before it: the domain's zone is on your Cloudflare account (dashboard → *Add a domain*, nameservers pointed to Cloudflare), the hostname has no DNS record of its own, and the environment's Worker has been deployed once. Credentials: the token in `.env.setup.local` if there is one, otherwise wrangler's own login (`npx wrangler login`).
+
+Each step checks first, so it is safe to run again, and nothing is deployed:
+
+1. **Attach** — the hostname is attached to the Worker through the API; Cloudflare creates its DNS record and certificate. The command waits until `https://<hostname>/api/` answers (usually a minute or two).
+2. **`wrangler.toml`** — `routes = [{ pattern = "<hostname>", custom_domain = true }]` under `[env.<env>]`, so every later deploy keeps the domain, and the maintenance window finds its hostname there. Commit it.
+3. **The app's URL** — `APP_BASE_URL` and `CLI_API_URL_<ENV>` in `.env.<env>` become `https://<hostname>`, and are synced (`sync-secrets`, `sync-build-vars`). Only now, because sign-in accepts only that origin.
+
+The next deploy turns the `workers.dev` URL off: it is wrangler's default once a Worker has routes, and it leaves one address for the app. To keep both, set `workers_dev = true` under `[env.<env>]`.
+
 ## Running it in CI
 
 `deployConfig.mode` picks who builds. All three run the same pipeline.
@@ -235,6 +255,8 @@ Each step checks before it changes anything:
 One step needs a browser, once per account: Workers Builds deploys with a build token that only the dashboard creates, and reads the repository through the Cloudflare GitHub app. When either is missing the command says what to click (connect any of the Workers in the dashboard — the settings typed there do not matter, the next run corrects them) and stops; run it again afterwards.
 
 If the GitHub app was installed with *Only select repositories*, add each new repository to it (GitHub → Settings → Applications → Cloudflare Workers and Pages → Configure). Cloudflare accepts the connection either way and nothing reports the gap: pushes simply start no build. `setup:ci` reminds you when it connects a repository.
+
+With `--domain app.example.com`, production is also put on that domain once its Worker exists, as `npm run setup:domain` does (below). An `APP_BASE_URL` already set to a domain of your own (`npm run init` asks for one) is taken the same way, for either environment.
 
 #### The settings, by hand
 
@@ -295,7 +317,10 @@ It is a committed value rather than a CI variable on purpose: `deploy:production
 
 ### What CI needs, and what it does not
 
-- **Runtime secrets** stay on the Worker. CI never syncs them — a developer does, with `npm run sync-secrets`. `deploy:production` reminds you when `.env.production` exists and the mode is not `manual`.
+- **CI never reads `.env.*`** (they are not in git). What the build and the Worker read from them is kept on Cloudflare — runtime secrets on the Worker, build variables on the Workers Builds trigger — and sent there from the machine that holds the files, only what changed since the last time:
+  - `deploy:production` does it in every mode: in a CI mode just before it promotes the branch, so the build that push starts reads the new values.
+  - A push to the preview branch runs nothing on your machine: after editing `.env.preview`, run `npm run sync-env -- preview` before pushing (`sync-build-vars` plus `sync-secrets`).
+  - A secret sent before the deploy is live at once, for the version still running. Adding one is harmless; a changed value takes effect a few minutes before the new code, as it does in `manual` mode.
 - **Build variables** are the ones above. In `workers-builds` they come from `sync-build-vars`; in `external-ci` they are your CI's variables.
 - **Migrations** need `CLI_API_KEY` and `CLI_API_URL_<ENV>` in the build.
 - The CI disk is ephemeral, so `--safe` records only the Time Travel bookmark there. That needs a token with D1 access; without one it warns and continues.

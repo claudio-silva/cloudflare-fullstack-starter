@@ -260,6 +260,7 @@ async function main() {
 	console.log("  • Set AUTH_EMAILS_LOCAL_ENABLED=true in .env.local to test auth emails locally");
 	console.log("  • Set BETTER_AUTH_SECRET in each .env.<env> (required for preview/production)");
 	console.log("  • Onboard your sending domain in Cloudflare Email Service (see docs/EMAIL.md)");
+	console.log(`  • Serve an environment on your domain, once it is deployed: ${run("setup:domain")} -- <hostname>`);
 	console.log(`  • Create a user: ${run("auth")} create-user -u admin@example.com -p password`);
 	console.log(`  • Seed data: add an idempotent seed in src/worker/db/seeds/ and run: ${run("db:seed")} -- --env local --file <name>`);
 }

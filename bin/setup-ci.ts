@@ -11,7 +11,9 @@
  *      the D1 database found or created, when wrangler.toml holds a placeholder.
  *   2. The Worker: deployed for the first time if it does not exist. Preview
  *      with `deploy:preview`; production with `deploy:production --local`,
- *      which makes it the first release (asked first).
+ *      which makes it the first release (asked first). Then its own domain,
+ *      if it has one (`--domain` for production, or an APP_BASE_URL that is
+ *      neither a placeholder nor workers.dev): attached as `setup:domain` does.
  *   3. The Workers Builds trigger: created, or corrected — branch, build and
  *      deploy commands.
  *   4. Build variables and Worker secrets synced.
@@ -25,7 +27,7 @@
  * `origin` on GitHub. The one step only a browser can do — installing the
  * Cloudflare GitHub app and the build token — is explained when it is missing.
  *
- * Usage: npm run setup:ci [-- --env preview|production] [--yes] [--dry-run]
+ * Usage: npm run setup:ci [-- --env preview|production] [--domain app.example.com] [--yes] [--dry-run]
  */
 
 import { execFileSync, spawnSync } from "node:child_process";
@@ -36,6 +38,7 @@ import { parse as parseToml } from "smol-toml";
 import { deployConfig } from "../deploy.config";
 import { readCheckRuns, githubRepo } from "./lib/ci-checks";
 import { cf, CloudflareApiError } from "./lib/cloudflare-api";
+import { attachCustomDomain, normalizeHostname } from "./lib/custom-domain";
 import { cloudflareCredentials, loadDeployConfig, parseEnvFile } from "./lib/deploy-config";
 import {
 	fillEnv,
@@ -62,6 +65,7 @@ const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
 const yes = args.includes("--yes") || args.includes("-y");
 const onlyEnv = args.includes("--env") ? (args[args.indexOf("--env") + 1] as SetupEnv) : undefined;
+const domainArg = args.includes("--domain") ? args[args.indexOf("--domain") + 1] : undefined;
 
 let changes = 0;
 const todo: string[] = [];
@@ -215,7 +219,7 @@ function d1Name(env: SetupEnv): { name: string; id: string } | undefined {
 }
 
 /** Step 1: everything the deploy reads from `.env.<env>`, filled where nobody has. */
-async function prepareEnvFile(account: Account, env: SetupEnv, workerName: string): Promise<void> {
+async function prepareEnvFile(account: Account, env: SetupEnv, workerName: string, domain: string | undefined): Promise<void> {
 	const file = `.env.${env}`;
 	if (!existsSync(file)) {
 		change(`create ${file} from env/${env}.env.template`);
@@ -228,12 +232,15 @@ async function prepareEnvFile(account: Account, env: SetupEnv, workerName: strin
 		if (isPlaceholder(current[key])) wanted[key] = randomSecret();
 	}
 	const urlKey = `CLI_API_URL_${env.toUpperCase()}`;
-	if (isPlaceholder(current.APP_BASE_URL) || isPlaceholder(current[urlKey])) {
+	// A domain not attached yet cannot serve the first deploy, which migrates
+	// through it: that one runs on workers.dev, and step 2 switches to the domain.
+	const firstOnWorkersDev = !!domain && !(await workerTag(account, workerName));
+	if (firstOnWorkersDev || isPlaceholder(current.APP_BASE_URL) || isPlaceholder(current[urlKey])) {
 		const { subdomain } = await cf<{ subdomain: string }>(account.token, "GET", `/accounts/${account.accountId}/workers/subdomain`).catch(() => ({ subdomain: "" }));
 		if (!subdomain) die(`no workers.dev subdomain on this account yet: open Workers & Pages in the dashboard once to pick one, or set APP_BASE_URL and ${urlKey} in ${file} to your domain.`);
 		const url = `https://${workerName}.${subdomain}.workers.dev`;
-		if (isPlaceholder(current.APP_BASE_URL)) wanted.APP_BASE_URL = url;
-		if (isPlaceholder(current[urlKey])) wanted[urlKey] = current.APP_BASE_URL && !isPlaceholder(current.APP_BASE_URL) ? current.APP_BASE_URL : url;
+		if (firstOnWorkersDev || isPlaceholder(current.APP_BASE_URL)) wanted.APP_BASE_URL = url;
+		if (firstOnWorkersDev || isPlaceholder(current[urlKey])) wanted[urlKey] = url;
 	}
 
 	const db = d1Name(env);
@@ -252,8 +259,12 @@ async function prepareEnvFile(account: Account, env: SetupEnv, workerName: strin
 	}
 
 	if (Object.keys(wanted).length === 0) return ok(`${file} complete`);
-	change(`set ${Object.keys(wanted).join(", ")} in ${file}`);
-	if (!dryRun) writeFileSync(file, fillEnv(readFileSync(file, "utf-8"), wanted).content);
+	change(`set ${Object.keys(wanted).join(", ")} in ${file}${firstOnWorkersDev ? ` (workers.dev until ${domain} is attached)` : ""}`);
+	if (!dryRun) {
+		const urls = Object.fromEntries(Object.entries(wanted).filter(([k]) => firstOnWorkersDev && (k === "APP_BASE_URL" || k === urlKey)));
+		const rest = Object.fromEntries(Object.entries(wanted).filter(([k]) => !(k in urls)));
+		writeFileSync(file, fillEnv(fillEnv(readFileSync(file, "utf-8"), rest).content, urls, { overwrite: true }).content);
+	}
 }
 
 /** Step 2: the Worker exists, deployed once from here if it did not. */
@@ -277,6 +288,23 @@ async function ensureWorker(account: Account, env: SetupEnv, workerName: string)
 		if (!runScript("bin/deploy-pipeline.ts", ["--env", env])) die("the first preview deploy failed (above). Fix it and run npm run setup:ci again.");
 	}
 	return (await workerTag(account, workerName)) ?? die(`${workerName} still not found after its first deploy.`);
+}
+
+/** The environment's own domain: `--domain` for production, or an APP_BASE_URL set to one (`npm run init` asks for it). */
+function domainOf(env: SetupEnv): string | undefined {
+	if (env === "production" && domainArg) return normalizeHostname(domainArg) ?? undefined;
+	const url = parseEnvFile(`.env.${env}`).APP_BASE_URL;
+	return url && !isPlaceholder(url) && url.startsWith("https://") ? (normalizeHostname(url) ?? undefined) : undefined;
+}
+
+/** Step 2, continued: the domain attached and made the app's URL, as `setup:domain` does. */
+async function ensureDomain(account: Account, env: SetupEnv, workerName: string, hostname: string | undefined): Promise<void> {
+	if (!hostname) return;
+	try {
+		await attachCustomDomain({ token: account.token, accountId: account.accountId, env, hostname, workerName, dryRun, report: { ok, note, change } });
+	} catch (error) {
+		todo.push(`Domain ${hostname} (${env}): ${error instanceof Error ? error.message : String(error)} Then: npm run setup:domain -- ${hostname} --env ${env}`);
+	}
 }
 
 type Connection = { repoConnectionUuid: string; buildTokenUuid: string };
@@ -362,9 +390,11 @@ async function ensureTrigger(account: Account, env: SetupEnv, tag: string, conn:
 async function setupEnv(account: Account, repo: Repo, env: SetupEnv): Promise<void> {
 	const workerName = resolveWorkerName("wrangler.toml", env);
 	step(`${env} — Worker ${workerName}, branch ${loadDeployConfig(env).branch}`);
-	await prepareEnvFile(account, env, workerName);
+	const domain = domainOf(env);
+	await prepareEnvFile(account, env, workerName, domain);
 	const tag = await ensureWorker(account, env, workerName);
 	if (!tag) return;
+	await ensureDomain(account, env, workerName, domain);
 
 	const otherTags = (
 		await Promise.all((["preview", "production"] as const).map((e) => workerTag(account, resolveWorkerName("wrangler.toml", e)).catch(() => undefined)))
@@ -434,9 +464,10 @@ function setMode(): void {
 
 async function main(): Promise<void> {
 	if (args.includes("--help") || args.includes("-h")) {
-		console.log("Usage: npm run setup:ci [-- --env preview|production] [--yes] [--dry-run]");
+		console.log("Usage: npm run setup:ci [-- --env preview|production] [--domain app.example.com] [--yes] [--dry-run]");
 		return;
 	}
+	if (domainArg !== undefined && !normalizeHostname(domainArg)) die(`--domain takes the production hostname (example: app.example.com), not "${domainArg}"`);
 	if (onlyEnv && onlyEnv !== "preview" && onlyEnv !== "production") die("--env takes preview or production");
 	if (!existsSync(resolve("wrangler.toml"))) die("run it from the project root");
 	if (dryRun) console.log("Dry run: nothing is changed.");

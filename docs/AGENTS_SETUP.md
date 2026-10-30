@@ -111,6 +111,8 @@ New databases get the baseline in one step; existing ones the pending incrementa
 | `npm run db:backup` / `:preview` / `:production` | Back up the whole database to `.backup.jsonl` (any supported DB) |
 | `npm run deploy:preview` / `deploy:production` | Sync secrets and build variables, bake env, deploy, migrate (production also tags a release) |
 | `npm run sync-build-vars -- <env>` | Push `VITE_*` / `CLI_API_URL*` (and `CLI_API_KEY` as a secret) to Workers Builds |
+| `npm run sync-env -- <env>` | `sync-build-vars` and `sync-secrets` together: what changed in `.env.<env>` |
+| `npm run setup:domain -- <host> [--env preview]` | Attach a custom domain to the environment's Worker and make it the app's URL (`docs/DEPLOYMENT.md`, *Your own domain*) |
 
 ## Set Up `CLI_API_KEY`
 
@@ -130,7 +132,7 @@ Use this when moving from local dev to real Cloudflare resources. Paths are rela
 
 **The fast path is one command.** Once the project has its own GitHub repository (`origin`), `main` is pushed and a user API token is in `.env.setup.local`, `npm run setup:ci` does items 2, 4, 5 and 6 below for both environments, and is safe to run again: it creates the D1 databases, fills `.env.preview` / `.env.production` (generated secrets, `workers.dev` URLs), deploys each Worker for the first time, connects Workers Builds, syncs build variables and secrets, protects the release branch on GitHub and switches `deploy.config.ts` to `workers-builds`. `npm run setup:ci -- --dry-run` shows what it would do. Details: `docs/DEPLOYMENT.md`, *Setting it up: `npm run setup:ci`*.
 
-1. **Zones / routes** — If you use `routes` under `[env.preview]` / `[env.production]` in `wrangler.toml`, attach the hostname in the Cloudflare dashboard and keep patterns in sync with docs in `docs/VITE_CLOUDFLARE_BRIDGE.md`.
+1. **Your own domain** — Once the environment is deployed and the domain's zone is on the account: `npm run setup:domain -- <hostname>` (`--env preview` for preview) attaches it to the Worker, adds it to `routes` under `[env.<env>]` in `wrangler.toml` and makes it the app's URL (`docs/DEPLOYMENT.md`, *Your own domain*). `setup:ci -- --domain <hostname>` does it for production. Other `routes` you add under `[env.*]` reach the deploy as they are (`docs/VITE_CLOUDFLARE_BRIDGE.md`).
 2. **D1** — Create preview and production databases in the dashboard (or CLI). Paste `database_id` into `wrangler.toml`, or set it as `D1_DATABASE_ID` in `.env.<env>` (what `setup:ci` does); keep `database_name` following the convention above.
 3. **Optional bindings** — Add `[[env.*.kv_namespaces]]`, `[[env.*.r2_buckets]]`, `[env.*.triggers]` / `crons` or any other binding under `[env.preview|production]` in `wrangler.toml` when you need them. `vite.config.ts` copies every key across generically, so there is nothing to mirror by hand (see bridge doc).
 4. **Secrets** — List required keys in `.env.example`, then copy to `.env.preview` / `.env.production` (gitignored). Never commit real secrets.

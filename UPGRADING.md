@@ -50,19 +50,23 @@ npm run test:e2e       # from 2.0.0 on, optional
 
 ## 3.5.1 — unreleased
 
-Worktrees on another port and pnpm installs, found in use.
+A custom domain in one command, with or without CI; `.env` changes reach CI deploys; worktrees on another port and pnpm installs, found in use.
 
 ### Breaking changes
 
 1. **The worker tests no longer read the port from `.env.local`.** Wrangler loads `.env.local` into the test Worker too, so a worktree whose dev server ran on another port failed `worker.test.ts › can sign in` (origin `http://localhost:5173` refused). `vitest.config.ts` now pins `APP_BASE_URL` in the test bindings.
 2. **pnpm installs without approving build scripts by hand.** pnpm 11 refuses to install until each install script is approved, and reads approvals only from `pnpm-workspace.yaml` (no longer gitignored). The new file allows `esbuild` and `workerd` and denies `fsevents`, for pnpm 11 (`allowBuilds`) and 10 (`onlyBuiltDependencies`). npm ignores it.
 3. **`bin/worktree-setup` installs with the source checkout's package manager:** pnpm when it has a `pnpm-lock.yaml` (copied into the worktree), npm otherwise, and says which to use.
+4. **`deploy:production` syncs `.env.production` in the CI modes too.** It used to print a reminder; it now runs `sync-build-vars` and `sync-secrets` just before promoting the branch, so the CI build reads the current values. New `npm run sync-env -- <env>` does both, for a preview deployed by a push.
+5. **New `npm run setup:domain -- <hostname> [--env preview]`** (`bin/setup-domain.ts`, `bin/lib/custom-domain.ts`): attaches the hostname to the environment's Worker through the API, waits until it answers, adds `routes = [{ pattern = "<hostname>", custom_domain = true }]` under `[env.<env>]` in `wrangler.toml`, then sets `APP_BASE_URL` / `CLI_API_URL_<ENV>` and syncs them. Works with the `.env.setup.local` token or wrangler's login. Once a Worker has routes, wrangler's default turns its `workers.dev` URL off at the next deploy (`workers_dev = true` keeps it).
+6. **`setup:ci` attaches the environment's domain:** `--domain <hostname>` for production, or an `APP_BASE_URL` already set to a domain (as `npm run init` writes). The first deploy of such an environment runs on `workers.dev`, which it used to skip, failing its migrations. `fillEnv()` (`bin/lib/setup-ci.ts`) takes `{ overwrite: true }`.
 
 ### Required actions
 
-- **Take** `pnpm-workspace.yaml` and `bin/worktree-setup`. **Merge** `vitest.config.ts`, `.gitignore` (drop the `pnpm-workspace.yaml` line) and the worktree section of `AGENTS.md`.
+- **Take** `pnpm-workspace.yaml`, `bin/worktree-setup`, `bin/setup-domain.ts`, `bin/sync-env.ts`, `bin/lib/custom-domain.ts` and `test/scripts/custom-domain.test.ts`. **Merge** `bin/deploy-production.ts`, `bin/setup-ci.ts`, `bin/lib/setup-ci.ts`, `bin/init.ts`, `vitest.config.ts`, `.gitignore` (drop the `pnpm-workspace.yaml` line), the `setup:domain` and `sync-env` scripts in `package.json`, and the worktree section and command lines of `AGENTS.md`.
+- If a domain is attached to a Worker by hand (dashboard), nothing is required; `npm run setup:domain -- <hostname> --dry-run` shows what it would add to `wrangler.toml`.
 - If your project already has a `pnpm-workspace.yaml` (from `pnpm approve-builds`, or a workspace), merge the build approvals into it. If the starter lives in a subfolder of a pnpm workspace, move them to the workspace root's and delete the subfolder's (`docs/VITE_CLOUDFLARE_BRIDGE.md`).
-- Verify: `npm test` with `APP_BASE_URL` in `.env.local` on a port other than 5173; with pnpm, `pnpm install` runs without `ERR_PNPM_IGNORED_BUILDS`.
+- Verify: `npm test` with `APP_BASE_URL` in `.env.local` on a port other than 5173; with pnpm, `pnpm install` runs without `ERR_PNPM_IGNORED_BUILDS`; `npm run deploy:production -- --dry-run`.
 
 ---
 
