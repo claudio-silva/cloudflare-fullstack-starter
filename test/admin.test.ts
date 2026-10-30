@@ -198,14 +198,13 @@ describe("session endings in the log", () => {
 	});
 
 	it("in demo mode, shows visitors' IPs masked", async () => {
-		// Signed in once only, from a known address, so it is also the current session. Better Auth
-		// takes the session's address from X-Forwarded-For, the log from CF-Connecting-IP.
+		// Signed in once only, from a known address, so it is also the current session.
 		const email = `demo-ip-${Date.now()}@example.com`;
 		const created = await app.request("/api/cli/users", { method: "POST", headers: { ...json, ...cliKey }, body: JSON.stringify({ email, password: "password-123", name: "Demo", role: "superadmin" }) }, local);
 		const me = { id: ((await created.json()) as { userId: string }).userId };
 		const signIn = await app.request(
 			"/api/auth/sign-in/email",
-			{ method: "POST", headers: { ...json, "CF-Connecting-IP": "203.0.113.7", "X-Forwarded-For": "203.0.113.7" }, body: JSON.stringify({ email, password: "password-123" }) },
+			{ method: "POST", headers: { ...json, "CF-Connecting-IP": "203.0.113.7" }, body: JSON.stringify({ email, password: "password-123" }) },
 			local,
 		);
 		const cookie = signIn.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ");

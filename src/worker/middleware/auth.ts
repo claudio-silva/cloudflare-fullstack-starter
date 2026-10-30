@@ -201,6 +201,12 @@ export function createAuth(c: AppContext) {
 		telemetry: {
 			enabled: false,
 		},
+		// Better Auth reads only X-Forwarded-For by default, which a Worker does
+		// not receive: sessions were stored without an address. Cloudflare puts
+		// the client's in CF-Connecting-IP, as the sign-in log reads it.
+		advanced: {
+			ipAddress: { ipAddressHeaders: ["cf-connecting-ip", "x-forwarded-for"] },
+		},
 		baseURL: getBaseURL(c, environment),
 	});
 }
