@@ -53,8 +53,7 @@ import { loadDeployConfig, type DeployEnv } from "./lib/deploy-config";
 import { resolveBuildInfo } from "./lib/build-info";
 import { checkReleaseTag } from "./lib/release-tag";
 import { resolveWorkerName, workerExists } from "./lib/worker";
-import { planMigrations } from "./lib/migration-plan";
-import { createMigrations } from "../src/worker/db/migrations";
+import { planMigrations, type LocalMigration } from "./lib/migration-plan";
 import type { MigrationStatus } from "../src/shared/migration-types";
 
 type Stage = "build" | "migrate-expand" | "migrate-breaking" | "deploy" | "migrate-contract";
@@ -82,6 +81,17 @@ function compareVersions(a: string, b: string): number {
 	const [a1, a2, a3] = parse(a);
 	const [b1, b2, b3] = parse(b);
 	return a1 - b1 || a2 - b2 || a3 - b3;
+}
+
+/**
+ * The migrations this checkout bundles. Imported at run time, through a path
+ * the compiler does not follow: typechecking them here would pull the Worker's
+ * types into the CLI's.
+ */
+async function releaseMigrations(): Promise<Record<string, LocalMigration>> {
+	const path = "../src/worker/db/migrations/index.ts";
+	const { createMigrations } = (await import(path)) as { createMigrations: (kind: "sqlite") => Record<string, LocalMigration> };
+	return createMigrations("sqlite");
 }
 
 async function liveVersion(env: DeployEnv): Promise<string | null> {
@@ -195,7 +205,7 @@ async function main(): Promise<void> {
 		return firstDeploy(env, workerName, skipBuild, dryRun);
 	}
 	// The running Worker reports what it knows; this checkout adds what the release brings.
-	const plan = planMigrations(migrations, createMigrations("sqlite"));
+	const plan = planMigrations(migrations, await releaseMigrations());
 	const { pending } = plan;
 	const contract = plan.byKind("contract");
 
