@@ -1,8 +1,10 @@
+import { useEffect, useState } from "react";
 import { Outlet } from "react-router-dom";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { APP_VERSION } from "../../../shared/app-version";
 import { hasRole } from "../../../shared/roles";
 import { config } from "../../../config";
+import { adminConfig } from "../config";
 import { useNavTrail, useNavigationMode, useRole } from "../nav";
 import "../admin.css";
 import { AdminSidebar } from "./AdminSidebar";
@@ -12,12 +14,30 @@ import { Forbidden } from "./StatusMessage";
 const YEAR = new Date().getFullYear();
 
 /**
+ * Whether the sidebar is expanded: at first, by the window's width; then it
+ * follows the window across `sidebarExpandedFrom`, both ways, and the toggle
+ * in between.
+ */
+function useSidebarFollowsWidth() {
+	const query = `(min-width: ${adminConfig.sidebarExpandedFrom}px)`;
+	const [open, setOpen] = useState(() => window.matchMedia(query).matches);
+	useEffect(() => {
+		const mql = window.matchMedia(query);
+		const follow = () => setOpen(mql.matches);
+		mql.addEventListener("change", follow);
+		return () => mql.removeEventListener("change", follow);
+	}, [query]);
+	return [open, setOpen] as const;
+}
+
+/**
  * The admin area's frame, inside the app's TopBar: the menu (sidebar or top
  * bar, see `useNavigationMode`), the page, and a footer at the bottom.
  */
 export function AdminLayout() {
 	const role = useRole();
 	const mode = useNavigationMode();
+	const [sidebarOpen, setSidebarOpen] = useSidebarFollowsWidth();
 	// A page is open to the lowest role every menu item above it allows.
 	const allowed = useNavTrail().every((item) => !item.minRole || hasRole(role, item.minRole));
 
@@ -50,7 +70,7 @@ export function AdminLayout() {
 	}
 
 	return (
-		<SidebarProvider className="h-full min-h-0">
+		<SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen} className="h-full min-h-0">
 			<AdminSidebar />
 			<div className="min-h-0 min-w-0 flex-1 overflow-auto">{content}</div>
 		</SidebarProvider>

@@ -36,6 +36,7 @@ import { ACTION_BUTTON, TAB_LIST, TAB_TRIGGER } from "../../styles";
 import { ROLE_LABELS, formatDateTime, formatDuration, formatIdle, methodLabel } from "./format";
 import { UserActivity } from "./UserActivity";
 import { countryName } from "@/lib/countries";
+import { noFocusOnClick } from "@/lib/focus";
 import { RoleBadge, SignInMethods, StatusBadge, UserAvatar } from "./user-ui";
 import { Panel } from "@/components/Panel";
 
@@ -201,11 +202,11 @@ export function UserForm() {
 			<Tabs defaultValue="details" className="gap-6">
 			{!isNew && (
 				<TabsList variant="line" className={TAB_LIST}>
-					<TabsTrigger value="details" className={TAB_TRIGGER}>
+					<TabsTrigger value="details" className={TAB_TRIGGER} {...noFocusOnClick}>
 						<ClipboardList />
 						Profile
 					</TabsTrigger>
-					<TabsTrigger value="activity" className={TAB_TRIGGER}>
+					<TabsTrigger value="activity" className={TAB_TRIGGER} {...noFocusOnClick}>
 						<History />
 						Activity
 						{user!.activityCount > 0 && (

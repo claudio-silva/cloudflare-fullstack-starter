@@ -40,6 +40,13 @@ export const adminConfig = {
 	 */
 	navigation: "sidebar" as "sidebar" | "topbar",
 
+	/**
+	 * Below this window width the sidebar collapses to icons, and above it
+	 * expands again, as the window crosses it (in between, the toggle decides).
+	 * Under 768px it is a sheet instead.
+	 */
+	sidebarExpandedFrom: 1024,
+
 	/** First breadcrumb on every page. */
 	root: { title: "Admin", path: "/admin" },
 

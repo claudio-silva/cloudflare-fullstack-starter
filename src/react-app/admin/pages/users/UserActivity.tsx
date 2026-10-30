@@ -56,7 +56,7 @@ export function UserActivity({ userId }: { userId: string }) {
 	return (
 		<Card className="gap-0 overflow-hidden py-0">
 			<div className="flex items-center justify-between gap-4 border-b bg-(--admin-toolbar) px-4 py-3">
-				<span className="text-sm text-muted-foreground">Sign-ins, failed attempts, sign-outs and sessions that expired or were revoked. Older entries are removed after the retention period.</span>
+				<span className="text-sm text-muted-foreground">Sign-ins, failed attempts, sign-outs and sessions that expired or were revoked. Kept permanently unless a retention period is set.</span>
 				{activity && (
 					<span className="shrink-0 text-sm text-muted-foreground">
 						{activity.total} {activity.total === 1 ? "event" : "events"}

@@ -7,7 +7,8 @@ const TONES = {
 	/** A titled section: dark band, light text. */
 	strong: "bg-panel-header text-panel-header-foreground",
 	/** A summary at the top of a panel (who the user is): a light band. */
-	soft: "border-b border-panel-header-soft-border bg-panel-header-soft text-foreground",
+	// shadcn's CardHeader adds pb-6 under a border-b; this band keeps its own padding.
+	soft: "border-b border-panel-header-soft-border bg-panel-header-soft text-foreground [.border-b]:pb-2.5",
 	/** Something that cannot be undone. */
 	danger: "bg-danger text-white",
 } as const;

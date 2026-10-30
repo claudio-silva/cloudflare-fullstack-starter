@@ -90,9 +90,13 @@ To fix the style and drop the toggle, remove the `ToggleGroup` from
 
 - **`sidebar`**: a vertical menu below the app's header, using shadcn's
   `Sidebar`. It collapses to icons (the button by the breadcrumbs, or
-  Ctrl/⌘+B), groups expand in place, and on small screens it becomes a sheet.
+  Ctrl/⌘+B), groups expand in place, and on small screens (under 768px) it
+  becomes a sheet. It also follows the window: narrowed below
+  `sidebarExpandedFrom` (1024px, in `config.ts`) it collapses to icons, and
+  widened past it, it expands again.
 - **`topbar`**: a horizontal bar below the header, using shadcn's
-  `NavigationMenu`. Each group is a dropdown of its pages.
+  `NavigationMenu`. Each group is a dropdown of its pages, opened by a click,
+  not by hovering.
 
 Both read the same `nav` tree. Breadcrumbs come from it too: "Admin" first,
 then the path through the menu to the current page. A page can add crumbs of

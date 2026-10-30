@@ -12,7 +12,17 @@ import {
 import { adminConfig, type AdminNavItem } from "../config";
 import { isActive, isUnder, useRole, visibleNav } from "../nav";
 
-/** Horizontal navigation: shadcn's NavigationMenu, a dropdown per group. */
+/**
+ * Radix opens a group on hover and closes it when the pointer leaves; here it
+ * opens and closes on click only. Preventing these events is how Radix lets
+ * that be turned off.
+ */
+const clickOnly = {
+	onPointerMove: (event: { preventDefault(): void }) => event.preventDefault(),
+	onPointerLeave: (event: { preventDefault(): void }) => event.preventDefault(),
+};
+
+/** Horizontal navigation: shadcn's NavigationMenu, a dropdown per group, opened by a click. */
 export function AdminTopNav() {
 	const items = visibleNav(adminConfig.nav, useRole());
 	const { pathname } = useLocation();
@@ -25,11 +35,11 @@ export function AdminTopNav() {
 					const active = isActive(item, pathname);
 					return item.children ? (
 						<NavigationMenuItem key={item.title}>
-							<NavigationMenuTrigger className={cn(active && "bg-accent/50")}>
+							<NavigationMenuTrigger className={cn(active && "bg-accent/50")} {...clickOnly}>
 								{Icon && <Icon className="mr-2 size-4" />}
 								{item.title}
 							</NavigationMenuTrigger>
-							<NavigationMenuContent>
+							<NavigationMenuContent {...clickOnly}>
 								<DropdownItems items={item.children} />
 							</NavigationMenuContent>
 						</NavigationMenuItem>

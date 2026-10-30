@@ -134,7 +134,7 @@
     --panel-header: 0 0% 33%;
     --panel-header-foreground: 0 0% 100%;
     --panel-header-soft: 0 0% 98%;
-    --panel-header-soft-border: 0 0% 93.3%;
+    --panel-header-soft-border: 0 0% 86.7%; /* #ddd */
   }
 
   .dark {
