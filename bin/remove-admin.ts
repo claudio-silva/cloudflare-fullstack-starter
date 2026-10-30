@@ -3,7 +3,7 @@
  * Remove the example admin area (/admin) from this project. See docs/ADMIN.md.
  *
  *   1. Deletes its own files: the pages, the API, its schemas, its test, its
- *      doc, and this script.
+ *      doc, its helpers (src/react-app/lib/admin-util.ts) and this script.
  *   2. Strips what it added to shared files, which are marked:
  *        - a block between a line containing `[admin-area]` and one
  *          containing `[/admin-area]`, both included;
@@ -31,6 +31,7 @@ const OWN_PATHS = [
 	"src/react-app/admin",
 	"src/worker/routes/admin",
 	"src/shared/admin-users.ts",
+	"src/react-app/lib/admin-util.ts",
 	"test/admin.test.ts",
 	"docs/ADMIN.md",
 	SELF,
@@ -48,7 +49,7 @@ const UNMARKED_LINES: Record<string, RegExp[]> = {
 };
 
 /** Left behind after removing, these would point at something gone. */
-const LEFTOVER = /routes\/admin|@\/admin\/|shared\/admin-users|ADMIN\.md|admin:remove|admin-area/;
+const LEFTOVER = /routes\/admin|@\/admin\/|shared\/admin-users|lib\/admin-util|ADMIN\.md|admin:remove|admin-area/;
 
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");

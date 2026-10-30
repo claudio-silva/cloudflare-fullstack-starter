@@ -88,6 +88,7 @@ Roles are in `src/shared/roles.ts` (`user` < `admin` < `superadmin`); `session.u
 <!-- [admin-area] -->
 ### The admin area
 `/admin` is an example backoffice (admins and up, 403 otherwise) that a project may restyle or remove. To add a page there see `docs/ADMIN.md`; `npm run admin:remove` removes the whole area.
+When working on the area, keep it removable: put a helper only it uses in `src/react-app/lib/admin-util.ts` (deleted with it) rather than a new file under `lib/`, and mark whatever it adds to a shared file with the markers described in `docs/ADMIN.md`, *Removing it*.
 <!-- [/admin-area] -->
 
 ### Adding API Endpoints

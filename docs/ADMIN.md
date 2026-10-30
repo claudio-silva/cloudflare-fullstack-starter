@@ -69,6 +69,7 @@ npm run auth set-role -- -u you@example.com -r superadmin
 | `src/react-app/admin/pages/` | `Dashboard`, `users/UserList`, `users/UserForm` |
 | `src/worker/routes/admin/` | The API, `/api/admin/*`: admins and up; `users.ts` superadmins only |
 | `src/shared/admin-users.ts` | The users API's validation (zod) and types, shared by the Worker and the form |
+| `src/react-app/lib/admin-util.ts` | Browser helpers only the area uses (`countryName()`, `noFocusOnClick`); add new ones here, not in new files |
 | `test/admin.test.ts` | Access by role, and the CRUD example |
 
 These stay if you remove the area, because other code uses them:
@@ -255,7 +256,7 @@ session at once (`POST /api/admin/users/:id/sign-out`; each is logged as
 revoked, by you). The IP comes from the session; `sessions` keeps no country,
 so that is the one of the latest sign-in. Countries are stored as ISO codes
 (Cloudflare's `cf.country`, empty locally) and shown by name through
-`countryName()` (`lib/countries.ts`), which uses the browser's
+`countryName()` (`src/react-app/lib/admin-util.ts`), which uses the browser's
 `Intl.DisplayNames` in the app's language (`getLocale()` / `setLocale()` in
 `lib/i18n.ts`), so a translation needs nothing more.
 
@@ -297,8 +298,8 @@ npm run admin:remove -- --dry-run    # only lists what it would do
 ```
 
 `bin/remove-admin.ts` deletes the area's own files (`src/react-app/admin/`,
-`src/worker/routes/admin/`, `src/shared/admin-users.ts`, `test/admin.test.ts`,
-this file and itself) and strips what the area added to shared files. Those
+`src/worker/routes/admin/`, `src/shared/admin-users.ts`, `src/react-app/lib/admin-util.ts`,
+`test/admin.test.ts`, this file and itself) and strips what the area added to shared files. Those
 additions are marked: a block from a line containing `[admin-area]` to one
 containing `[/admin-area]`, or a single line containing `[admin-area-line]`.
 It also removes its own `admin:remove` script from `package.json`. If a marker

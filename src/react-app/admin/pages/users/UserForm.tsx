@@ -35,8 +35,7 @@ import { AdminPage } from "../../components/AdminPage";
 import { ACTION_BUTTON, TAB_LIST, TAB_TRIGGER } from "../../styles";
 import { ROLE_LABELS, formatDateTime, formatDuration, formatIdle, methodLabel } from "./format";
 import { UserActivity } from "./UserActivity";
-import { countryName } from "@/lib/countries";
-import { noFocusOnClick } from "@/lib/focus";
+import { countryName, noFocusOnClick } from "@/lib/admin-util";
 import { RoleBadge, SignInMethods, StatusBadge, UserAvatar } from "./user-ui";
 import { Panel } from "@/components/Panel";
 

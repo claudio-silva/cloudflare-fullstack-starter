@@ -10,7 +10,7 @@ import { describeBrowser, type ActivityEvent, type ActivitySortField, type Admin
 import { SortHeader } from "../../components/SortHeader";
 import { nextSort, type SortDir } from "../../sort";
 import { getLocale } from "@/lib/i18n";
-import { countryName } from "@/lib/countries";
+import { countryName } from "@/lib/admin-util";
 import { PageBar } from "../../components/PageBar";
 import { ORDINAL } from "../../styles";
 import { formatDateTime, formatDuration, methodLabel } from "./format";
