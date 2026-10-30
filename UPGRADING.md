@@ -48,6 +48,36 @@ npm run test:e2e       # from 2.0.0 on, optional
 
 ---
 
+## 3.7.0 — 2026-10-30
+
+An example admin area at `/admin` (roles, user management, sign-in history), one table for every admin list, action buttons for forms and lists, and a sign-in log that keeps a permanent history.
+
+### Breaking changes
+
+1. **Roles.** `src/shared/roles.ts` defines `user` < `admin` < `superadmin` (`hasRole()`); Better Auth carries the role as an additional field (`session.user.role`), and `requireRole("admin")` (`src/worker/middleware/roles.ts`) protects routes after `authMiddleware`. `npm run auth set-role` uses the same list.
+2. **The admin area** (`src/react-app/admin/`, `src/worker/routes/admin/`, mounted in `App.tsx` and `src/worker/index.ts` on lines marked `[admin-area-line]`): dashboard, users (list, form, activity) for admins and up. `npm run admin:remove` (`bin/remove-admin.ts`) deletes it and its markers; `docs/ADMIN.md`.
+3. **`AdminTable`** (`docs/ADMIN_TABLE.md`): every admin list on one component. Its endpoints speak `?ofs=&c=&q=&s=-field` and answer `{ items, total }` (`parseListQuery` in `src/shared/admin-list.ts`); the browser works out pages, loads one ahead and keeps a configurable cache (`adminConfig.table`).
+4. **Action buttons** (`src/react-app/components/actions/`, `docs/ACTION_BAR.md`): `ActionBar` with `ButtonSave`, `ButtonCancel`, `ButtonDelete`, `ButtonNew`, `ButtonPrint`, `ButtonBack`, connected to a form with `useRecordForm()`; actions are announced as global events, shown as toasts by default.
+5. **`components/ui` edits, marked `// project:`**: `button.tsx` (the `outline` look and a `success` variant), `form.tsx` (`content-start`), `sidebar.tsx` (the mobile sheet). `index.css` gains the `success`, `warning`, `info`, `button-outline` and `panel-header` tokens and the `action-bar` classes.
+6. **Migrations 0006 and 0007:** `login_events` gains `event`, `method`, `session_id`, `actor_id` and `duration_seconds`; new table `user_stats` (per-user totals that survive pruning); `users.disabled`. `baseline.ts` includes them. Both are `expand`.
+7. **Sessions and the sign-in log** (`src/worker/middleware/auth.ts`, `src/worker/lib/login-log.ts`): sessions last 24 hours (`updateAge` 60 s); a disabled user cannot sign in, and enabling it off signs them out everywhere; sign-ins, failures, sign-outs, expired and revoked sessions and account deletions are recorded with method, duration and who caused them; the client IP is read from `cf-connecting-ip`. Deleting a user goes through `deleteUser()` (`src/worker/lib/users.ts`), which records it.
+8. **The sign-in log is no longer pruned by default.** It used to keep 90 days; it now keeps everything unless `AUTH_LOG_RETENTION_DAYS` is set. IPs are personal data: set it if your privacy notice promises a limit.
+9. **Deploys with migrations use a maintenance window.** A release that brings `expand` migrations used to run them before the deploy, with the old code; only the new code can apply them, so the deploy now applies them in a short maintenance window (`bin/lib/migration-plan.ts`, `bin/deploy-pipeline.ts`).
+10. **Demo mode:** `DEMO_EMAIL` may list several accounts, comma-separated (one per role), sharing `DEMO_PASSWORD`; `GET /api/demo` answers `{ accounts: [{ email, password, role }] }` (`useDemoAccounts()` replaces `useDemoAccount()`); IPs are shown masked and `/api/auth/list-sessions` is refused.
+11. **Auth CLI:** new `enable-user`, `sign-out-user` and `user-activity`; `list-users` and `show-user` show status, sign-in totals, time in session and live sessions. The `/api/cli/*` user routes answer the richer `CliUserSummary` / `CliUserDetails`.
+12. **`bin/worktree-dev` writes the host Vite listens on** into `APP_BASE_URL` and `CLI_API_URL` (`127.0.0.1` by default, rather than `localhost`).
+
+### Required actions
+
+- **Take** the added files: `src/react-app/admin/`, `src/react-app/components/actions/`, `src/react-app/components/Panel.tsx`, `src/react-app/lib/admin-util.ts`, `src/shared/{roles,admin-list,admin-users,browser,user-status}.ts`, `src/worker/routes/admin/`, `src/worker/middleware/roles.ts`, `src/worker/lib/users.ts`, the migrations `0006_login_event_kind.ts` and `0007_user_stats_and_log_detail.ts`, the three new CLI commands, `bin/remove-admin.ts`, `bin/lib/migration-plan.ts`, `docs/{ADMIN,ADMIN_TABLE,ACTION_BAR}.md` and the new tests. **Merge** the rest of the diff, `App.tsx`, `src/worker/index.ts`, `baseline.ts`, `migrations/index.ts`, `src/worker/types/database.ts`, `components/ui/{button,form,sidebar}.tsx`, `index.css`, `package.json` (`admin:remove`) and `AGENTS.md` among them.
+- If the project has its own migrations 0006 or 0007, renumber the starter's as *Rules for database migrations* says.
+- If the project doesn't want an admin area, take it and run `npm run admin:remove` (`--dry-run` first): the roles, the sign-in log and the CLI stay.
+- Set `AUTH_LOG_RETENTION_DAYS` in each `.env.<env>` if the sign-in log must not be kept for ever.
+- In demo mode, list one account per role in `DEMO_EMAIL` if the demo should show the admin area, and give each its role (`npm run auth set-role`).
+- Deploy as usual: the deploy applies 0006 and 0007 in a maintenance window. Verify: the standard commands, then sign in as an admin and open `/admin/users`.
+
+---
+
 ## 3.6.0 — 2026-10-30
 
 A custom domain in one command, with or without CI; `.env` changes reach CI deploys; worktrees on another port and pnpm installs, found in use.
