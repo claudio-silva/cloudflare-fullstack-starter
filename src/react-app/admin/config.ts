@@ -1,5 +1,6 @@
 import { LayoutDashboard, ShieldCheck, Users, type LucideIcon } from "lucide-react";
 import type { Role } from "../../shared/roles";
+import type { PageCache } from "./page-loader";
 
 /**
  * The admin area: an example backoffice to keep, restyle or delete
@@ -51,4 +52,16 @@ export const adminConfig = {
 	root: { title: "Admin", path: "/admin" },
 
 	nav,
+
+	/** What every `AdminTable` does unless its props say otherwise (docs/ADMIN_TABLE.md). Rows per page: `DEFAULT_PAGE_SIZE` in src/shared/admin-list.ts, which the server reads too. */
+	table: {
+		/** Every other row shaded (`--admin-table-stripe` in admin.css). */
+		striped: false,
+		/** "compact": shorter rows, for long lists of short values. */
+		density: "normal" as "normal" | "compact",
+		/** Load the next page with the one shown, so moving to it is instant. */
+		prefetch: true,
+		/** Pages kept for going back (how many, and for how many milliseconds), or `false`. */
+		cache: { pages: 10, ttl: 60_000 } as PageCache,
+	},
 };

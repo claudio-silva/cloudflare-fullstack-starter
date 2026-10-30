@@ -95,7 +95,7 @@ async function assertEmailFree(c: AppContext, email: string, exceptId?: string) 
 const USER_COLUMNS = ["users.id", "users.name", "users.email", "users.role", "users.image", "users.emailVerified", "users.disabled", "users.createdAt", "users.updatedAt"] as const;
 
 /**
- * `GET /?p=1&ps=20&q=&s=-createdAt` (the admin lists' protocol, src/shared/admin-list.ts),
+ * `GET /?ofs=0&c=20&q=&s=-createdAt` (the admin lists' protocol, src/shared/admin-list.ts),
  * newest first unless sorted.
  *
  * Every sort is done in SQL, so the list stays one query however many users
@@ -105,9 +105,8 @@ const USER_COLUMNS = ["users.id", "users.name", "users.email", "users.role", "us
  */
 adminUsers.get("/", async (c) => {
 	const db = createDb(c.env);
-	// D1 binds at most 100 parameters per query, and a page's ids are bound in `present`.
-	const list = parseListQuery((name) => c.req.query(name), { sortable: USER_SORT_FIELDS, maxPageSize: 50 });
-	const { page, pageSize } = list;
+	const list = parseListQuery((name) => c.req.query(name), { sortable: USER_SORT_FIELDS });
+	const { offset, count: limit } = list;
 	const q = list.q.toLowerCase();
 	const sort = list.sort ?? "createdAt";
 	const dir = list.sort ? list.dir : "desc";
@@ -158,8 +157,8 @@ adminUsers.get("/", async (c) => {
 			.orderBy(key, keyDir)
 			.orderBy("users.createdAt", "desc")
 			.orderBy("users.id")
-			.limit(pageSize)
-			.offset((page - 1) * pageSize)
+			.limit(limit)
+			.offset(offset)
 			.execute(),
 		db
 			.selectFrom("users")
@@ -170,7 +169,7 @@ adminUsers.get("/", async (c) => {
 			.executeTakeFirst(),
 	]);
 
-	return c.json<AdminUserList>({ users: await present(c, rows), total: Number(count?.total ?? 0), page, pageSize });
+	return c.json<AdminUserList>({ users: await present(c, rows), total: Number(count?.total ?? 0) });
 });
 
 adminUsers.get("/:id", async (c) => {
@@ -211,7 +210,7 @@ adminUsers.post("/:id/sign-out", async (c) => {
 const ACTIVITY_KINDS = ["sign-out", "session-expired", "session-revoked"] as const;
 
 /**
- * `GET /:id/activity?p=1&ps=10&s=&locale=`: the user's
+ * `GET /:id/activity?ofs=0&c=10&s=&locale=`: the user's
  * sign-ins (failed ones too), sign-outs and ended sessions, newest first unless
  * sorted. Newest first is a page of an indexed query; other sorts read the
  * user's whole history, because the browser and the country name are worked
@@ -220,7 +219,7 @@ const ACTIVITY_KINDS = ["sign-out", "session-expired", "session-revoked"] as con
 adminUsers.get("/:id/activity", async (c) => {
 	const db = createDb(c.env);
 	const user = await findUser(c, c.req.param("id"));
-	const { page, pageSize, sort, dir } = parseListQuery((name) => c.req.query(name), { sortable: ACTIVITY_SORT_FIELDS, pageSize: 10 });
+	const { offset, count, sort, dir } = parseListQuery((name) => c.req.query(name), { sortable: ACTIVITY_SORT_FIELDS });
 	const sign = dir === "asc" ? 1 : -1;
 
 	const ofUser = db
@@ -241,14 +240,14 @@ adminUsers.get("/:id/activity", async (c) => {
 		"actor.email as actor",
 	] as const;
 	const paged = !sort || sort === "createdAt";
-	const [rows, count] = await Promise.all([
+	const [rows, total] = await Promise.all([
 		paged
 			? ofUser
 					.select(columns)
 					.orderBy("login_events.created_at", sort && sign === 1 ? "asc" : "desc")
 					.orderBy("login_events.id")
-					.limit(pageSize)
-					.offset((page - 1) * pageSize)
+					.limit(count)
+					.offset(offset)
 					.execute()
 			: ofUser.select(columns).orderBy("login_events.created_at", "desc").orderBy("login_events.id").execute(),
 		ofUser.select((eb) => eb.fn.countAll<number>().as("total")).executeTakeFirst(),
@@ -281,9 +280,9 @@ adminUsers.get("/:id/activity", async (c) => {
 			if (ka === null || kb === null) return ka === kb ? 0 : ka === null ? 1 : -1;
 			return sign * ka.localeCompare(kb);
 		});
-		events = events.slice((page - 1) * pageSize, page * pageSize);
+		events = events.slice(offset, offset + count);
 	}
-	return c.json<AdminUserActivity>({ events, total: Number(count?.total ?? 0), page, pageSize });
+	return c.json<AdminUserActivity>({ events, total: Number(total?.total ?? 0) });
 });
 
 adminUsers.post("/", async (c) => {

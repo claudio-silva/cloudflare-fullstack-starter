@@ -83,16 +83,11 @@ export type ActivityEvent = {
 export const ACTIVITY_SORT_FIELDS = ["createdAt", "kind", "ip", "country", "browser"] as const;
 export type ActivitySortField = (typeof ACTIVITY_SORT_FIELDS)[number];
 
-export type AdminUserActivity = { events: ActivityEvent[]; total: number; page: number; pageSize: number };
+export type AdminUserActivity = { events: ActivityEvent[]; total: number };
 
 export const USER_SORT_FIELDS = ["name", "email", "role", "status", "lastSignInAt", "idleSeconds", "usageSeconds", "createdAt"] as const;
 export type UserSortField = (typeof USER_SORT_FIELDS)[number];
 
-export type AdminUserList = {
-	users: AdminUser[];
-	total: number;
-	page: number;
-	pageSize: number;
-};
+export type AdminUserList = { users: AdminUser[]; total: number };
 
 export { describeBrowser } from "./browser";
