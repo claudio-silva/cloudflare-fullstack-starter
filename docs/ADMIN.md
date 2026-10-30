@@ -90,7 +90,9 @@ To fix the style and drop the toggle, remove the `ToggleGroup` from
 
 - **`sidebar`**: a vertical menu below the app's header, using shadcn's
   `Sidebar`. It collapses to icons (the button by the breadcrumbs, or
-  Ctrl/⌘+B), groups expand in place, and on small screens (under 768px) it
+  Ctrl/⌘+B), groups expand in place (collapsed, a group's pages pop up beside
+  it instead, and the popup closes after a click inside or out), and on small
+  screens (under 768px) it
   becomes a sheet. It also follows the window: narrowed below
   `sidebarExpandedFrom` (1024px, in `config.ts`) it collapses to icons, and
   widened past it, it expands again.

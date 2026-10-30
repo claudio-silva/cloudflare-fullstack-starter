@@ -2,6 +2,14 @@ import { Link, useLocation } from "react-router-dom";
 import { ArrowLeft, ChevronRight } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuLabel,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
 	Sidebar,
 	SidebarContent,
 	SidebarFooter,
@@ -57,7 +65,7 @@ export function AdminSidebar() {
 
 function TopLevelItem({ item, onNavigate }: { item: AdminNavItem; onNavigate: () => void }) {
 	const { pathname } = useLocation();
-	const { state, setOpen } = useSidebar();
+	const { state, isMobile } = useSidebar();
 	const Icon = item.icon;
 
 	if (!item.children) {
@@ -73,16 +81,33 @@ function TopLevelItem({ item, onNavigate }: { item: AdminNavItem; onNavigate: ()
 		);
 	}
 
+	// Collapsed to icons, a group has nowhere to open in place: its pages pop up
+	// beside it, level with the button, and go away after a click inside or out.
+	if (state === "collapsed" && !isMobile) {
+		return (
+			<SidebarMenuItem>
+				<DropdownMenu modal={false}>
+					<DropdownMenuTrigger asChild>
+						<SidebarMenuButton isActive={isActive(item, pathname)} className="font-bold data-[active=true]:bg-(--admin-sidebar-active) data-[state=open]:bg-sidebar-accent">
+							{Icon && <Icon />}
+							<span>{item.title}</span>
+						</SidebarMenuButton>
+					</DropdownMenuTrigger>
+					<DropdownMenuContent side="right" align="start" sideOffset={12} className="min-w-52">
+						<DropdownMenuLabel>{item.title}</DropdownMenuLabel>
+						<DropdownMenuSeparator />
+						<PopupItems items={item.children} />
+					</DropdownMenuContent>
+				</DropdownMenu>
+			</SidebarMenuItem>
+		);
+	}
+
 	return (
 		<Collapsible asChild defaultOpen={isActive(item, pathname)} className="group/collapsible">
 			<SidebarMenuItem>
 				<CollapsibleTrigger asChild>
-					{/* Collapsed to icons, a group has nowhere to open: expand the sidebar instead. */}
-					<SidebarMenuButton
-						tooltip={item.title}
-						className="font-bold"
-						onClick={() => state === "collapsed" && setOpen(true)}
-					>
+					<SidebarMenuButton tooltip={item.title} className="font-bold">
 						{Icon && <Icon />}
 						<span>{item.title}</span>
 						<ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
@@ -119,4 +144,24 @@ function SubItems({ items, onNavigate }: { items: AdminNavItem[]; onNavigate: ()
 			))}
 		</SidebarMenuSub>
 	);
+}
+
+/** A group's pages in the popup; deeper levels show under a heading, indented. */
+function PopupItems({ items, depth = 0 }: { items: AdminNavItem[]; depth?: number }) {
+	const { pathname } = useLocation();
+	return items.map((item) => (
+		<div key={item.title} className={depth ? "pl-3" : undefined}>
+			{item.path ? (
+				<DropdownMenuItem asChild className={isUnder(pathname, item.path) ? "bg-accent font-semibold" : undefined}>
+					<Link to={item.path}>
+						{item.icon && <item.icon />}
+						{item.title}
+					</Link>
+				</DropdownMenuItem>
+			) : (
+				<DropdownMenuLabel className="text-xs text-muted-foreground">{item.title}</DropdownMenuLabel>
+			)}
+			{item.children && <PopupItems items={item.children} depth={depth + 1} />}
+		</div>
+	));
 }
