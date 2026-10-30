@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs";
-import type { Kysely } from "kysely";
+import type { Kysely, Selectable } from "kysely";
 import type { Database } from "../types/database";
 import { dbBool, dbNow } from "../db";
 import { recordSessionEnds, recordUserDeleted, sessionsOf, type RequestOrigin } from "./login-log";
@@ -104,6 +104,40 @@ export async function revokeSessions(db: Db, userId: string, actorId?: string | 
 	const sessions = await sessionsOf(db, userId);
 	await db.deleteFrom("sessions").where("userId", "=", userId).execute();
 	await recordSessionEnds(db, sessions, "session-revoked", actorId);
+}
+
+const seconds = (from: Date | string, to: Date | string | number) => Math.max(0, Math.round((new Date(to).getTime() - new Date(from).getTime()) / 1000));
+
+/** D1 binds at most 100 parameters per query: ids go in batches. */
+async function inBatches<T>(ids: string[], read: (batch: string[]) => Promise<T[]>): Promise<T[]> {
+	const rows: T[] = [];
+	for (let i = 0; i < ids.length; i += 50) rows.push(...(await read(ids.slice(i, i + 50))));
+	return rows;
+}
+
+/**
+ * For each user with live sessions: seconds since the most recent was last
+ * used, and how long the open ones have lasted so far (to their last use).
+ */
+export async function liveSessionsFor(db: Db, ids: string[]): Promise<Map<string, { idle: number; seconds: number }>> {
+	const live = new Map<string, { idle: number; seconds: number }>();
+	const now = Date.now();
+	const sessions = await inBatches(ids, (batch) =>
+		db.selectFrom("sessions").select(["userId", "createdAt", "updatedAt", "expiresAt"]).where("userId", "in", batch).execute(),
+	);
+	for (const s of sessions) {
+		if (new Date(s.expiresAt).getTime() <= now) continue;
+		const known = live.get(s.userId);
+		const idle = seconds(s.updatedAt, now);
+		live.set(s.userId, { idle: Math.min(idle, known?.idle ?? Infinity), seconds: (known?.seconds ?? 0) + seconds(s.createdAt, s.updatedAt) });
+	}
+	return live;
+}
+
+/** The users' running totals (`user_stats`); a user who never signed in has no row. */
+export async function statsFor(db: Db, ids: string[]): Promise<Map<string, Selectable<Database["user_stats"]>>> {
+	const rows = await inBatches(ids, (batch) => db.selectFrom("user_stats").selectAll().where("user_id", "in", batch).execute());
+	return new Map(rows.map((r) => [r.user_id, r]));
 }
 
 /**

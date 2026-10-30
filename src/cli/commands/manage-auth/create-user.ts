@@ -11,6 +11,7 @@ type CreateUserOptions = {
 	env?: EnvironmentOption;
 	name?: string;
 	role?: Role;
+	disabled?: boolean;
 };
 
 export function createCreateUserCommand(): Command {
@@ -24,9 +25,10 @@ export function createCreateUserCommand(): Command {
 		.option("--env <environment>", "Target environment (local, preview, production)")
 		.option("--name <name>", "User display name")
 		.option("-r, --role <role>", `User role: ${ROLES.join(" | ")} (default: user)`)
+		.option("--disabled", "Create the account disabled: it cannot sign in until enabled (enable-user)")
 		.action(async (environment: string | undefined, options: CreateUserOptions) => {
 			try {
-				const { user: email, pass: password, name, role } = options;
+				const { user: email, pass: password, name, role, disabled } = options;
 				const allowedRoles = ROLES;
 				const env = normalizeEnvironment(options.env, environment);
 				const db = await connectToDatabase(env);
@@ -38,8 +40,8 @@ export function createCreateUserCommand(): Command {
 					throw new Error(`Invalid role '${role}'. Allowed: ${allowedRoles.join(", ")}`);
 				}
 
-				await db.createUser({ email, password, name: name || undefined, role });
-				printSuccess(`User '${email}' created successfully${role ? ` as ${role}` : ""}`);
+				await db.createUser({ email, password, name: name || undefined, role, enabled: !disabled });
+				printSuccess(`User '${email}' created successfully${role ? ` as ${role}` : ""}${disabled ? " (disabled)" : ""}`);
 			} catch (error: unknown) {
 				const message = error instanceof Error ? error.message : "Unknown error";
 				printError(`Failed to create user: ${message}`);

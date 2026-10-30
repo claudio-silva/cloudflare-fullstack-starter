@@ -11,9 +11,9 @@ const buttonVariants = cva(
         default: "bg-primary text-primary-foreground hover:bg-primary/90",
         destructive:
           "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:bg-destructive/60 dark:focus-visible:ring-destructive/40",
-        // project: a light grey (theme variables in index.css) rather than the page's white.
+        // project: a light grey with a darker border on hover (theme variables in index.css) rather than the page's white.
         outline:
-          "border bg-button-outline shadow-xs hover:bg-button-outline-hover hover:text-accent-foreground dark:border-input",
+          "border bg-button-outline shadow-xs hover:border-button-outline-border-hover dark:border-input dark:hover:border-button-outline-border-hover",
         secondary:
           "bg-secondary text-secondary-foreground hover:bg-secondary/80",
         ghost:

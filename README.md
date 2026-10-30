@@ -535,7 +535,7 @@ Manage users directly from your terminal — useful for creating admin accounts,
 > ⚠️ When managing local users, **the dev server must be running** (`npm run dev`) for these commands to work. They communicate with the API at `http://localhost:5173`.
 
 ```bash
-# List all users (shows email, name, verification status, creation date)
+# List users: role, status (active, idle, unverified, disabled), enabled, verified, last sign-in, sign-ins, time in session
 npm run auth list-users
 npm run auth list-users -- --limit 10           # limit results
 npm run auth list-users -- --search "john"      # search by email or name
@@ -544,23 +544,36 @@ npm run auth list-users -- --search "john"      # search by email or name
 npm run auth create-user -- -u admin@example.com -p password123
 npm run auth create-user -- -u admin@example.com -p password123 -n "Admin User"
 npm run auth create-user -- -u admin@example.com -p password123 -r admin   # create as admin
+npm run auth create-user -- -u someone@example.com -p password123 --disabled  # cannot sign in until enabled
 
-# View detailed user info (includes account provider, sessions, timestamps)
+# View detailed user info: sign-in methods, totals (sign-ins, failed, time in session),
+# last sign-in and sign-out, live sessions with idle time, IP and country
 npm run auth show-user -- -u admin@example.com
+
+# A user's sign-in history: sign-ins (and failed ones), sign-outs, expired and revoked sessions
+npm run auth user-activity -- -u admin@example.com
+npm run auth user-activity -- -u admin@example.com --limit 100
 
 # Edit user details
 npm run auth edit-user -- -u admin@example.com -n "New Name"
 npm run auth edit-user -- -u admin@example.com -e newemail@example.com
-npm run auth edit-user -- -u admin@example.com -p newpassword123
+npm run auth edit-user -- -u admin@example.com -p newpassword123   # signs them out everywhere
 npm run auth edit-user -- -u admin@example.com -r admin    # promote to admin
 
 # Set a user's role directly
 npm run auth set-role -- -u admin@example.com -r admin
 npm run auth set-role -- -u user@example.com -r user
 
-# Activate or deactivate a user account
-npm run auth activate-user -- -u admin@example.com -s on   # activate
-npm run auth activate-user -- -u admin@example.com -s off  # deactivate
+# Enable or disable sign-in (disabling also signs the user out everywhere; the last admin cannot be disabled)
+npm run auth enable-user -- -u someone@example.com -s off
+npm run auth enable-user -- -u someone@example.com -s on
+
+# Mark the email address as verified or not (alias: verify-user). Not the same as enabled
+npm run auth activate-user -- -u admin@example.com -s on
+npm run auth activate-user -- -u admin@example.com -s off
+
+# Sign a user out on every device
+npm run auth sign-out-user -- -u someone@example.com
 
 # Delete a user (removes user, accounts, and sessions)
 npm run auth delete-user -- -u admin@example.com

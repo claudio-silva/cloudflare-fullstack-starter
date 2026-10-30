@@ -178,9 +178,12 @@ npm run auth list-users
 npm run auth create-user
 npm run auth edit-user
 npm run auth delete-user
-npm run auth activate-user
+npm run auth activate-user        # email verified on/off (alias verify-user)
+npm run auth enable-user          # sign-in allowed on/off; off signs out everywhere
+npm run auth sign-out-user
 npm run auth set-role
-npm run auth show-user
+npm run auth show-user            # with sign-in totals, time in session, live sessions
+npm run auth user-activity        # a user's sign-in history
 
 # Build & Deploy
 npm run build                  # Build for production
@@ -233,9 +236,9 @@ A worktree needs its own dependencies, local settings and database, and its own 
 
 ### Sign-in log
 
-`login_events` records every sign-in attempt, successful or failed, with IP, user agent and country. `sessions` cannot answer "who has used this app": it holds only sessions that still exist. Read it with `npm run db -- logins --env <env>`.
+`login_events` is a permanent history of every sign-in (failed ones too), sign-out, expired or revoked session and account deletion, with IP, user agent, country, method, duration and who caused it; `user_stats` keeps per-user totals (sign-ins, failures, time in session) that survive pruning. `sessions` cannot answer "who has used this app": it holds only sessions that still exist. Read it with `npm run db -- logins --env <env>` or `npm run auth user-activity -- -u <email>`.
 
-IPs are personal data, so the cron in `src/worker/scheduled.ts` prunes the table after `AUTH_LOG_RETENTION_DAYS` (default 90) and your privacy notice has to mention it.
+IPs are personal data: your privacy notice has to mention them. Set `AUTH_LOG_RETENTION_DAYS` to have the cron in `src/worker/scheduled.ts` prune older rows; unset, nothing is deleted.
 
 ### Writing migrations
 

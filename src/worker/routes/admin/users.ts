@@ -6,7 +6,7 @@ import type { Database } from "../../types/database";
 import { createDb, databaseKind, dbBool, dbNow, dbSecondsBetween, toIso } from "../../db";
 import { AppError } from "../../lib/errors";
 import { requireRole } from "../../middleware/roles";
-import { createPasswordUser, deleteUser, revokeSessions, setPassword, wouldRemoveLastAdmin } from "../../lib/users";
+import { createPasswordUser, deleteUser, liveSessionsFor, revokeSessions, setPassword, statsFor, wouldRemoveLastAdmin } from "../../lib/users";
 import { requestOrigin } from "../../lib/login-log";
 import { hasRole, type Role } from "../../../shared/roles";
 import {
@@ -35,34 +35,7 @@ export const adminUsers = new Hono<AppBindings>();
 
 adminUsers.use("*", requireRole("superadmin"));
 
-type Db = ReturnType<typeof createDb>;
 type UserRow = Pick<Selectable<Database["users"]>, "id" | "name" | "email" | "role" | "image" | "emailVerified" | "disabled" | "createdAt" | "updatedAt">;
-
-const seconds = (from: Date | string, to: Date | string | number) => Math.max(0, Math.round((new Date(to).getTime() - new Date(from).getTime()) / 1000));
-
-/**
- * For each user with live sessions: seconds since the most recent was last
- * used, and how long the open ones have lasted so far (to their last use).
- */
-async function liveSessionsFor(db: Db, ids: string[]): Promise<Map<string, { idle: number; seconds: number }>> {
-	const live = new Map<string, { idle: number; seconds: number }>();
-	if (ids.length === 0) return live;
-	const now = Date.now();
-	const sessions = await db.selectFrom("sessions").select(["userId", "createdAt", "updatedAt", "expiresAt"]).where("userId", "in", ids).execute();
-	for (const s of sessions) {
-		if (new Date(s.expiresAt).getTime() <= now) continue;
-		const known = live.get(s.userId);
-		const idle = seconds(s.updatedAt, now);
-		live.set(s.userId, { idle: Math.min(idle, known?.idle ?? Infinity), seconds: (known?.seconds ?? 0) + seconds(s.createdAt, s.updatedAt) });
-	}
-	return live;
-}
-
-async function statsFor(db: Db, ids: string[]) {
-	if (ids.length === 0) return new Map<string, Selectable<Database["user_stats"]>>();
-	const rows = await db.selectFrom("user_stats").selectAll().where("user_id", "in", ids).execute();
-	return new Map(rows.map((r) => [r.user_id, r]));
-}
 
 async function present(c: AppContext, rows: UserRow[]): Promise<AdminUser[]> {
 	const db = createDb(c.env);

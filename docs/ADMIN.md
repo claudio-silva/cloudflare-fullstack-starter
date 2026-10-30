@@ -121,8 +121,8 @@ Action buttons (Save, New, Cancel, Delete, Back) have icons and one width,
 Save icon.
 
 Two things here are app-wide rather than the area's: outline buttons (Cancel,
-Back, Select) are a light grey, `--button-outline` and `--button-outline-hover`
-in `src/react-app/index.css`, and sections are `Panel`s with a coloured header
+Back, Select) are a light grey, `--button-outline`, whose border darkens on
+hover (`--button-outline-border-hover`), in `src/react-app/index.css`, and sections are `Panel`s with a coloured header
 band (see [Panels](#panels)). Both stay if the area is removed.
 
 ## Adding a page
@@ -183,7 +183,7 @@ Two separate switches:
 - **Enabled** (`users.disabled`, migration 0007) decides whether the user can
   sign in at all. A disabled account is refused at sign-in with a message
   (password) or gets no session (Google, email links), and disabling ends its
-  sessions.
+  sessions. From the terminal: `npm run auth enable-user -- -u <email> -s off`.
 - **Verified** is Better Auth's `emailVerified`: the address is confirmed, by
   the emailed link, by Google, or by an admin here (or `npm run auth
   activate-user`). While email verification is required, an unverified user
@@ -277,7 +277,9 @@ Sections are `Panel`s (`src/react-app/components/Panel.tsx`, shared with the
 profile page): a `Card` with a coloured header band, `strong` (dark) for a
 title, `soft` (light) for a summary like the user's, `danger` for deletion. The
 colours are theme variables in `src/react-app/index.css` (`--panel-header*`),
-next to `--button-outline*`, the light grey of outline buttons.
+next to `--button-outline*`, the light grey of outline buttons, and
+`--color-danger` (maroon), shared by the Delete panels and the lost-connection
+banner.
 
 ## Removing it
 

@@ -146,7 +146,7 @@ function Banner({ tone, children }: { tone: string; children: ReactNode }) {
 }
 
 const MAINTENANCE_TONE = "bg-[hsl(35_45%_28%)]";
-const OFFLINE_TONE = "bg-[hsl(0_30%_30%)]";
+const OFFLINE_TONE = "bg-danger";
 const UPDATE_TONE = "bg-[hsl(215_32%_27%)]";
 
 /**
@@ -224,7 +224,7 @@ export function ConnectivityBanner() {
 	if ((state !== "offline" && state !== "reconnecting") || maintenance || !getUi().connectivity) return null;
 	return (
 		<Banner tone={OFFLINE_TONE}>
-			<ConnectivityText buttonTone="text-[hsl(0_30%_30%)]" />
+			<ConnectivityText buttonTone="text-danger" />
 		</Banner>
 	);
 }
@@ -240,7 +240,7 @@ function BlockingDialog({ reason }: { reason: Exclude<Blocked, null> }) {
 				aria-live="polite"
 				className={`flex w-full max-w-md flex-col items-center gap-3 rounded-lg p-6 text-center text-sm text-white shadow-2xl ${tone}`}
 			>
-				{reason === "maintenance" ? <MaintenanceText /> : <ConnectivityText buttonTone="text-[hsl(0_30%_30%)]" />}
+				{reason === "maintenance" ? <MaintenanceText /> : <ConnectivityText buttonTone="text-danger" />}
 			</div>
 		</div>
 	);

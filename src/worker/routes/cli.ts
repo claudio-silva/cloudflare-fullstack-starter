@@ -1,13 +1,13 @@
 import { Hono } from "hono";
 import type { Next } from "hono";
-import bcrypt from "bcryptjs";
-import { sql, type Updateable } from "kysely";
+import { sql, type Selectable, type Updateable } from "kysely";
 import type { Database } from "../types/database";
 import type { AppBindings, AppContext } from "../types/context";
 import { createDb, databaseKind, dbBool, dbNow, toIso } from "../db";
-import { createPasswordUser, deleteUser, revokeSessions, wouldRemoveLastAdmin } from "../lib/users";
+import { createPasswordUser, deleteUser, liveSessionsFor, revokeSessions, setPassword, statsFor, wouldRemoveLastAdmin } from "../lib/users";
 import { requestOrigin } from "../lib/login-log";
 import { ROLES, hasRole, type Role } from "../../shared/roles";
+import { userStatus } from "../../shared/user-status";
 import { appliedMigrations, clearTable, describeSchema, exportRows, finishTable, importRows, restoreChunkRows, type EncodedRow } from "../db/backup";
 import { migrateDatabase, migrationStatus, pendingMigrations } from "../db/migrations";
 import { readJournal } from "../db/migrations/journal";
@@ -53,6 +53,42 @@ export const cli = new Hono<AppBindings>();
 
 cli.use("*", cliAuthMiddleware);
 
+type Db = ReturnType<typeof createDb>;
+
+/** A user as the CLI prints them: the account switches, what they are doing now and their totals. */
+async function summarise(db: Db, users: Selectable<Database["users"]>[]) {
+	const ids = users.map((u) => u.id);
+	const [live, stats] = await Promise.all([liveSessionsFor(db, ids), statsFor(db, ids)]);
+	return users.map((u) => {
+		const now = live.get(u.id);
+		const total = stats.get(u.id);
+		const enabled = !u.disabled;
+		const emailVerified = Boolean(u.emailVerified);
+		return {
+			id: u.id,
+			email: u.email,
+			name: u.name,
+			role: u.role,
+			enabled,
+			emailVerified,
+			status: userStatus({ enabled, emailVerified }, now?.idle ?? null),
+			idleSeconds: now?.idle ?? null,
+			signIns: Number(total?.sign_ins ?? 0),
+			failedSignIns: Number(total?.failed_sign_ins ?? 0),
+			usageSeconds: Number(total?.session_seconds ?? 0) + (now?.seconds ?? 0),
+			lastSignInAt: toIso(total?.last_sign_in_at ?? null) ?? null,
+			createdAt: toIso(u.createdAt),
+			updatedAt: toIso(u.updatedAt),
+		};
+	});
+}
+
+async function userByEmail(c: AppContext) {
+	const email = c.req.param("email");
+	if (!email) return null;
+	return (await createDb(c.env).selectFrom("users").where("email", "=", email).selectAll().executeTakeFirst()) ?? null;
+}
+
 cli.get("/users", async (c) => {
 	const { search, limit } = c.req.query();
 	const limitNum = limit ? parseInt(limit, 10) : 50;
@@ -68,54 +104,31 @@ cli.get("/users", async (c) => {
 		);
 	}
 
-	const users = await query.execute();
-	return c.json({
-		users: users.map((u) => ({
-			id: u.id,
-			email: u.email,
-			name: u.name,
-			role: u.role,
-			emailVerified: Boolean(u.emailVerified),
-			createdAt: toIso(u.createdAt),
-			updatedAt: toIso(u.updatedAt),
-		})),
-	});
+	return c.json({ users: await summarise(db, await query.execute()) });
 });
 
 cli.get("/users/:email", async (c) => {
-	const email = c.req.param("email");
-	if (!email) return c.json({ error: "Email is required" }, 400);
 	const db = createDb(c.env);
-
-	const user = await db.selectFrom("users").where("email", "=", email).selectAll().executeTakeFirst();
+	const user = await userByEmail(c);
 	if (!user) {
 		return c.json({ error: "User not found" }, 404);
 	}
 
-	const account = await db
-		.selectFrom("accounts")
-		.where("userId", "=", user.id)
-		.where("providerId", "=", "credential")
-		.selectAll()
-		.executeTakeFirst();
-
-	const sessionCount = await db
-		.selectFrom("sessions")
-		.where("userId", "=", user.id)
-		.select(db.fn.count("id").as("count"))
-		.executeTakeFirst();
+	const ofUser = db.selectFrom("login_events").where("user_id", "=", user.id);
+	const [accounts, sessions, [summary], lastSignOut, lastSignIn, events] = await Promise.all([
+		db.selectFrom("accounts").where("userId", "=", user.id).selectAll().execute(),
+		db.selectFrom("sessions").select(["ipAddress", "updatedAt"]).where("userId", "=", user.id).where("expiresAt", ">", dbNow()).orderBy("updatedAt", "desc").execute(),
+		summarise(db, [user]),
+		ofUser.select("created_at").where("event", "=", "sign-out").orderBy("created_at", "desc").limit(1).executeTakeFirst(),
+		// `sessions` has no country: it is the one of the latest sign-in.
+		ofUser.select("country").where("success", "=", dbBool(true)).where((eb) => eb.or([eb("event", "is", null), eb("event", "=", "sign-in")])).orderBy("created_at", "desc").limit(1).executeTakeFirst(),
+		ofUser.select((eb) => eb.fn.countAll<number>().as("n")).where((eb) => eb.or([eb("event", "is", null), eb("event", "!=", "user-deleted")])).executeTakeFirst(),
+	]);
+	const account = accounts.find((a) => a.providerId === "credential");
 
 	return c.json({
-		user: {
-			id: user.id,
-			email: user.email,
-			name: user.name,
-			role: user.role,
-			image: user.image,
-			emailVerified: Boolean(user.emailVerified),
-			createdAt: toIso(user.createdAt),
-			updatedAt: toIso(user.updatedAt),
-		},
+		user: { ...summary, image: user.image },
+		signInMethods: accounts.map((a) => a.providerId),
 		account: account
 			? {
 					accountId: account.accountId,
@@ -125,16 +138,87 @@ cli.get("/users/:email", async (c) => {
 					updatedAt: toIso(account.updatedAt),
 			  }
 			: null,
-		activeSessions: Number(sessionCount?.count || 0),
+		activeSessions: sessions.length,
+		currentSession: sessions[0] ? { ip: sessions[0].ipAddress || null, country: lastSignIn?.country ?? null, lastSeenAt: toIso(sessions[0].updatedAt) } : null,
+		lastSignOutAt: toIso(lastSignOut?.created_at ?? null) ?? null,
+		activityCount: Number(events?.n ?? 0),
 	});
 });
 
+/** The user's sign-in history, newest first: sign-ins (failed too), sign-outs and ended sessions. */
+cli.get("/users/:email/activity", async (c) => {
+	const db = createDb(c.env);
+	const user = await userByEmail(c);
+	if (!user) return c.json({ error: "User not found" }, 404);
+	const limit = Math.min(Math.max(1, Number(c.req.query("limit")) || 20), 500);
+	const rows = await db
+		.selectFrom("login_events")
+		.leftJoin("users as actor", "actor.id", "login_events.actor_id")
+		.select([
+			"login_events.success",
+			"login_events.event",
+			"login_events.method",
+			"login_events.duration_seconds",
+			"login_events.ip",
+			"login_events.country",
+			"login_events.user_agent",
+			"login_events.created_at",
+			"actor.email as actor",
+		])
+		.where("login_events.user_id", "=", user.id)
+		.where((eb) => eb.or([eb("login_events.event", "is", null), eb("login_events.event", "!=", "user-deleted")]))
+		.orderBy("login_events.created_at", "desc")
+		.orderBy("login_events.id")
+		.limit(limit)
+		.execute();
+	return c.json({
+		events: rows.map((r) => ({
+			kind: r.event && r.event !== "sign-in" ? r.event : r.success ? "sign-in" : "failed",
+			method: r.method,
+			durationSeconds: r.duration_seconds === null ? null : Number(r.duration_seconds),
+			actor: r.actor,
+			ip: r.ip || null,
+			country: r.country,
+			userAgent: r.user_agent,
+			createdAt: toIso(r.created_at),
+		})),
+	});
+});
+
+/** Enables or disables sign-in. Disabling signs the user out everywhere; the last admin cannot be disabled. */
+cli.put("/users/:email/enabled", async (c) => {
+	const { enabled } = await c.req.json<{ enabled: boolean }>();
+	if (typeof enabled !== "boolean") {
+		return c.json({ error: "enabled must be a boolean" }, 400);
+	}
+	const db = createDb(c.env);
+	const user = await userByEmail(c);
+	if (!user) return c.json({ error: "User not found" }, 404);
+	if (!enabled && !user.disabled && (await wouldRemoveLastAdmin(db, user, null))) {
+		return c.json({ error: "Cannot disable the last admin" }, 400);
+	}
+	await db.updateTable("users").set({ disabled: dbBool(!enabled), updatedAt: dbNow() }).where("id", "=", user.id).execute();
+	if (!enabled) await revokeSessions(db, user.id);
+	return c.json({ success: true, message: `User ${enabled ? "enabled" : "disabled"} successfully` });
+});
+
+/** Signs the user out on every device (each session is logged as revoked). */
+cli.post("/users/:email/sign-out", async (c) => {
+	const db = createDb(c.env);
+	const user = await userByEmail(c);
+	if (!user) return c.json({ error: "User not found" }, 404);
+	const before = await db.selectFrom("sessions").select((eb) => eb.fn.countAll<number>().as("n")).where("userId", "=", user.id).where("expiresAt", ">", dbNow()).executeTakeFirst();
+	await revokeSessions(db, user.id);
+	return c.json({ success: true, sessions: Number(before?.n ?? 0), message: "User signed out everywhere" });
+});
+
 cli.post("/users", async (c) => {
-	const { email, password, name, role } = await c.req.json<{
+	const { email, password, name, role, enabled } = await c.req.json<{
 		email: string;
 		password: string;
 		name?: string;
 		role?: string;
+		enabled?: boolean;
 	}>();
 	if (!email || !password) {
 		return c.json({ error: "Email and password are required" }, 400);
@@ -152,7 +236,7 @@ cli.post("/users", async (c) => {
 		return c.json({ error: "User already exists" }, 409);
 	}
 
-	const userId = await createPasswordUser(db, { email, password, name, role: (role as UserRole) || "user" });
+	const userId = await createPasswordUser(db, { email, password, name, role: (role as UserRole) || "user", disabled: enabled === false });
 
 	return c.json({ success: true, userId, message: "User created successfully" });
 });
@@ -166,18 +250,14 @@ cli.put("/users/:email/password", async (c) => {
 	}
 
 	const db = createDb(c.env);
-	const user = await db.selectFrom("users").where("email", "=", email).select("id").executeTakeFirst();
+	const user = await db.selectFrom("users").where("email", "=", email).select(["id", "email"]).executeTakeFirst();
 	if (!user) {
 		return c.json({ error: "User not found" }, 404);
 	}
 
-	const hashedPassword = await bcrypt.hash(password, 10);
-	await db
-		.updateTable("accounts")
-		.set({ password: hashedPassword, updatedAt: dbNow() })
-		.where("userId", "=", user.id)
-		.where("providerId", "=", "credential")
-		.execute();
+	// Creates the password account for a user who had none (signed up with Google, say).
+	await setPassword(db, user, password);
+	await revokeSessions(db, user.id);
 
 	return c.json({ success: true, message: "Password updated successfully" });
 });
@@ -226,13 +306,7 @@ cli.put("/users/:email", async (c) => {
 	}
 
 	if (updateData.password) {
-		const hashed = await bcrypt.hash(updateData.password, 10);
-		await db
-			.updateTable("accounts")
-			.set({ password: hashed, updatedAt: dbNow() })
-			.where("userId", "=", user.id)
-			.where("providerId", "=", "credential")
-			.execute();
+		await setPassword(db, { id: user.id, email: updateData.email || currentEmail }, updateData.password);
 	}
 
 	const updateFields: Updateable<Database["users"]> = { updatedAt: dbNow() };
@@ -244,8 +318,8 @@ cli.put("/users/:email", async (c) => {
 		await db.updateTable("users").set(updateFields).where("id", "=", user.id).execute();
 	}
 
-	// Revoke sessions when the role is downgraded
-	if (updateData.role && isDowngrade(user.role, updateData.role)) {
+	// A new password or a lower role signs the user out everywhere.
+	if (updateData.password || (updateData.role && isDowngrade(user.role, updateData.role))) {
 		await revokeSessions(db, user.id);
 	}
 

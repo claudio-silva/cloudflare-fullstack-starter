@@ -7,9 +7,9 @@ const TONES = {
 	/** A titled section: dark band, light text. */
 	strong: "bg-panel-header text-panel-header-foreground",
 	/** A summary at the top of a panel (who the user is): a light band. */
-	soft: "bg-panel-header-soft text-foreground",
+	soft: "border-b border-panel-header-soft-border bg-panel-header-soft text-foreground",
 	/** Something that cannot be undone. */
-	danger: "bg-destructive text-white dark:bg-destructive/60",
+	danger: "bg-danger text-white",
 } as const;
 
 type PanelProps = {
