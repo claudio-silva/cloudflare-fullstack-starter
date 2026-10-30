@@ -1,0 +1,155 @@
+import bcrypt from "bcryptjs";
+import type { Kysely, Selectable } from "kysely";
+import type { Database } from "../types/database";
+import { dbBool, dbNow } from "../db";
+import { recordSessionEnds, recordUserDeleted, sessionsOf, type RequestOrigin } from "./login-log";
+import { ROLES, hasRole, type Role } from "../../shared/roles";
+
+/**
+ * User writes shared by the auth CLI (routes/cli.ts), the profile page and
+ * any user management (such as the example admin area). Better Auth owns sign-up and sign-in;
+ * these cover what it leaves to an administrator.
+ */
+
+type Db = Kysely<Database>;
+
+/** Roles that may open the admin area. */
+const ADMIN_ROLES = ROLES.filter((role) => hasRole(role, "admin"));
+
+/** Creates a user who signs in with email and password. Returns the new id. */
+export async function createPasswordUser(
+	db: Db,
+	input: { email: string; password: string; name?: string | null; role?: Role; emailVerified?: boolean; disabled?: boolean },
+): Promise<string> {
+	const now = dbNow();
+	const userId = crypto.randomUUID();
+	await db
+		.insertInto("users")
+		.values({
+			id: userId,
+			email: input.email,
+			name: input.name || null,
+			image: null,
+			emailVerified: dbBool(input.emailVerified ?? true),
+			createdAt: now,
+			updatedAt: now,
+			role: input.role ?? "user",
+			disabled: dbBool(input.disabled ?? false),
+		})
+		.execute();
+	await setPassword(db, { id: userId, email: input.email }, input.password);
+	return userId;
+}
+
+/**
+ * Sets the user's password, creating the credential account when the user had
+ * none (signed up with Google, say), so they can then sign in with it too.
+ */
+export async function setPassword(db: Db, user: { id: string; email: string }, password: string): Promise<void> {
+	const hashed = await bcrypt.hash(password, 10);
+	const now = dbNow();
+	const existing = await db
+		.selectFrom("accounts")
+		.where("userId", "=", user.id)
+		.where("providerId", "=", "credential")
+		.select("accountId")
+		.executeTakeFirst();
+	if (existing) {
+		await db
+			.updateTable("accounts")
+			.set({ password: hashed, updatedAt: now })
+			.where("userId", "=", user.id)
+			.where("providerId", "=", "credential")
+			.execute();
+		return;
+	}
+	await db
+		.insertInto("accounts")
+		.values({
+			// For a password account Better Auth stores the user's own id as accountId,
+			// and looks the credential up by it: any other value and the user exists
+			// but can never sign in.
+			accountId: user.id,
+			id: crypto.randomUUID(),
+			userId: user.id,
+			providerId: "credential",
+			provider: "credential",
+			providerAccountId: user.email,
+			password: hashed,
+			refreshToken: null,
+			accessToken: null,
+			accessTokenExpiresAt: null,
+			scope: null,
+			createdAt: now,
+			updatedAt: now,
+		})
+		.execute();
+}
+
+/**
+ * Deletes the user with everything that refers to them, and records it in the
+ * sign-in log (their history and totals stay). `by` is who asked (the user
+ * themselves, an admin; no actor for the CLI) and from where.
+ */
+export async function deleteUser(db: Db, user: { id: string; email: string }, by?: { actorId: string | null; origin: RequestOrigin }): Promise<void> {
+	await db.deleteFrom("sessions").where("userId", "=", user.id).execute();
+	await db.deleteFrom("verifications").where("identifier", "=", user.email).execute();
+	await db.deleteFrom("accounts").where("userId", "=", user.id).execute();
+	await db.deleteFrom("users").where("id", "=", user.id).execute();
+	await recordUserDeleted(db, user, by?.actorId ?? null, by?.origin);
+}
+
+/** Signs the user out everywhere, recording each session as revoked (by `actorId`, when it is someone else). */
+export async function revokeSessions(db: Db, userId: string, actorId?: string | null): Promise<void> {
+	const sessions = await sessionsOf(db, userId);
+	await db.deleteFrom("sessions").where("userId", "=", userId).execute();
+	await recordSessionEnds(db, sessions, "session-revoked", actorId);
+}
+
+const seconds = (from: Date | string, to: Date | string | number) => Math.max(0, Math.round((new Date(to).getTime() - new Date(from).getTime()) / 1000));
+
+/** D1 binds at most 100 parameters per query: ids go in batches. */
+async function inBatches<T>(ids: string[], read: (batch: string[]) => Promise<T[]>): Promise<T[]> {
+	const rows: T[] = [];
+	for (let i = 0; i < ids.length; i += 50) rows.push(...(await read(ids.slice(i, i + 50))));
+	return rows;
+}
+
+/**
+ * For each user with live sessions: seconds since the most recent was last
+ * used, and how long the open ones have lasted so far (to their last use).
+ */
+export async function liveSessionsFor(db: Db, ids: string[]): Promise<Map<string, { idle: number; seconds: number }>> {
+	const live = new Map<string, { idle: number; seconds: number }>();
+	const now = Date.now();
+	const sessions = await inBatches(ids, (batch) =>
+		db.selectFrom("sessions").select(["userId", "createdAt", "updatedAt", "expiresAt"]).where("userId", "in", batch).execute(),
+	);
+	for (const s of sessions) {
+		if (new Date(s.expiresAt).getTime() <= now) continue;
+		const known = live.get(s.userId);
+		const idle = seconds(s.updatedAt, now);
+		live.set(s.userId, { idle: Math.min(idle, known?.idle ?? Infinity), seconds: (known?.seconds ?? 0) + seconds(s.createdAt, s.updatedAt) });
+	}
+	return live;
+}
+
+/** The users' running totals (`user_stats`); a user who never signed in has no row. */
+export async function statsFor(db: Db, ids: string[]): Promise<Map<string, Selectable<Database["user_stats"]>>> {
+	const rows = await inBatches(ids, (batch) => db.selectFrom("user_stats").selectAll().where("user_id", "in", batch).execute());
+	return new Map(rows.map((r) => [r.user_id, r]));
+}
+
+/**
+ * Whether giving `user` the role `newRole` (or deleting them, with `null`)
+ * would leave nobody who can open the admin area.
+ */
+export async function wouldRemoveLastAdmin(db: Db, user: { role: string }, newRole: string | null): Promise<boolean> {
+	if (!hasRole(user.role, "admin") || (newRole !== null && hasRole(newRole, "admin"))) return false;
+	const admins = await db
+		.selectFrom("users")
+		.where("role", "in", ADMIN_ROLES)
+		.select((eb) => eb.fn.count<number>("id").as("c"))
+		.executeTakeFirst();
+	return Number(admins?.c ?? 0) <= 1;
+}

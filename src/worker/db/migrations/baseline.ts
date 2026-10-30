@@ -18,6 +18,8 @@ export function createBaseline(kind: DatabaseKind): Baseline {
 			"0004_login_events",
 			// Data only: a new database has no rows to repair.
 			"0005_credential_account_ids",
+			"0006_login_event_kind",
+			"0007_user_stats_and_log_detail",
 		],
 		async up(db: Kysely<unknown>) {
 			await db.schema
@@ -30,6 +32,8 @@ export function createBaseline(kind: DatabaseKind): Baseline {
 				.addColumn("createdAt", t.timestamp, (c) => c.notNull())
 				.addColumn("updatedAt", t.timestamp, (c) => c.notNull())
 				.addColumn("role", t.role, (c) => c.notNull().defaultTo("user"))
+				// Blocks sign-in. See 0007_user_stats_and_log_detail.
+				.addColumn("disabled", t.boolean, (c) => c.notNull().defaultTo(false))
 				.execute();
 
 			await db.schema
@@ -88,11 +92,29 @@ export function createBaseline(kind: DatabaseKind): Baseline {
 				.addColumn("user_agent", t.text)
 				.addColumn("country", "varchar(2)")
 				.addColumn("created_at", t.timestamp, (c) => c.notNull())
+				// Null is a sign-in; "sign-out" is the other. See 0006_login_event_kind.
+				.addColumn("event", "varchar(16)")
+				// See 0007_user_stats_and_log_detail.
+				.addColumn("method", "varchar(16)")
+				.addColumn("session_id", t.id)
+				.addColumn("actor_id", t.id)
+				.addColumn("duration_seconds", "integer")
+				.execute();
+
+			// Running totals per user, kept apart from the log. See 0007_user_stats_and_log_detail.
+			await db.schema
+				.createTable("user_stats")
+				.addColumn("user_id", t.id, (c) => c.primaryKey())
+				.addColumn("sign_ins", "integer", (c) => c.notNull().defaultTo(0))
+				.addColumn("failed_sign_ins", "integer", (c) => c.notNull().defaultTo(0))
+				.addColumn("session_seconds", "integer", (c) => c.notNull().defaultTo(0))
+				.addColumn("last_sign_in_at", t.timestamp)
 				.execute();
 
 			await db.schema.createIndex("idx_sessions_user").on("sessions").column("userId").execute();
 			await db.schema.createIndex("idx_login_events_created_at").on("login_events").column("created_at").execute();
 			await db.schema.createIndex("idx_login_events_email").on("login_events").column("email").execute();
+			await db.schema.createIndex("idx_login_events_user").on("login_events").columns(["user_id", "created_at"]).execute();
 			await db.schema.createIndex("idx_verifications_identifier").on("verifications").column("identifier").execute();
 			await db.schema.createIndex("idx_users_role").on("users").column("role").execute();
 		},

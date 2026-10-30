@@ -38,7 +38,7 @@ export function createListUsersCommand(): Command {
 					return;
 				}
 
-				printTable(formatUsersForTable(users), ["email", "name", "verified", "created"]);
+				printTable(formatUsersForTable(users), ["email", "name", "role", "status", "enabled", "verified", "last sign-in", "sign-ins", "usage", "created"]);
 			} catch (error: unknown) {
 				const message = error instanceof Error ? error.message : "Unknown error";
 				printError(`Failed to list users: ${message}`);

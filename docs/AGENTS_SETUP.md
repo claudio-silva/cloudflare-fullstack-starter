@@ -180,14 +180,16 @@ Visit http://localhost:5173 and log in with the test credentials.
 
 ## User Roles
 
-The template ships with two built-in roles:
+The template ships with three built-in roles, each including the ones before it:
 
 | Role | Description |
 |------|-------------|
 | `user` | Default. Standard account with no special privileges. |
-| `admin` | Full management access. The last admin cannot be demoted. |
+| `admin` | Administrator. The last admin (or superadmin) cannot be demoted. |
+| `superadmin` | Above admin. |
 
-Developers can add more roles by extending the migration and the worker validation in `src/worker/index.ts`.
+Developers can add more roles in `src/shared/roles.ts` (no migration needed).
+In the example admin area, admins open it and superadmins also manage users: see [ADMIN.md](ADMIN.md). <!-- [admin-area-line] -->
 
 ```bash
 # Assign a role at creation time

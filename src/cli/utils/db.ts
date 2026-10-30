@@ -1,5 +1,6 @@
 import { readFileSync, existsSync } from "node:fs";
 import type { MigrationCompatibility, JournalEntry, SchemaSnapshot } from "../../shared/migration-types";
+import type { Role } from "../../shared/roles";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -18,12 +19,21 @@ export function normalizeEnvironment(
 	throw new Error(`Invalid environment '${candidate}'. Expected one of: local, preview, production.`);
 }
 
-type CliUserSummary = {
+export type CliUserSummary = {
 	id: string;
 	email: string;
 	name: string | null;
 	role?: string;
-	emailVerified: number | boolean;
+	enabled: boolean;
+	emailVerified: boolean;
+	/** active, idle, unverified, disabled or offline (src/shared/user-status.ts). */
+	status: string;
+	idleSeconds: number | null;
+	signIns: number;
+	failedSignIns: number;
+	/** Time in session: ended sessions, plus the open ones up to their last use. */
+	usageSeconds: number;
+	lastSignInAt: string | null;
 	createdAt: string | null;
 	updatedAt: string | null;
 };
@@ -36,14 +46,32 @@ type CliAccountDetails = {
 	updatedAt: string | null;
 };
 
-type CliUserDetails = CliUserSummary & {
+export type CliUserDetails = CliUserSummary & {
 	image?: string | null;
+	/** "credential" (email and password), "google", … */
+	signInMethods: string[];
 	account: CliAccountDetails | null;
 	activeSessions: number;
+	/** The session used last: its IP, and the country of the latest sign-in. */
+	currentSession: { ip: string | null; country: string | null; lastSeenAt: string | null } | null;
+	lastSignOutAt: string | null;
+	activityCount: number;
 };
 
-type CreateUserPayload = { email: string; password: string; name?: string; role?: "user" | "admin" };
-type EditUserPayload = { name?: string; email?: string; password?: string; role?: "user" | "admin" };
+export type CliActivityEvent = {
+	kind: "sign-in" | "failed" | "sign-out" | "session-expired" | "session-revoked";
+	method: string | null;
+	durationSeconds: number | null;
+	/** Who caused it, when not the user (an admin revoking their sessions). */
+	actor: string | null;
+	ip: string | null;
+	country: string | null;
+	userAgent: string | null;
+	createdAt: string | null;
+};
+
+type CreateUserPayload = { email: string; password: string; name?: string; role?: Role; enabled?: boolean };
+type EditUserPayload = { name?: string; email?: string; password?: string; role?: Role };
 
 type BasicResponse = { success?: boolean; message?: string };
 type CreateUserResponse = BasicResponse & { userId?: string };
@@ -56,10 +84,13 @@ export type CliDatabaseClient = {
 	deleteUser: (email: string) => Promise<BasicResponse>;
 	deleteAllUsers: () => Promise<DeleteAllUsersResponse>;
 	activateUser: (email: string, activated: boolean) => Promise<BasicResponse>;
+	setEnabled: (email: string, enabled: boolean) => Promise<BasicResponse>;
+	signOutUser: (email: string) => Promise<BasicResponse & { sessions?: number }>;
+	userActivity: (email: string, limit?: number) => Promise<CliActivityEvent[]>;
 	editUser: (email: string, updateData: EditUserPayload) => Promise<EditUserResponse>;
 	getUser: (email: string) => Promise<CliUserDetails>;
 	listUsers: (params?: { search?: string; limit?: number }) => Promise<CliUserSummary[]>;
-	setRole: (email: string, role: "user" | "admin") => Promise<BasicResponse>;
+	setRole: (email: string, role: Role) => Promise<BasicResponse>;
 	migrate: (only?: MigrationCompatibility[]) => Promise<MigrateResponse>;
 	migrations: () => Promise<MigrationStatus[]>;
 	pendingMigrations: () => Promise<PendingMigration[]>;
@@ -202,22 +233,27 @@ export async function connectToDatabase(environment: Environment): Promise<CliDa
 			makeApiRequest<BasicResponse>("PUT", `/api/cli/users/${encodeURIComponent(email)}/activate`, { activated }, environment),
 		editUser: (email, updateData) =>
 			makeApiRequest<EditUserResponse>("PUT", `/api/cli/users/${encodeURIComponent(email)}`, updateData, environment),
+		setEnabled: (email, enabled) =>
+			makeApiRequest<BasicResponse>("PUT", `/api/cli/users/${encodeURIComponent(email)}/enabled`, { enabled }, environment),
+		signOutUser: (email) =>
+			makeApiRequest<BasicResponse & { sessions?: number }>("POST", `/api/cli/users/${encodeURIComponent(email)}/sign-out`, undefined, environment),
+		userActivity: async (email, limit = 20) =>
+			(
+				await makeApiRequest<{ events: CliActivityEvent[] }>(
+					"GET",
+					`/api/cli/users/${encodeURIComponent(email)}/activity?limit=${limit}`,
+					undefined,
+					environment,
+				)
+			).events,
 		getUser: async (email) => {
-			const response = await makeApiRequest<{
-				user: CliUserSummary & { image?: string | null };
-				account: CliAccountDetails | null;
-				activeSessions: number;
-			}>(
+			const { user, ...rest } = await makeApiRequest<{ user: CliUserSummary & { image?: string | null } } & Omit<CliUserDetails, keyof CliUserSummary | "image">>(
 				"GET",
 				`/api/cli/users/${encodeURIComponent(email)}`,
 				undefined,
 				environment,
 			);
-			return {
-				...response.user,
-				account: response.account,
-				activeSessions: response.activeSessions,
-			};
+			return { ...user, ...rest };
 		},
 		listUsers: async (params) => {
 			const searchParams = new URLSearchParams();

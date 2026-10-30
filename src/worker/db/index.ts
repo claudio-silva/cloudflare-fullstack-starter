@@ -1,4 +1,4 @@
-import { Kysely, type InsertQueryBuilder } from "kysely";
+import { Kysely, sql, type InsertQueryBuilder, type RawBuilder } from "kysely";
 import { D1Dialect } from "./d1-dialect";
 import type { Database, Timestamp } from "../types/database";
 import type { AppEnv } from "../types/env";
@@ -42,6 +42,15 @@ export function dbBool(value: boolean, kind: DatabaseKind = databaseKind): boole
 /** Normalise a driver timestamp to an ISO string (what APIs return). */
 export function toIso(value: Timestamp | null | undefined): string | null {
 	return value == null ? null : new Date(value).toISOString();
+}
+
+/** Whole seconds from one datetime column to another, in SQL (date arithmetic differs on every database). */
+export function dbSecondsBetween(from: string, to: string, kind: DatabaseKind = databaseKind): RawBuilder<number> {
+	const a = sql.ref(from);
+	const b = sql.ref(to);
+	if (kind === "postgres") return sql<number>`cast(extract(epoch from (${b} - ${a})) as integer)`;
+	if (kind === "mysql") return sql<number>`timestampdiff(second, ${a}, ${b})`;
+	return sql<number>`cast(round((julianday(${b}) - julianday(${a})) * 86400) as integer)`;
 }
 
 /**

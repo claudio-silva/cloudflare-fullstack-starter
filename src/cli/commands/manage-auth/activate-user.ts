@@ -14,9 +14,10 @@ export function createActivateUserCommand(): Command {
 	const command = new Command("activate-user");
 
 	command
-		.description("Activate or deactivate a user account")
+		.alias("verify-user")
+		.description("Mark a user's email address as verified (on) or not (off). To block sign-in, use enable-user")
 		.requiredOption("-u, --user <email>", "User email address")
-		.requiredOption("-s, --status <on|off>", "Activation status (on or off)")
+		.requiredOption("-s, --status <on|off>", "Verified (on) or not (off)")
 		.argument("[environment]", "Target environment (local, preview, production)")
 		.option("--env <environment>", "Target environment (local, preview, production)")
 		.action(async (environment: string | undefined, options: ActivateUserOptions) => {
@@ -31,10 +32,10 @@ export function createActivateUserCommand(): Command {
 				const activated = status === "on";
 				const db = await connectToDatabase(env);
 				await db.activateUser(email, activated);
-				printSuccess(`User '${email}' ${activated ? "activated" : "deactivated"} successfully`);
+				printSuccess(`User '${email}' marked as ${activated ? "verified" : "not verified"}`);
 			} catch (error: unknown) {
 				const message = error instanceof Error ? error.message : "Unknown error";
-				printError(`Failed to ${options.status === "on" ? "activate" : "deactivate"} user: ${message}`);
+				printError(`Failed to change the verification of the user: ${message}`);
 				process.exit(1);
 			}
 		});

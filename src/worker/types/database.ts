@@ -23,6 +23,8 @@ export interface AuthDatabase {
     updatedAt: Timestamp;
     /** Built-in roles: 'user' | 'admin'. Developers may add more. Default: 'user'. */
     role: Generated<string>;
+    /** Cannot sign in (sessions are refused). Independent of `emailVerified`. */
+    disabled: Generated<DbBoolean>;
   };
   accounts: {
     accountId: string;
@@ -62,7 +64,8 @@ export interface AuthDatabase {
 }
 
 /**
- * Sign-in attempts. Starter-owned; see `src/worker/db/migrations/incremental/0004_login_events.ts`.
+ * The sign-in log and per-user totals. Starter-owned; see
+ * `src/worker/db/migrations/incremental/0004_login_events.ts` and `0007_user_stats_and_log_detail.ts`.
  */
 export interface AuthLogDatabase {
   login_events: {
@@ -71,11 +74,29 @@ export interface AuthLogDatabase {
     user_id: string | null;
     email: string;
     success: DbBoolean;
-    /** Personal data: pruned by the scheduled handler. */
+    /** Personal data: see AUTH_LOG_RETENTION_DAYS. */
     ip: string | null;
     user_agent: string | null;
     country: string | null;
     created_at: Timestamp;
+    /** Null (every row before 0006) and "sign-in" are sign-ins. The session events say how a session ended without a sign-out; "user-deleted" keeps the user_id and email of an account that no longer exists. */
+    event: "sign-in" | "sign-out" | "session-expired" | "session-revoked" | "user-deleted" | null;
+    /** How a sign-in authenticated: "password", or the OAuth provider ("google"). */
+    method: string | null;
+    /** The session a sign-in opened, or a session event ended. */
+    session_id: string | null;
+    /** Who caused the event when it was not the user: the admin who revoked or deleted. */
+    actor_id: string | null;
+    /** On the row that ends a session: from sign-in to sign-out, or to the last use when it expired or was revoked. */
+    duration_seconds: number | null;
+  };
+  /** Running totals per user, updated with the log; they outlive pruned log rows and deleted users. */
+  user_stats: {
+    user_id: string;
+    sign_ins: Generated<number>;
+    failed_sign_ins: Generated<number>;
+    session_seconds: Generated<number>;
+    last_sign_in_at: Timestamp | null;
   };
 }
 

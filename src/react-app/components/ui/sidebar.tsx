@@ -181,11 +181,17 @@ function Sidebar({
   if (isMobile) {
     return (
       <Sheet open={openMobile} onOpenChange={setOpenMobile} {...props}>
+        {/* project: the sheet's border in the sidebar's colour (the page's is near white on it), and
+            focus on the sheet itself rather than a ring on its first item when it opens. */}
         <SheetContent
           data-sidebar="sidebar"
           data-slot="sidebar"
           data-mobile="true"
-          className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
+          className="w-(--sidebar-width) border-sidebar-border bg-sidebar p-0 text-sidebar-foreground outline-none [&>button]:hidden"
+          onOpenAutoFocus={(event) => {
+            event.preventDefault()
+            ;(event.currentTarget as HTMLElement).focus()
+          }}
           style={
             {
               "--sidebar-width": SIDEBAR_WIDTH_MOBILE,

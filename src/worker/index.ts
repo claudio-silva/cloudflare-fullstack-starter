@@ -1,12 +1,13 @@
 import { Hono } from "hono";
 import type { AppBindings } from "./types/context";
-import { handleAuthRequest } from "./middleware/auth";
+import { createAuth, handleAuthRequest } from "./middleware/auth";
 import { cli } from "./routes/cli";
 import { profile } from "./routes/profile";
+import { admin } from "./routes/admin"; // [admin-area-line]
 import { config } from "../config";
 import { APP_COMMIT, APP_VERSION } from "../shared/app-version";
 import { createDb, databaseKind } from "./db";
-import { isSignInPath, recordLoginAttempt } from "./lib/login-log";
+import { isDisabledAccount, isRevokingPath, isSignInPath, isSignOutPath, recordFailedSignIn, recordSessionEnds, recordSignOut, sessionsOf } from "./lib/login-log";
 import { maintenanceMiddleware } from "./middleware/maintenance";
 import { versionMiddleware } from "./middleware/version";
 import { clientErrors } from "./routes/client-errors";
@@ -83,8 +84,8 @@ app.get("/api/", (c) => {
 // happened. See src/react-app/lib/http/maintenance.ts.
 app.get("/api/ping", (c) => c.body(null, 204, { "Cache-Control": "no-store" }));
 
-// Auth routes. Sign-in attempts are recorded after the fact, through
-// waitUntil: an audit record is never a reason to make a user wait, nor to
+// Auth routes. Failed sign-ins, sign-outs and revocations are recorded after
+// the fact, through waitUntil: an audit record is never a reason to make a user wait, nor to
 // turn a successful sign-in into an error because an insert failed.
 app.all("/api/auth/*", async (c) => {
 	// Brute force and sign-up floods: every auth write is limited per IP when the
@@ -103,11 +104,42 @@ app.all("/api/auth/*", async (c) => {
 			);
 		}
 	}
+	// A disabled account is refused before Better Auth checks the password, with
+	// a message that says so (OAuth sign-ins are refused in middleware/auth.ts).
+	if (c.req.method === "POST" && isSignInPath(c.req.path) && (await isDisabledAccount(c))) {
+		const write = recordFailedSignIn(c);
+		try {
+			c.executionCtx.waitUntil(write);
+		} catch {
+			await write;
+		}
+		return failForAuthClient(c, 403, "This account has been disabled. Contact an administrator.", { code: "account_disabled", level: "info", log: "sign-in refused: account disabled" });
+	}
+	// Signing out and revoking delete sessions, so who is asking (and, for a
+	// revocation, which sessions they have) is read first.
+	const post = c.req.method === "POST";
+	const signingOut = post && isSignOutPath(c.req.path);
+	const revoking = post && isRevokingPath(c.req.path);
+	const current = signingOut || revoking ? await createAuth(c).api.getSession({ headers: c.req.raw.headers }).catch(() => null) : null;
+	const sessionsBefore = revoking && current ? await sessionsOf(createDb(c.env), current.user.id).catch(() => []) : [];
 	const response = await handleAuthRequest(c);
-	if (isSignInPath(c.req.path) && c.req.method === "POST") {
-		const write = recordLoginAttempt(c, response.status < 400).catch((error: unknown) =>
-			console.error("[auth] could not record the sign-in attempt", error),
-		);
+	const ok = response.status < 400;
+	const ended = async (userId: string) => {
+		const db = createDb(c.env);
+		const still = new Set((await sessionsOf(db, userId)).map((s) => s.id));
+		await recordSessionEnds(db, sessionsBefore.filter((s) => !still.has(s.id)), "session-revoked");
+	};
+	// Successful sign-ins are recorded with the session they create (middleware/auth.ts).
+	const record =
+		post && isSignInPath(c.req.path) && !ok
+			? recordFailedSignIn(c)
+			: signingOut && current && ok
+				? recordSignOut(c, current.user, current.session)
+				: revoking && current && ok
+					? ended(current.user.id)
+					: undefined;
+	if (record) {
+		const write = record.catch((error: unknown) => console.error("[auth] could not record the event", error));
 		// `executionCtx` is absent outside a real Worker invocation (tests,
 		// some runtimes). Dropping the record there would make the log quietly
 		// incomplete, so fall back to awaiting it.
@@ -123,6 +155,7 @@ app.all("/api/auth/*", async (c) => {
 app.route("/api/cli", cli);
 app.route(CLIENT_ERRORS_PATH, clientErrors);
 app.route("/api/demo", demo);
+app.route("/api/admin", admin); // [admin-area-line]
 app.route("/api", profile);
 
 // Durable Object classes must be exported from the Worker entry.

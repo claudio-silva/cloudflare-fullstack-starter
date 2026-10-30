@@ -1,5 +1,6 @@
 import { betterAuth } from "better-auth";
 import bcrypt from "bcryptjs";
+import { recordSessionEnds, recordSignIn, requestOrigin, signInMethod } from "../lib/login-log";
 import { createDb, databaseKind } from "../db";
 import type { AppContext, AppUser } from "../types/context";
 import { createEmailSender, type EmailSender } from "../adapters/email";
@@ -39,6 +40,19 @@ function getAuthEmailSender(c: AppContext, environment: Environment, authEmailsE
 		}
 
 		throw error;
+	}
+}
+
+/**
+ * Lets a log write finish after the response (it never throws: see
+ * lib/login-log.ts). Without an ExecutionContext (tests) it is awaited, so the
+ * log is not quietly incomplete there.
+ */
+async function inBackground(c: AppContext, write: Promise<void>): Promise<void> {
+	try {
+		c.executionCtx.waitUntil(write);
+	} catch {
+		await write;
 	}
 }
 
@@ -97,11 +111,52 @@ export function createAuth(c: AppContext) {
 			db,
 			type: databaseKind,
 		},
-		user: { modelName: "users" },
+		user: {
+			modelName: "users",
+			// Exposed on the session (and to the browser) so the UI can show what
+			// the role allows; `input: false` keeps sign-up and updateUser from
+			// setting it. Read from the database on every session check, so a
+			// role change applies to the next request.
+			additionalFields: {
+				role: { type: "string", input: false, required: false, defaultValue: "user" },
+			},
+		},
 		session: {
 			modelName: "sessions",
-			expiresIn: 60 * 60 * 24 * 7,
-			updateAge: 60 * 60 * 24,
+			// Sessions expire after 24 hours without use: every touch (see updateAge)
+			// pushes the expiry a day ahead, so an active user stays signed in.
+			expiresIn: 60 * 60 * 24,
+			// A session is touched at most this often, and that touch is the user's
+			// "last seen" (the admin area shows Active / Idle from it). A day would
+			// leave it a day stale; a minute costs one small write per active session.
+			updateAge: 60,
+		},
+		// The sign-in log follows the sessions (lib/login-log.ts): a disabled
+		// account gets none; a session created by a sign-in is recorded with how it
+		// authenticated; and Better Auth deletes an expired session when it is looked
+		// up again, which the cron cannot see afterwards.
+		databaseHooks: {
+			session: {
+				create: {
+					before: async (session) => {
+						// Password sign-in is refused earlier, with a message (index.ts);
+						// this covers every other way in (OAuth, email links).
+						const user = await db.selectFrom("users").select("disabled").where("id", "=", session.userId).executeTakeFirst();
+						if (user && Boolean(user.disabled)) return false;
+					},
+					after: async (session, context) => {
+						const method = signInMethod(context?.path, context?.params as Record<string, string> | undefined);
+						if (method) await inBackground(c, recordSignIn(db, session, method, requestOrigin(c)));
+					},
+				},
+				delete: {
+					before: async (session) => {
+						if (new Date(session.expiresAt).getTime() < Date.now()) {
+							await recordSessionEnds(db, [{ ...session, ipAddress: session.ipAddress ?? null, userAgent: session.userAgent ?? null }], "session-expired");
+						}
+					},
+				},
+			},
 		},
 		account: { modelName: "accounts" },
 		verification: { modelName: "verifications" },
@@ -154,7 +209,7 @@ export async function authMiddleware(c: AppContext, next: () => Promise<void>) {
 	const environment: Environment = (c.env.ENVIRONMENT as Environment) || "local";
 
 	if (environment === "test") {
-		c.set("user", { id: "test-user", email: "test@example.com", name: "Test User" } as AppUser);
+		c.set("user", { id: "test-user", email: "test@example.com", name: "Test User", role: "user" } as AppUser);
 		return next();
 	}
 

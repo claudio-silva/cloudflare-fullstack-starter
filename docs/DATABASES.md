@@ -13,6 +13,7 @@ Because D1 is the default, anything D1-specific is called out below (time-travel
 | `dbNow()` / `dbBool()` | Write timestamps and booleans in the form the driver expects (SQLite: ISO string, 0/1; others: `Date`, boolean). |
 | `toIso()` | Normalise a driver timestamp to an ISO string for API output. |
 | `ignoreConflict()` | Portable "insert if absent" (`ON CONFLICT DO NOTHING` / MySQL `INSERT IGNORE`). |
+| `dbSecondsBetween(from, to)` | Seconds between two datetime columns, in SQL (`julianday` / `extract(epoch …)` / `timestampdiff`). |
 
 Table types are in `src/worker/types/database.ts` (`AuthDatabase` for Better Auth tables; add yours to `Database`).
 
@@ -32,6 +33,8 @@ Differences the starter works around (and the helper it uses):
 | **`RETURNING`.** Not available in MySQL | Starter code inserts, then selects |
 | **`LIKE` case sensitivity.** Insensitive on SQLite/MySQL, sensitive on PostgreSQL | `lower(col) like lower(?)` in the CLI user search |
 | **Idempotent insert.** `ON CONFLICT DO NOTHING` (SQLite/PostgreSQL) vs `INSERT IGNORE` (MySQL) | `ignoreConflict()` |
+| **Upsert that adds.** `ON CONFLICT DO UPDATE` vs `ON DUPLICATE KEY UPDATE` | `ignoreConflict()` insert, then `update … set n = n + ?` (`user_stats` in `lib/login-log.ts`) |
+| **Date arithmetic.** Every database has its own | `dbSecondsBetween()` |
 | **Schema alterations.** SQLite cannot `ALTER COLUMN` or add constraints to existing tables | Starter migrations only use the Kysely schema builder operations all three support; rebuild a table when needed |
 
 ## Migrations: baseline + incremental

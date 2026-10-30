@@ -652,20 +652,37 @@ API. A token with API access and Maintainer rights reads the value regardless.
 
 ## Sign-in log
 
-`login_events` records every attempt, successful or failed, with IP, user agent
-and country. The `sessions` table cannot answer "who has used this app": it
-holds only sessions that still exist, so it forgets every expired login and
-never saw the failures.
+`login_events` is a permanent history of every user, indexed by
+`(user_id, created_at)`. Its `event` column says what happened:
 
-Written through `waitUntil` — an audit record is never a reason to make a user
-wait, nor to turn a successful sign-in into an error because an insert failed.
-It falls back to awaiting the write where `executionCtx` is absent, since
-dropping the record there would leave the log quietly incomplete.
+| `event` | Written when | Also records |
+|---|---|---|
+| `sign-in` (`null` on rows before 0006) | a session is created by a sign-in (Better Auth's `session.create` hook), or a password sign-in fails (`success` false) | `method` (`password`, `google`, …), `session_id` |
+| `sign-out` | the user signs out | `duration_seconds`: sign-in to sign-out |
+| `session-expired` | Better Auth meets an expired session, or the cron deletes one (dated at the expiry) | `duration_seconds`: sign-in to the last use |
+| `session-revoked` | a password or role change, disabling, "sign out everywhere", an admin | the same, and `actor_id` when someone else did it |
+| `user-deleted` | an account is deleted | `actor_id`: the user, the admin, or none for the CLI |
 
-`npm run db -- logins --env <env>` reads it. IP addresses are personal data: the
-cron in `src/worker/scheduled.ts` prunes the table after
-`AUTH_LOG_RETENTION_DAYS` (90 by default), and your privacy notice has to
-mention it.
+A session that ends without the user (expired, revoked) counts only to its last
+use: the user was not there when it ended. Sessions are touched every 60
+seconds (`session.updateAge`), so that is accurate to a minute, and
+`sessions.updatedAt` serves as "last seen".
+
+`user_stats` keeps one row of totals per user (sign-ins, failed sign-ins, time
+in session, last sign-in), added to as each event is written, with a portable
+insert-then-increment. Lists sort and show from it without reading the log, and
+it outlives pruned rows and deleted accounts. Migration 0007 filled it from the
+log as it was; sessions before then have no duration.
+
+Writes never throw, and go through `waitUntil` where they follow the response:
+an audit record is never a reason to make a user wait, nor to turn a successful
+sign-in into an error because an insert failed. Without an `executionCtx`
+(tests) they are awaited, so the log is not quietly incomplete there.
+
+`npm run db -- logins --env <env>` reads it. IP addresses are personal data,
+and your privacy notice has to mention them. Nothing is deleted by default: set
+`AUTH_LOG_RETENTION_DAYS` and the cron in `src/worker/scheduled.ts` deletes log
+rows older than that, leaving `user_stats` as it is.
 
 The same cron deletes expired `sessions` and `verifications`. Better Auth
 removes an expired session only when that session is used again, which a

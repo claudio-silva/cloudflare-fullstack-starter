@@ -47,6 +47,7 @@ src/
 │   │   ├── Logo.tsx        # Theme-aware logo component
 │   │   ├── ModeToggle.tsx  # Dark/light theme toggle
 │   │   └── theme-provider.tsx  # Theme context with URL param support
+│   ├── admin/              # Example admin area at /admin (layout, nav config, pages) — see docs/ADMIN.md
 │   ├── pages/              # Route pages
 │   │   ├── auth/           # SignUp, VerifyEmail, ForgotPassword, ResetPassword
 │   │   ├── Home.tsx        # Protected home
@@ -80,6 +81,15 @@ Wrap routes with `<ProtectedRoute>` to require authentication:
   </ProtectedRoute>
 } />
 ```
+
+### Roles
+Roles are in `src/shared/roles.ts` (`user` < `admin` < `superadmin`); `session.user.role` carries the role. Check with `hasRole(role, "admin")` (admin or higher) and protect API routes with `requireRole("admin")` (`src/worker/middleware/roles.ts`) after `authMiddleware`. A role check in the browser only decides what is shown; the Worker must check it too.
+
+<!-- [admin-area] -->
+### The admin area
+`/admin` is an example backoffice (admins and up, 403 otherwise) that a project may restyle or remove. To add a page there see `docs/ADMIN.md`; `npm run admin:remove` removes the whole area.
+When working on the area, keep it removable: put a helper only it uses in `src/react-app/lib/admin-util.ts` (deleted with it) rather than a new file under `lib/`, and mark whatever it adds to a shared file with the markers described in `docs/ADMIN.md`, *Removing it*.
+<!-- [/admin-area] -->
 
 ### Adding API Endpoints
 Create one module per feature in `src/worker/routes/` and mount it in `src/worker/index.ts` with `app.route()`. Don't grow `index.ts` with handlers:
@@ -126,7 +136,7 @@ import { createDb } from "../db";
 const db = createDb(c.env);
 const users = await db.selectFrom("users").selectAll().execute();
 ```
-**Portability scope:** starter-owned database code (the auth tables, the CLI routes, migrations 0001-0003, seed helpers) is kept portable across D1/SQLite, PostgreSQL and MySQL so every supported database works out of the box; keep it that way when you edit those files (helpers: `dbNow()`, `dbBool()`, `toIso()`, `ignoreConflict()`, `columnTypes()`). **Your own code is not restricted:** once the project has chosen its database, use whatever that database supports (transactions on PostgreSQL/MySQL, `RETURNING`, native types, raw SQL). Differences worth knowing, other databases and provider APIs: `docs/DATABASES.md`.
+**Portability scope:** starter-owned database code (the auth tables, the CLI routes, migrations 0001-0003, seed helpers) is kept portable across D1/SQLite, PostgreSQL and MySQL so every supported database works out of the box; keep it that way when you edit those files (helpers: `dbNow()`, `dbBool()`, `toIso()`, `ignoreConflict()`, `dbSecondsBetween()`, `columnTypes()`). **Your own code is not restricted:** once the project has chosen its database, use whatever that database supports (transactions on PostgreSQL/MySQL, `RETURNING`, native types, raw SQL). Differences worth knowing, other databases and provider APIs: `docs/DATABASES.md`.
 
 ## Commands
 
@@ -169,9 +179,12 @@ npm run auth list-users
 npm run auth create-user
 npm run auth edit-user
 npm run auth delete-user
-npm run auth activate-user
+npm run auth activate-user        # email verified on/off (alias verify-user)
+npm run auth enable-user          # sign-in allowed on/off; off signs out everywhere
+npm run auth sign-out-user
 npm run auth set-role
-npm run auth show-user
+npm run auth show-user            # with sign-in totals, time in session, live sessions
+npm run auth user-activity        # a user's sign-in history
 
 # Build & Deploy
 npm run build                  # Build for production
@@ -227,9 +240,9 @@ A worktree needs its own dependencies, local settings and database, and its own 
 
 ### Sign-in log
 
-`login_events` records every sign-in attempt, successful or failed, with IP, user agent and country. `sessions` cannot answer "who has used this app": it holds only sessions that still exist. Read it with `npm run db -- logins --env <env>`.
+`login_events` is a permanent history of every sign-in (failed ones too), sign-out, expired or revoked session and account deletion, with IP, user agent, country, method, duration and who caused it; `user_stats` keeps per-user totals (sign-ins, failures, time in session) that survive pruning. `sessions` cannot answer "who has used this app": it holds only sessions that still exist. Read it with `npm run db -- logins --env <env>` or `npm run auth user-activity -- -u <email>`.
 
-IPs are personal data, so the cron in `src/worker/scheduled.ts` prunes the table after `AUTH_LOG_RETENTION_DAYS` (default 90) and your privacy notice has to mention it.
+IPs are personal data: your privacy notice has to mention them. Set `AUTH_LOG_RETENTION_DAYS` to have the cron in `src/worker/scheduled.ts` prune older rows; unset, nothing is deleted.
 
 ### Writing migrations
 

@@ -1,0 +1,41 @@
+/*
+ * The admin area's colours. Imported by AdminLayout, so they go with the area.
+ * The sidebar ones are shadcn's own variables (components/ui/sidebar.tsx),
+ * which only the admin sidebar uses.
+ */
+:root {
+	--sidebar-background: 0 0% 20%; /* #333 */
+	--sidebar-foreground: 0 0% 100%;
+	--sidebar-primary: 0 0% 100%;
+	--sidebar-primary-foreground: 0 0% 20%;
+	--sidebar-accent: 0 0% 24%; /* #3d3d3d: hover */
+	--sidebar-accent-foreground: 0 0% 100%;
+	--sidebar-border: 0 0% 27%;
+	--sidebar-ring: 0 0% 80%;
+
+	--admin-footer-h: 49px; /* the sidebar footer and the page footer line up */
+	--admin-sidebar-active: #444; /* the current page */
+	--admin-bg: #f8f8f8; /* around the cards */
+	--admin-footer: #f4f4f4;
+	--admin-toolbar: #f4f4f4; /* a list's search bar */
+	--admin-table-head: #fafafa;
+	--admin-table-foot: #f6f6f6; /* a list's pagination */
+}
+
+.dark {
+	--sidebar-background: 0 0% 12%;
+	--sidebar-foreground: 0 0% 98%;
+	--sidebar-primary: 0 0% 98%;
+	--sidebar-primary-foreground: 0 0% 9%;
+	--sidebar-accent: 0 0% 20%;
+	--sidebar-accent-foreground: 0 0% 98%;
+	--sidebar-border: 0 0% 18%;
+	--sidebar-ring: 0 0% 60%;
+
+	--admin-sidebar-active: #262626;
+	--admin-bg: #111;
+	--admin-footer: #161616;
+	--admin-toolbar: #161616;
+	--admin-table-head: #131313;
+	--admin-table-foot: #141414;
+}

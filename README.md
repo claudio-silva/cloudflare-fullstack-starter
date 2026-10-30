@@ -313,6 +313,7 @@ If wrangler is logged in, you can do it from the command line:
 - Minimalistic app shell, so that you are free to create your own design and branding
 - Clean top header bar with logo and user menu
 - Avatar dropdown with user info, Profile, and Sign Out
+- Example admin area (`/admin`, in the avatar menu for admins): sidebar or top-bar menu, breadcrumbs, a dashboard, and user management as a CRUD example for superadmins. Restyle it, or remove it with `npm run admin:remove` ([docs/ADMIN.md](docs/ADMIN.md)) <!-- [admin-area-line] -->
 - Profile page (update name, email, password; delete account)
 - Dark/light theme toggle with FOUC prevention
 - Theme-aware logo component (auto-switches light/dark)
@@ -499,6 +500,7 @@ Everything that makes a deployment a demo lives on that deployment (Worker secre
 ```
 ├── src/
 │   ├── react-app/           # React frontend
+│   │   ├── admin/           # Example admin area (docs/ADMIN.md)
 │   │   ├── assets/          # Static assets (logo-light.svg, logo-dark.svg)
 │   │   ├── components/
 │   │   │   ├── auth/        # Auth components (LoginForm, ProtectedRoute, AuthOverlay)
@@ -533,7 +535,7 @@ Manage users directly from your terminal — useful for creating admin accounts,
 > ⚠️ When managing local users, **the dev server must be running** (`npm run dev`) for these commands to work. They communicate with the API at `http://localhost:5173`.
 
 ```bash
-# List all users (shows email, name, verification status, creation date)
+# List users: role, status (active, idle, unverified, disabled), enabled, verified, last sign-in, sign-ins, time in session
 npm run auth list-users
 npm run auth list-users -- --limit 10           # limit results
 npm run auth list-users -- --search "john"      # search by email or name
@@ -542,23 +544,36 @@ npm run auth list-users -- --search "john"      # search by email or name
 npm run auth create-user -- -u admin@example.com -p password123
 npm run auth create-user -- -u admin@example.com -p password123 -n "Admin User"
 npm run auth create-user -- -u admin@example.com -p password123 -r admin   # create as admin
+npm run auth create-user -- -u someone@example.com -p password123 --disabled  # cannot sign in until enabled
 
-# View detailed user info (includes account provider, sessions, timestamps)
+# View detailed user info: sign-in methods, totals (sign-ins, failed, time in session),
+# last sign-in and sign-out, live sessions with idle time, IP and country
 npm run auth show-user -- -u admin@example.com
+
+# A user's sign-in history: sign-ins (and failed ones), sign-outs, expired and revoked sessions
+npm run auth user-activity -- -u admin@example.com
+npm run auth user-activity -- -u admin@example.com --limit 100
 
 # Edit user details
 npm run auth edit-user -- -u admin@example.com -n "New Name"
 npm run auth edit-user -- -u admin@example.com -e newemail@example.com
-npm run auth edit-user -- -u admin@example.com -p newpassword123
+npm run auth edit-user -- -u admin@example.com -p newpassword123   # signs them out everywhere
 npm run auth edit-user -- -u admin@example.com -r admin    # promote to admin
 
 # Set a user's role directly
 npm run auth set-role -- -u admin@example.com -r admin
 npm run auth set-role -- -u user@example.com -r user
 
-# Activate or deactivate a user account
-npm run auth activate-user -- -u admin@example.com -s on   # activate
-npm run auth activate-user -- -u admin@example.com -s off  # deactivate
+# Enable or disable sign-in (disabling also signs the user out everywhere; the last admin cannot be disabled)
+npm run auth enable-user -- -u someone@example.com -s off
+npm run auth enable-user -- -u someone@example.com -s on
+
+# Mark the email address as verified or not (alias: verify-user). Not the same as enabled
+npm run auth activate-user -- -u admin@example.com -s on
+npm run auth activate-user -- -u admin@example.com -s off
+
+# Sign a user out on every device
+npm run auth sign-out-user -- -u someone@example.com
 
 # Delete a user (removes user, accounts, and sessions)
 npm run auth delete-user -- -u admin@example.com
@@ -566,12 +581,14 @@ npm run auth delete-user -- --all                          # delete ALL users (u
 # Both ask for confirmation; pass --yes in scripts and CI (without a terminal they refuse and exit 1)
 ```
 
-User roles:
+User roles, each including the ones before it:
 
 - `user` (default): standard account with no special privileges.
-- `admin`: full management access. The last admin cannot be demoted.
+- `admin`: administrator. The last admin (or superadmin) cannot be demoted.
+- `superadmin`: above admin.
 
-Additional roles can be added by the developer by extending the migration and the worker validation logic.
+Additional roles can be added in `src/shared/roles.ts`; check them with `hasRole()` in the browser and `requireRole()` in the Worker.
+In the example admin area, admins open it and superadmins also manage users: see [docs/ADMIN.md](docs/ADMIN.md). <!-- [admin-area-line] -->
 
 For remote environments, set `CLI_API_KEY` in your `.env.*` file (same value must be deployed to the Worker). You can pass the environment as a flag or as a positional argument:
 ```bash
@@ -869,6 +886,7 @@ For long-term retention or external analysis, you can forward logs via Cloudflar
 ### Template Internals
 - [What this starter gives you, and why](docs/MECHANISMS.md) — migrations, maintenance mode, versioning, deploy modes, secrets, sign-in log, backups, database portability
 - [Deployment, versions and migrations](docs/DEPLOYMENT.md) — what each deploy does, git-tag releases, expand/contract migrations, maintenance, Workers Builds and your own CI
+- [The admin area](docs/ADMIN.md) — roles, the example backoffice, adding pages, removing it <!-- [admin-area-line] -->
 - [Dependencies](docs/DEPENDENCIES.md) — why each third-party package is here, what was left out, and when to revisit
 - [Vite ↔ Cloudflare Bridge](docs/VITE_CLOUDFLARE_BRIDGE.md) — how the project bridges Vite's dev conventions with Cloudflare's deployment model (env config baking, secrets sync, cross-platform build scripts)
 
