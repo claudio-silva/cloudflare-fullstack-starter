@@ -42,7 +42,7 @@ import { readVersion, versionField } from "./lib/build-info";
 import { waitForChecks } from "./lib/ci-checks";
 import { nextVersion as computeNextVersion, type BumpKind } from "./lib/release-version";
 import { resolveWorkerName } from "./lib/worker";
-import { ensureBuildStarted } from "./lib/workers-builds";
+import { ensureBuildStarted, followBuild } from "./lib/workers-builds";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 
@@ -95,28 +95,45 @@ async function confirm(question: string): Promise<boolean> {
 
 const sleep = (ms: number) => new Promise<void>((done) => setTimeout(done, ms));
 
-/** Wait until the deployed Worker reports the version we just released. */
-async function waitForVersion(version: string, timeoutMs = 600_000): Promise<void> {
+/**
+ * Wait until the deployed Worker serves the version we just released, out of
+ * maintenance. `/api/` answers inside a maintenance window (it is how the
+ * pipeline sees its own deploy), so the version alone does not mean the app
+ * is back: `/api/ping` does, answering 503 with the maintenance header until
+ * the window closes.
+ */
+async function waitForRelease(version: string, timeoutMs = 600_000): Promise<void> {
 	const { getApiBaseUrl } = await import("../src/cli/utils/db");
+	const { MAINTENANCE_HEADER } = await import("../src/shared/http-contract");
 	const baseUrl = getApiBaseUrl(ENV);
 	const expected = version.replace(/^v/, "");
 	const deadline = Date.now() + timeoutMs;
 	let seen = "no response";
+	let inWindow = false;
 	console.log(`Waiting for ${baseUrl} to serve ${expected} …`);
 	while (Date.now() < deadline) {
 		try {
-			const body = (await (await fetch(`${baseUrl}/api/`)).json()) as { version?: string };
+			const body = (await (await fetch(`${baseUrl}/api/`, { cache: "no-store" })).json()) as { version?: string };
 			seen = body.version ?? "?";
 			if (seen === expected) {
-				console.log(`✓ ${baseUrl} serves ${seen}`);
-				return;
+				const ping = await fetch(`${baseUrl}/api/ping`, { cache: "no-store" });
+				if (ping.headers.get(MAINTENANCE_HEADER) !== "1") {
+					console.log(`✓ ${baseUrl} serves ${seen}${inWindow ? ", out of maintenance" : ""}`);
+					return;
+				}
+				if (!inWindow) console.log(`  ${seen} is deployed; the app is in its maintenance window while the release migrates …`);
+				inWindow = true;
 			}
 		} catch {
 			seen = "no response";
 		}
 		await sleep(5_000);
 	}
-	die(`${baseUrl} still serves ${seen} after ${timeoutMs / 1000}s; expected ${expected}. Check the CI build.`);
+	die(
+		inWindow
+			? `${baseUrl} serves ${expected} but is still in maintenance after ${timeoutMs / 1000}s. Check the CI build: a failed migration leaves the window open on purpose (docs/DEPLOYMENT.md).`
+			: `${baseUrl} still serves ${seen} after ${timeoutMs / 1000}s; expected ${expected}. Check the CI build.`,
+	);
 }
 
 /**
@@ -295,10 +312,26 @@ async function main(): Promise<void> {
 		run("git", ["push", "origin", `main:${cfg.branch}`]);
 		const { token, accountId } = cloudflareCredentials();
 		if (mode === "workers-builds" && token && accountId) {
-			const how = await ensureBuildStarted({ token, accountId, workerName: resolveWorkerName("wrangler.toml", ENV), branch: cfg.branch, pushedAt }).catch(() => "unknown");
-			if (how !== "unknown") console.log(`✓ Workers Builds is building ${version} (${how === "push" ? "started by the push" : "started through the API"})`);
+			const started = await ensureBuildStarted({ token, accountId, workerName: resolveWorkerName("wrangler.toml", ENV), branch: cfg.branch, pushedAt }).catch(
+				() => ({ how: "unknown", buildId: null }) as const,
+			);
+			if (started.how !== "unknown") console.log(`✓ Workers Builds is building ${version} (${started.how === "push" ? "started by the push" : "started through the API"})`);
+			// The release is over when the build is: after the deploy it migrates and closes the maintenance window.
+			if (started.buildId) {
+				const { outcome, tail } = await followBuild({ token, accountId, buildId: started.buildId }).catch((error: unknown) => {
+					console.log(`  Could not follow the build (${error instanceof Error ? error.message : String(error)}); watching the app instead.`);
+					return { outcome: "unknown", tail: [] as string[] };
+				});
+				if (outcome !== "success" && outcome !== "unknown") {
+					if (tail.length) console.error(`\nLast lines of the build log:\n${tail.map((l) => `  ${l}`).join("\n")}\n`);
+					die(
+						`The Workers Builds build of ${version} ended with "${outcome}" (full log: dashboard → Workers → ${resolveWorkerName("wrangler.toml", ENV)} → Deployments). The tag stays: fix, then release again.`,
+					);
+				}
+				if (outcome === "success") console.log("✓ Workers Builds build finished");
+			}
 		}
-		await waitForVersion(version);
+		await waitForRelease(version);
 	}
 
 	console.log(`Done: ${version}`);

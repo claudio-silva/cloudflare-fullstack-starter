@@ -783,7 +783,7 @@ Releases, deploy modes, migrations and maintenance are summarised here; the reas
 | `external-ci` | Your own CI (self-hosted GitLab, GitHub Actions, …), triggered by the release tag |
 
 - **`npm run setup:ci`** sets up `workers-builds` on GitHub in one command.
-- **In the CI modes**, `deploy:production` waits for CI on the release commit, pushes the tag, promotes the deployment branch and waits for the Worker to report the new version. Protect the deployment branch with required checks to make CI a hard gate.
+- **In the CI modes**, `deploy:production` waits for CI on the release commit, pushes the tag, promotes the deployment branch and waits until the Worker serves the new version out of maintenance (with Workers Builds, it follows the build to its end). Protect the deployment branch with required checks to make CI a hard gate.
 - **`--local`** deploys from your machine, whatever the mode.
 - **To switch CI deploys off for a while** — a runner that is down, a frozen period — set the mode to `manual` and commit. Each CI deploy job then stops at its first step, green, without installing or building.
 

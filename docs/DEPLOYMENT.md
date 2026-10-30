@@ -168,7 +168,7 @@ It runs from a clean `main` that equals `origin/main`. If `HEAD` already carries
 Where the tag sits in the sequence differs by mode, and both placements are deliberate:
 
 - **`manual`** — deploy first, tag after it succeeds. There is no trigger to arm, so a failed release should not leave a tag claiming a version that never went live.
-- **`workers-builds` / `external-ci`** — CI first, then the tag, then promote the branch, because the tag is what the build checks. The script then waits for `GET /api/` to report the version it released. A tag whose deploy failed stays behind; it means "handed to the pipeline", and `/api/` tells you what is actually serving.
+- **`workers-builds` / `external-ci`** — CI first, then the tag, then promote the branch, because the tag is what the build checks. The script then waits until the release is live: `GET /api/` reports the version it released **and** the app is out of maintenance (`GET /api/ping` answers without `X-Maintenance`; `/api/` itself answers inside the window). With Workers Builds it follows the build to its end, showing its phases and the pipeline's steps (deploy, migrations, window), and stops with the last lines of the log if the build fails. A tag whose deploy failed stays behind; it means "handed to the pipeline", and `/api/` tells you what is actually serving.
 
 Preview is looser on purpose: it deploys on every push to its branch with **no tag**, and reports `X.Y.Z+preview.<sha>` (`bin/lib/build-info.ts` adds the suffix to any `--mode preview` build). That is semver build metadata, ignored when comparing versions, which is right — it is the same version line, built from a different branch. A pre-release suffix would sort *below* the release, and preview is normally ahead of production, not behind.
 
@@ -286,7 +286,7 @@ Workers Builds installs the dependencies itself, from the lockfile, and takes No
 
 Workers Builds builds **every push to its branch** (it has no switch for that) and never a tag. `deploy:production` therefore pushes the tag first and promotes the branch after; the deploy then refuses any commit without its release tag, so a push to the branch made by hand fails rather than deploys.
 
-A push starts its build through GitHub's webhook, and a webhook can be lost: the branch moves and nothing builds. After promoting, `deploy:production` checks that Workers Builds started a build; if none has started after two minutes, it starts one itself through the API (the branch's head, which is the release commit). It needs the token of `.env.setup.local`; without one it only waits for the version.
+A push starts its build through GitHub's webhook, and a webhook can be lost: the branch moves and nothing builds. After promoting, `deploy:production` checks that Workers Builds started a build; if none has started after two minutes, it starts one itself through the API (the branch's head, which is the release commit). It then follows that build until it ends: the Worker serves the new version as soon as the pipeline deploys it, but the pipeline goes on to migrate and close the maintenance window, so the release is over only when the build is. It needs the token of `.env.setup.local`; without one it only watches the app (version, then out of maintenance).
 
 The build command is an ordinary shell command: if it exits non-zero the build fails and the deploy step never runs. So CI *can* gate on tests. What it cannot do is run service containers or browsers, so a Postgres/MySQL matrix and Playwright stay in GitHub Actions.
 
