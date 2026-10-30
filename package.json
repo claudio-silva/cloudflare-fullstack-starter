@@ -4,7 +4,7 @@
 	"starter": {
 		"name": "cloudflare-fullstack-starter",
 		"repo": "https://github.com/claudio-silva/cloudflare-fullstack-starter",
-		"version": "3.6.0"
+		"version": "3.7.0"
 	},
 	"version": "0.0.1",
 	"type": "module",
