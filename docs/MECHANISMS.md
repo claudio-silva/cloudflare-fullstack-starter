@@ -27,12 +27,12 @@ Vite ↔ wrangler bridge, [VITE_CLOUDFLARE_BRIDGE.md](VITE_CLOUDFLARE_BRIDGE.md)
 ## Database migrations
 
 Every migration declares how it relates to the application version running
-beside it. This is the *parallel change* (expand/contract) pattern, and it is
-what lets almost every schema change ship with no downtime at all.
+beside it. This is the *parallel change* (expand/contract) pattern: it decides
+what the old and the new code can each run against.
 
 | `compatibility` | For | Runs |
 |---|---|---|
-| `expand` (default) | New tables, nullable columns, columns with a default, indexes | **Before** the deploy |
+| `expand` (default) | New tables, nullable columns, columns with a default, indexes | **Before** the deploy; in a short window when the release brings it |
 | `contract` | Removing what an earlier release stopped using | **After** the deploy |
 | `breaking` | Anything that cannot work with the running version | Inside a maintenance window |
 
@@ -40,6 +40,19 @@ what lets almost every schema change ship with no downtime at all.
 code, because the old code ignores columns it does not know about. A removal
 has to land after, because the old code is still reading them. One order
 cannot serve both, so the pipeline reads the declaration instead of assuming.
+
+**Why a release that brings migrations gets a window anyway.** Migrations run
+inside the Worker, and the Worker serving traffic knows only the ones bundled
+with it, so it cannot apply — or even report — those a release adds. Applying
+them after the deploy would leave the new code running on the old schema. The
+pipeline reads the release's migrations from the checkout
+(`bin/lib/migration-plan.ts`), and when it brings any but `contract` ones it
+deploys the new code in maintenance, migrates through it, and deploys it again
+in service. That takes about a minute, during which the HTTP layer holds
+requests and replays them. Up to 3.6 the pipeline asked the running Worker,
+which answered that nothing was pending: a release's migrations ran a deploy
+late, after its code. Uploading the new version without traffic and migrating
+through it would remove the window; it is not done yet.
 
 **Dropping a column takes two releases.** There is always a moment when the old
 code is serving requests against the new schema, so the release that stops

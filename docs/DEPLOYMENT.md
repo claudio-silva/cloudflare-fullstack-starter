@@ -1,17 +1,24 @@
 # Deployment, versions and migrations
 
-How a change gets from your machine to Cloudflare: what a deploy does, how migrations are classified so almost all of them ship with no downtime, how releases are versioned and tagged, how to take the app out of service, and how to hand the same pipeline to CI. For the Vite ↔ wrangler config baking see [VITE_CLOUDFLARE_BRIDGE.md](VITE_CLOUDFLARE_BRIDGE.md).
+How a change gets from your machine to Cloudflare: what a deploy does, how migrations are classified and ordered, how releases are versioned and tagged, how to take the app out of service, and how to hand the same pipeline to CI. For the Vite ↔ wrangler config baking see [VITE_CLOUDFLARE_BRIDGE.md](VITE_CLOUDFLARE_BRIDGE.md).
 
 ## What a deploy does
 
 ```
-maintenance on   (only when a pending migration is `breaking`)
-  build
-  migrate expand     ← before the deploy
-  migrate breaking   ← inside the window
-  wrangler deploy
-  migrate contract   ← after the deploy
-maintenance off
+build
+migrate expand          ← before the deploy (only ones the running Worker already knows)
+wrangler deploy
+migrate contract        ← after the deploy
+```
+
+A release that brings migrations (other than `contract`), or any `breaking` one, deploys in a window instead:
+
+```
+build
+wrangler deploy --var MAINTENANCE:1   ← the new code, out of service
+migrate expand, then breaking          ← through the new code
+wrangler deploy                        ← in service
+migrate contract
 ```
 
 `bin/deploy-pipeline.ts` is that sequence, and both a laptop deploy and a CI deploy run it, so the two cannot drift apart. Raw `wrangler deploy` is never used for preview or production: the build output already targets the environment, and the pipeline keeps secrets, version and migrations in step.
@@ -26,15 +33,17 @@ Migrations execute **inside the deployed Worker** (`POST /api/cli/migrate`, prot
 
 ## Writing migrations: expand, contract, breaking
 
-Every migration declares how it relates to the application version running beside it. This is the *parallel change* pattern, and it is what lets almost every schema change ship with no downtime at all.
+Every migration declares how it relates to the application version running beside it. This is the *parallel change* pattern: it decides what the old and the new code can each run against.
 
 | `compatibility` | Meaning | When it runs |
 |---|---|---|
-| `expand` (default) | Additive: new tables, nullable columns, columns with a default, new indexes | **Before** the deploy — the old code ignores what it does not know |
+| `expand` (default) | Additive: new tables, nullable columns, columns with a default, new indexes | **Before** the deploy — the old code ignores what it does not know. In a window when the release brings it (below) |
 | `contract` | Removes what an earlier release stopped using | **After** the deploy — the new code no longer touches it |
 | `breaking` | Cannot be made compatible with the running version | Inside a maintenance window |
 
 A single fixed order cannot serve both directions, which is why the pipeline reads this rather than assuming one.
+
+**A release that brings migrations deploys in a window.** Migrations run inside the Worker, and the one serving traffic knows only those bundled with it: it cannot apply, or even report, the ones this release adds. The pipeline reads them from the checkout (`bin/lib/migration-plan.ts`); when there are any but `contract` ones, it deploys the new code in maintenance, migrates through it (`--wait-for-deploy`), and deploys it again in service — about a minute, with requests held and replayed by the HTTP layer. Releases without migrations, and `contract` ones, need no window. Up to 3.6 the pipeline asked the running Worker, which answered "nothing pending", so a release's migrations ran one deploy late.
 
 **Dropping a column takes two releases.** There is always a moment when the old code is still serving requests against the new schema, so the release that stops *using* a column and the migration that *drops* it cannot be the same one. Renaming `name` to `full_name`:
 
@@ -76,7 +85,7 @@ Two mechanisms, for two different problems. Do not reach for the wrong one.
 
 ### Planned window — the `MAINTENANCE` var
 
-A `breaking` migration needs the app to stop while it runs. The deploy does this on its own:
+A `breaking` migration needs the app to stop while it runs, and so does a release that brings migrations (see above). The deploy does this on its own:
 
 ```
 wrangler deploy --var MAINTENANCE:1   ← app answers 503 in place

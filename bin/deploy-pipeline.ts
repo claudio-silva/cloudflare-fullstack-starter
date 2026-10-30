@@ -21,6 +21,12 @@
  *   migrate
  *   wrangler deploy                        ← var gone, app back
  *
+ * So does a release that brings new migrations of any kind but `contract`.
+ * Migrations run inside the Worker, and the one serving traffic only knows
+ * those bundled with it: the new ones can only be applied by the new code
+ * (bin/lib/migration-plan.ts). `contract` ones need no window, since they
+ * run after the deploy anyway.
+ *
  * The window is a Worker var rather than the zone-level redirect because the
  * var keeps the URL, returns a real 503 with Retry-After, and lets the client
  * replay the request (src/react-app/lib/http/maintenance.ts). It needs a deploy to
@@ -47,6 +53,8 @@ import { loadDeployConfig, type DeployEnv } from "./lib/deploy-config";
 import { resolveBuildInfo } from "./lib/build-info";
 import { checkReleaseTag } from "./lib/release-tag";
 import { resolveWorkerName, workerExists } from "./lib/worker";
+import { planMigrations } from "./lib/migration-plan";
+import { createMigrations } from "../src/worker/db/migrations";
 import type { MigrationStatus } from "../src/shared/migration-types";
 
 type Stage = "build" | "migrate-expand" | "migrate-breaking" | "deploy" | "migrate-contract";
@@ -186,16 +194,16 @@ async function main(): Promise<void> {
 		if (workerExists(workerName) !== false) throw error;
 		return firstDeploy(env, workerName, skipBuild, dryRun);
 	}
-	const pending = migrations.filter((m) => !m.applied);
-	const byKind = (kind: string) => pending.filter((m) => m.compatibility === kind);
-	const breaking = byKind("breaking");
-	const contract = byKind("contract");
+	// The running Worker reports what it knows; this checkout adds what the release brings.
+	const plan = planMigrations(migrations, createMigrations("sqlite"));
+	const { pending } = plan;
+	const contract = plan.byKind("contract");
 
 	console.log(`Deploying ${env}`);
 	console.log(
 		pending.length === 0
 			? "  Pending migrations: none"
-			: `  Pending migrations: ${pending.map((m) => `${m.name} (${m.compatibility})`).join(", ")}`,
+			: `  Pending migrations: ${pending.map((m) => `${m.name} (${m.compatibility}${m.newInRelease ? ", new in this release" : ""})`).join(", ")}`,
 	);
 
 	// A contract migration that lands before the release which stopped using the
@@ -214,11 +222,11 @@ async function main(): Promise<void> {
 		}
 	}
 
-	const needsWindow = breaking.length > 0;
+	const needsWindow = plan.windowReason !== null;
 	console.log(
 		needsWindow
-			? `  Maintenance window: YES — MAINTENANCE=1 while ${breaking.map((m) => m.name).join(", ")} runs`
-			: "  Maintenance window: no (nothing breaking)",
+			? `  Maintenance window: YES — ${plan.windowReason}`
+			: "  Maintenance window: no (nothing breaking, nothing new)",
 	);
 	if (dryRun) {
 		console.log("(dry run — nothing changed)");
@@ -237,14 +245,16 @@ async function main(): Promise<void> {
 		}
 
 		if (needsWindow) {
-			// Take the app down first: a breaking migration suits neither order,
-			// so everything happens behind the window.
+			// Take the app down first: a breaking migration suits neither order, and
+			// a new one can only be applied by the new code, so everything happens
+			// behind the window.
 			stage = "deploy";
 			deployWorker(true);
 
+			// The new code applies them, so wait until it is the one answering.
 			stage = "migrate-breaking";
-			run("npx", ["tsx", "bin/db.ts", "migrate", "--env", env, "--safe", "--only", "expand"]);
-			run("npx", ["tsx", "bin/db.ts", "migrate", "--env", env, "--safe", "--only", "breaking"]);
+			run("npx", ["tsx", "bin/db.ts", "migrate", "--env", env, "--safe", "--wait-for-deploy", "--only", "expand"]);
+			run("npx", ["tsx", "bin/db.ts", "migrate", "--env", env, "--safe", "--wait-for-deploy", "--only", "breaking"]);
 
 			stage = "deploy";
 			deployWorker(false);

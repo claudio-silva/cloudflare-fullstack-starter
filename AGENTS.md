@@ -255,7 +255,7 @@ Every migration declares **`compatibility`**, and that decides when the deploy r
 
 | Value | Use for | Runs |
 |---|---|---|
-| `expand` (default) | new tables, nullable columns, columns with a default, indexes | before the deploy |
+| `expand` (default) | new tables, nullable columns, columns with a default, indexes | before the deploy; in a short maintenance window when the release brings it (only the new code can apply it) |
 | `contract` | removing what an earlier release stopped using | after the deploy; **requires `safeSince`** |
 | `breaking` | anything that cannot work with the running version | inside a maintenance window |
 
@@ -308,7 +308,7 @@ const environment = c.env.ENVIRONMENT;  // from wrangler.toml
 - Only changed secrets are synced (tracked via hash file)
 
 **Deploys, versions and migrations** (details: `docs/DEPLOYMENT.md`):
-- Both deploy commands run pending DB migrations after `wrangler deploy` (through the Worker), so write migrations **additive and backward-compatible**: the new code serves traffic before the schema changes.
+- Both deploy commands run pending DB migrations through the Worker, ordered by each migration's `compatibility` (see *Writing migrations*); a release that brings migrations deploys in a short maintenance window, because only the new code can apply them.
 - The release version is `version` in `package.json` (git tag `vX.Y.Z` on `main`), exposed as `APP_VERSION` / `APP_COMMIT` (`src/shared/app-version.ts`) and in `GET /api/`.
 
 **CLI auth (`CLI_API_KEY`):**
