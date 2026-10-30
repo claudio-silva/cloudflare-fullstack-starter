@@ -21,7 +21,6 @@ import {
 	SidebarMenuSub,
 	SidebarMenuSubButton,
 	SidebarMenuSubItem,
-	SidebarRail,
 	useSidebar,
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
@@ -59,7 +58,6 @@ export function AdminSidebar() {
 					</SidebarMenuItem>
 				</SidebarMenu>
 			</SidebarFooter>
-			<SidebarRail />
 		</Sidebar>
 	);
 }
@@ -94,8 +92,8 @@ function TopLevelItem({ item, onNavigate }: { item: AdminNavItem; onNavigate: ()
 							<span>{item.title}</span>
 						</SidebarMenuButton>
 					</DropdownMenuTrigger>
-					{/* In the sidebar's colours, as part of it. */}
-					<DropdownMenuContent side="right" align="start" sideOffset={12} className="min-w-52 border-sidebar-border bg-sidebar text-sidebar-foreground">
+					{/* In the sidebar's colours, against its edge (the button ends 8px short of it). */}
+					<DropdownMenuContent side="right" align="start" sideOffset={8} className="min-w-52 border-sidebar-border bg-sidebar text-sidebar-foreground">
 						<DropdownMenuLabel className="font-bold">{item.title}</DropdownMenuLabel>
 						<DropdownMenuSeparator className="bg-sidebar-border" />
 						<PopupItems items={item.children} />
