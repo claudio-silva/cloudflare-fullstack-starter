@@ -10,7 +10,7 @@
  * later deploy keeps it, and the maintenance window finds the hostname there.
  */
 import { spawnSync } from "node:child_process";
-import { Resolver } from "node:dns/promises";
+import { lookup as systemLookup, Resolver } from "node:dns/promises";
 import { request } from "node:https";
 import type { LookupFunction } from "node:net";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -113,7 +113,7 @@ export type AttachOptions = {
 	report: DomainReporter;
 };
 
-type Zone = { id: string; name: string; status: string };
+type Zone = { id: string; name: string; status: string; name_servers: string[] };
 type WorkerDomain = { hostname: string; service: string; zone_id: string };
 
 /** The account's zone that holds `hostname`. */
@@ -134,20 +134,29 @@ async function findZone(token: string, accountId: string, hostname: string): Pro
 }
 
 /**
- * GET https://<hostname>/api/, the name resolved by public resolvers. Not by
- * the system's: asked before the record existed, it caches "no such host" for
- * as long as the zone says (often 30 minutes), long after the record is there.
+ * A resolver that asks the zone's own nameservers. Any caching resolver (the
+ * system's, the ISP's, 1.1.1.1) asked before the record existed keeps "no such
+ * host" for as long as the zone says (often 30 minutes), long after the record
+ * is there; the nameservers that hold the zone answer with what is there now,
+ * and remember nothing, so polling them leaves no such answer anywhere.
  */
-const publicDns = new Resolver();
-publicDns.setServers(["1.1.1.1", "8.8.8.8"]);
-const lookup: LookupFunction = (hostname, options, callback) => {
-	publicDns.resolve4(hostname).then(
-		(addresses) =>
-			options.all ? callback(null, addresses.map((address) => ({ address, family: 4 }))) : callback(null, addresses[0], 4),
-		(error: NodeJS.ErrnoException) => callback(error, ""),
-	);
-};
-function probe(hostname: string): Promise<{ status: number; body: string }> {
+async function authoritativeResolver(zone: Zone): Promise<Resolver> {
+	const servers = (await Promise.all(zone.name_servers.map((ns) => systemLookup(ns, { family: 4 }).then((a) => a.address, () => "")))).filter(Boolean);
+	if (servers.length === 0) throw new Error(`cannot resolve the nameservers of ${zone.name} (${zone.name_servers.join(", ")})`);
+	const resolver = new Resolver();
+	resolver.setServers(servers);
+	return resolver;
+}
+
+/** GET https://<hostname>/api/, the name resolved by `dns`. */
+function probe(hostname: string, dns: Resolver): Promise<{ status: number; body: string }> {
+	const lookup: LookupFunction = (name, options, callback) => {
+		dns.resolve4(name).then(
+			(addresses) =>
+				options.all ? callback(null, addresses.map((address) => ({ address, family: 4 }))) : callback(null, addresses[0], 4),
+			(error: NodeJS.ErrnoException) => callback(error, ""),
+		);
+	};
 	return new Promise((done, fail) => {
 		const req = request({ host: hostname, path: "/api/", lookup, timeout: 10_000 }, (res) => {
 			let body = "";
@@ -161,12 +170,13 @@ function probe(hostname: string): Promise<{ status: number; body: string }> {
 }
 
 /** Wait until https://<hostname>/api/ answers, which needs its DNS record and certificate. */
-async function waitUntilServing(hostname: string, report: DomainReporter, timeoutMs = 600_000): Promise<void> {
+async function waitUntilServing(hostname: string, zone: Zone, report: DomainReporter, timeoutMs = 600_000): Promise<void> {
+	const dns = await authoritativeResolver(zone);
 	const deadline = Date.now() + timeoutMs;
 	let last = "";
 	while (Date.now() < deadline) {
 		try {
-			const { status, body } = await probe(hostname);
+			const { status, body } = await probe(hostname, dns);
 			if (status === 200 && /"status"/.test(body)) {
 				report.ok(`https://${hostname} serves the Worker`);
 				return report.note("a machine that looked the name up before it existed may not see it for a few more minutes (cached \"not found\")");
@@ -220,7 +230,7 @@ export async function attachCustomDomain(o: AttachOptions): Promise<Zone> {
 			}
 		}
 	}
-	if (!dryRun) await waitUntilServing(hostname, report);
+	if (!dryRun) await waitUntilServing(hostname, zone, report);
 
 	const toml = readFileSync("wrangler.toml", "utf-8");
 	const updated = withCustomDomainRoute(toml, env, hostname);
