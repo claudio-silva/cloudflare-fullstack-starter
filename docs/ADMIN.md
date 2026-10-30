@@ -269,7 +269,7 @@ so that is the one of the latest sign-in. Countries are stored as ISO codes
 
 **Activity** (with the number of entries beside its name, when not zero) pages
 through the user's history in `login_events`
-(`GET /api/admin/users/:id/activity?p=&ps=&s=`), 10 a page:
+(`GET /api/admin/users/:id/activity?ofs=&c=&s=`), 10 a page:
 sign-ins with their method, failed attempts, sign-outs, and sessions that
 **expired** or were **revoked**, each ending with its length, and for a
 revocation by someone else, who. The columns sort like the list's. Newest first

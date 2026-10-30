@@ -4,7 +4,7 @@ import { app } from "../src/worker/index";
 import { pruneExpiredAuthRows } from "../src/worker/lib/expired-auth-rows";
 import { createDb } from "../src/worker/db";
 import { describeBrowser } from "../src/shared/admin-users";
-import { listParams, parseListQuery } from "../src/shared/admin-list";
+import { DEFAULT_PAGE_SIZE, MAX_LIST_ALL, MAX_LIST_COUNT, listParams, parseListQuery } from "../src/shared/admin-list";
 
 // The "test" environment stubs the session with a fixed user; the admin area
 // is about roles, so these run with real sign-ins ("local" keeps everything else as in dev).
@@ -74,18 +74,17 @@ describe("admin API", () => {
 		expect((await call(`/users/${id}`)).status).toBe(404);
 	});
 
-	it("lists with the admin lists' protocol: p, ps, q and s", async () => {
+	it("lists with the admin lists' protocol: ofs, c, q and s", async () => {
 		const { call } = await userWithRole("superadmin");
-		const page = async (query: string) => (await (await call(`/users?${query}`)).json()) as { users: { email: string }[]; total: number; page: number; pageSize: number };
-		const all = await page("ps=50");
-		expect(all.total).toBeGreaterThan(1);
-		const second = await page("p=2&ps=1");
-		expect(second).toMatchObject({ page: 2, pageSize: 1, total: all.total });
-		expect(second.users).toHaveLength(1);
-		expect(second.users[0].email).toBe(all.users[1].email);
-		const byEmail = (await page("s=email&ps=50")).users.map((u) => u.email);
+		const rows = async (query: string) => (await (await call(`/users?${query}`)).json()) as { users: { email: string }[]; total: number };
+		const all = await rows("c=200");
+		expect(all.total).toBeGreaterThan(2);
+		const window = await rows("ofs=1&c=2");
+		expect(window.total).toBe(all.total);
+		expect(window.users.map((u) => u.email)).toEqual(all.users.slice(1, 3).map((u) => u.email));
+		const byEmail = (await rows("s=email&c=200")).users.map((u) => u.email);
 		expect(byEmail).toEqual([...byEmail].sort());
-		expect((await page("s=-email&ps=50")).users.map((u) => u.email)).toEqual([...byEmail].reverse());
+		expect((await rows("s=-email&c=200")).users.map((u) => u.email)).toEqual([...byEmail].reverse());
 	});
 
 	it("a superadmin cannot demote, deactivate or delete themselves", async () => {
@@ -122,7 +121,7 @@ describe("admin API", () => {
 		expect(refused.status).toBeGreaterThanOrEqual(400);
 		// Sorted by status, a disabled user comes after the active ones ascending, and first descending.
 		const byStatus = async (dir: string) =>
-			((await (await call(`/users?s=${dir === "desc" ? "-" : ""}status&ps=100`)).json()) as { users: Row[] }).users.map((u) => u.status);
+			((await (await call(`/users?s=${dir === "desc" ? "-" : ""}status&c=200`)).json()) as { users: Row[] }).users.map((u) => u.status);
 		const asc = await byStatus("asc");
 		expect(asc.indexOf("active")).toBeLessThan(asc.indexOf("disabled"));
 		expect((await byStatus("desc"))[0]).toBe("disabled");
@@ -168,7 +167,7 @@ describe("admin API", () => {
 
 		// Sorted by idle time, users without a session come last in either direction.
 		for (const dir of ["asc", "desc"]) {
-			const users = ((await (await call(`/users?s=${dir === "desc" ? "-" : ""}idleSeconds&ps=100`)).json()) as { users: Row[] }).users;
+			const users = ((await (await call(`/users?s=${dir === "desc" ? "-" : ""}idleSeconds&c=200`)).json()) as { users: Row[] }).users;
 			const idle = users.map((u) => (u as Row & { idleSeconds: number | null }).idleSeconds);
 			expect(idle.slice(idle.findIndex((v) => v === null)).every((v) => v === null)).toBe(true);
 		}
@@ -233,14 +232,22 @@ describe("session endings in the log", () => {
 });
 
 describe("list query protocol", () => {
-	it("writes and reads the same state, checking the sort", () => {
-		const query = { page: 3, pageSize: 25, q: "smith", sort: "createdAt", dir: "desc" as const };
-		expect(listParams(query)).toEqual({ p: "3", ps: "25", q: "smith", s: "-createdAt" });
-		const params = new URLSearchParams(listParams(query));
-		expect(parseListQuery((name) => params.get(name) ?? undefined, { sortable: ["createdAt"] })).toEqual(query);
-		expect(parseListQuery(() => undefined, { sortable: ["name"], pageSize: 10 })).toEqual({ page: 1, pageSize: 10, q: "", sort: null, dir: "asc" });
-		const bad = new URLSearchParams("p=-4&ps=9999&s=password");
-		expect(parseListQuery((name) => bad.get(name) ?? undefined, { sortable: ["name"], maxPageSize: 50 })).toMatchObject({ page: 1, pageSize: 50, sort: null });
+	const parse = (query: string, options: { sortable: readonly string[]; allowAll?: boolean }) => {
+		const params = new URLSearchParams(query);
+		return parseListQuery((name) => params.get(name) ?? undefined, options);
+	};
+
+	it("writes and reads the same request, checking the sort", () => {
+		const request = { offset: 40, count: 40, q: "smith", sort: "createdAt", dir: "desc" as const };
+		expect(listParams(request)).toEqual({ ofs: "40", c: "40", q: "smith", s: "-createdAt" });
+		expect(parse(new URLSearchParams(listParams(request)).toString(), { sortable: ["createdAt"] })).toEqual(request);
+		expect(parse("", { sortable: ["name"] })).toEqual({ offset: 0, count: DEFAULT_PAGE_SIZE, q: "", sort: null, dir: "asc" });
+		expect(parse("ofs=-4&c=99999&s=password", { sortable: ["name"] })).toMatchObject({ offset: 0, count: MAX_LIST_COUNT, sort: null });
+	});
+
+	it("gives every row only to an endpoint that allows it", () => {
+		expect(parse("c=all", { sortable: [] }).count).toBe(DEFAULT_PAGE_SIZE);
+		expect(parse("c=all", { sortable: [], allowAll: true }).count).toBe(MAX_LIST_ALL);
 	});
 });
 

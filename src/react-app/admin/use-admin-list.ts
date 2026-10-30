@@ -1,6 +1,12 @@
 import { useCallback, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { LIST_PARAMS, formatSort, parseSort, type ListQuery } from "../../shared/admin-list";
+import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, formatSort, parseSort, type SortDir } from "../../shared/admin-list";
+
+/** Where a list is: page, page size, search and sort. */
+export type ListQuery = { page: number; pageSize: number; q: string; sort: string | null; dir: SortDir };
+
+/** Its parameters in the page's address. The requests speak in rows instead (src/shared/admin-list.ts). */
+const LIST_PARAMS = { page: "p", pageSize: "ps", q: "q", sort: "s" } as const;
 
 /** A list's state, and how to change it: what `useAdminList` returns. */
 export type AdminList = ListQuery & {
@@ -13,10 +19,10 @@ export type AdminList = ListQuery & {
  * it outside the table: to load the rows itself, to show it, or to change it
  * from a form of its own. Pass the result to `AdminTable` as `list`.
  *
- * `"url"` keeps it in the address under the protocol's names (`?p=2&q=smith&s=-createdAt`),
+ * `"url"` keeps it in the address (`?p=2&q=smith&s=-createdAt`),
  * `"local"` in the component. `ps` is in the address only when it is not `pageSize`.
  */
-export function useAdminList({ state = "url", pageSize = 20 }: { state?: "url" | "local"; pageSize?: number } = {}): AdminList {
+export function useAdminList({ state = "url", pageSize = DEFAULT_PAGE_SIZE }: { state?: "url" | "local"; pageSize?: number } = {}): AdminList {
 	const [searchParams, setSearchParams] = useSearchParams();
 	const [local, setLocal] = useState<Record<string, string>>({});
 
@@ -52,7 +58,7 @@ export function useAdminList({ state = "url", pageSize = 20 }: { state?: "url" |
 function read(from: (name: string) => string | null | undefined, pageSize: number): ListQuery {
 	return {
 		page: Math.max(1, Math.floor(Number(from(LIST_PARAMS.page))) || 1),
-		pageSize: Math.max(1, Math.floor(Number(from(LIST_PARAMS.pageSize))) || pageSize),
+		pageSize: Math.min(MAX_PAGE_SIZE, Math.max(1, Math.floor(Number(from(LIST_PARAMS.pageSize))) || pageSize)),
 		q: from(LIST_PARAMS.q) ?? "",
 		...parseSort(from(LIST_PARAMS.sort)),
 	};

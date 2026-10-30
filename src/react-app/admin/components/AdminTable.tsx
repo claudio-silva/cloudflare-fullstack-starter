@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { EllipsisVertical, ListChecks, RotateCw, Search, Trash2, X, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
@@ -22,7 +22,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Toggle } from "@/components/ui/toggle";
 import { http, isHandledHttpError } from "@/lib/http";
 import { cn } from "@/lib/utils";
-import { listParams, type ListQuery } from "../../../shared/admin-list";
+import { listParams, type ListRequest } from "../../../shared/admin-list";
+import { clientList } from "../client-list";
+import { adminConfig } from "../config";
+import { PageLoader, type LoadedRows, type PageCache } from "../page-loader";
 import { nextSort } from "../sort";
 import { useAdminList, type AdminList } from "../use-admin-list";
 import { ACTION_BUTTON, ORDINAL } from "../styles";
@@ -37,15 +40,21 @@ import { SortHeader } from "./SortHeader";
  *
  * Where the rows come from, from the simplest to the most open:
  *
- *  - `url`: the table asks `GET <url>?p=1&ps=20[&q=…][&s=-field]` and reads
+ *  - `url`: the table asks `GET <url>?ofs=0&c=40[&q=…][&s=-field]` and reads
  *    `{ items, total }` (src/shared/admin-list.ts); `params` adds parameters
  *    (an external filter form, say), `queryParams` replaces the standard ones;
- *  - `load`: any request, given the list's state;
+ *  - `load`: any request, given the rows wanted;
  *  - neither: the page passes `data` itself (a websocket, a store), and reads
  *    the state from `useAdminList`, which it hands to the table as `list`.
+ *
+ * Pages are worked out here: the table asks for rows, two pages at a time
+ * when it can, and one ahead of the page shown (page-loader.ts). With
+ * `fullData` it asks for every row once and searches, sorts and pages in the
+ * browser (client-list.ts).
  */
 
-export type { ListQuery } from "../../../shared/admin-list";
+export type { ListRequest } from "../../../shared/admin-list";
+export type { ListQuery } from "../use-admin-list";
 
 /** What a list endpoint returns by default. */
 export type ListResponse<T> = { items: T[]; total: number };
@@ -59,6 +68,12 @@ export type AdminColumn<T> = {
 	/** Sorts on the server: the heading cycles ascending, descending, none. */
 	sortable?: boolean;
 	sortKey?: string;
+	/** With `fullData`: what the browser sorts by. Defaults to the property `sortKey` or `id`. */
+	sortValue?: (row: T) => unknown;
+	/** With `fullData`: the text the search looks in. Defaults to the property `id`, when it is text or a number. */
+	searchValue?: (row: T) => unknown;
+	/** With `fullData`: `false` leaves the column out of the search. */
+	searchable?: boolean;
 	/** Fixed width in pixels, for content of a known size. Without it the column takes the room left. */
 	width?: number;
 	/** Hidden on screens narrower than this breakpoint. */
@@ -99,18 +114,30 @@ export type BulkAction<T> = {
 export type Confirmation = { title: ReactNode; description?: ReactNode; action?: string };
 
 export type AdminTableProps<T, D = ListResponse<T>> = {
-	/** The list endpoint, asked with the standard query (`p`, `ps`, `q`, `s`). */
+	/** The list endpoint, asked with the standard query (`ofs`, `c`, `q`, `s`). */
 	url?: string;
-	/** Added to every request's query, e.g. an external filter form's fields or the locale. A change loads again from page 1's state as it is. */
+	/** Added to every request's query, e.g. an external filter form's fields or the locale. A change loads the list again. */
 	params?: Record<string, string | undefined>;
 	/** Replaces the standard query parameters, for an endpoint that speaks another protocol. `params` are still added. */
-	queryParams?: (list: ListQuery) => Record<string, string>;
+	queryParams?: (request: ListRequest) => Record<string, string>;
 	/**
-	 * Replaces the request: loads a page for the list's state. Called again when
-	 * the state, `params` or `reloadKey` change. Without `url` and `load`, the
-	 * rows come from `data`.
+	 * Replaces the request: loads the rows asked for. Called as pages are
+	 * needed, and again when the search, sort, `params` or `reloadKey` change.
+	 * Without `url` and `load`, the rows come from `data`.
 	 */
-	load?: (list: ListQuery) => Promise<D>;
+	load?: (request: ListRequest) => Promise<D>;
+	/**
+	 * Loads every row once (`c=all`, which the endpoint must allow) and
+	 * searches, sorts and pages in the browser: for lists known to stay small
+	 * (up to `MAX_LIST_ALL` rows). With `data`, `data` holds every row.
+	 */
+	fullData?: boolean;
+	/** With `fullData`: which rows to show, e.g. from an external search form. Keep it stable (`useCallback`): a new one filters again. */
+	filter?: (row: T) => boolean;
+	/** Loads the page after the one shown (or before, going back) with it. Default: `adminConfig.table.prefetch`. */
+	prefetch?: boolean;
+	/** Pages kept for going back, `{ pages, ttl }`, or `false`. Default: `adminConfig.table.cache`. */
+	cache?: PageCache;
 	/** Rows loaded outside the table; `null` until there are some. Only when there is no `url` or `load`. */
 	data?: D | null;
 	/** With `data`: a load is under way, so the rows show dimmed. */
@@ -132,7 +159,7 @@ export type AdminTableProps<T, D = ListResponse<T>> = {
 	/** Identifies a row. Defaults to its `id`. */
 	rowKey?: (row: T) => string;
 	columns: AdminColumn<T>[];
-	/** Rows per page. Default 20. (With `list`, its own.) */
+	/** Rows per page. Default `DEFAULT_PAGE_SIZE` (src/shared/admin-list.ts). (With `list`, its own.) */
 	pageSize?: number;
 	/**
 	 * Where search, sort and page are kept. `"url"` (default): in the address,
@@ -143,12 +170,16 @@ export type AdminTableProps<T, D = ListResponse<T>> = {
 	state?: "url" | "local";
 	/** What a row is, for the count and the messages: `["user", "users"]`. Default `["record", "records"]`. */
 	noun?: [singular: string, plural: string];
-	/** A search box with this placeholder; the server gets the text as `q`. */
+	/** A search box with this placeholder; the server gets the text as `q` (with `fullData`, the browser searches). */
 	search?: string;
 	/** Text or markup in the toolbar, e.g. what the list contains. Shown beside the search box, or in its place. */
 	intro?: ReactNode;
 	/** The `#` column. Default true. */
 	ordinal?: boolean;
+	/** Every other row shaded. Default: `adminConfig.table.striped`. */
+	striped?: boolean;
+	/** `"compact"`: shorter rows. Default: `adminConfig.table.density`. */
+	density?: "normal" | "compact";
 	/** Where a click on a row leads. */
 	rowHref?: (row: T) => string;
 	/** What a click on a row does, when it is not a link. */
@@ -175,6 +206,11 @@ const ALIGN = { left: "", center: "text-center", right: "text-right" } as const;
 const CHECKBOX = "mx-auto block border-neutral-500 dark:border-neutral-400";
 /** As wide as the row-number column, with the content in the middle. */
 const NARROW = "w-[50px] min-w-[50px] max-w-[50px] px-0 text-center";
+/** Row colours from admin.css; the selected one wins over the stripe and the hover. */
+const ROW = "hover:bg-(--admin-table-row-hover) has-aria-expanded:bg-(--admin-table-row-hover) data-[state=selected]:bg-(--admin-table-row-selected)!";
+const STRIPE = "even:bg-(--admin-table-stripe)";
+/** Shorter rows: less padding in the body's cells. */
+const COMPACT = "[&_tbody_td]:py-1 [&_tbody_th]:py-1";
 /** The loading, empty and failed states: a panel of one height, with the message in the middle. */
 const PANEL_HEIGHT = "h-64";
 
@@ -185,10 +221,16 @@ export function AdminTable<T, D = ListResponse<T>>(props: AdminTableProps<T, D>)
 		url,
 		params,
 		columns,
+		fullData = false,
+		filter,
+		prefetch = adminConfig.table.prefetch,
+		cache = adminConfig.table.cache,
 		noun = ["record", "records"],
 		search: searchPlaceholder,
 		intro,
 		ordinal = true,
+		striped = adminConfig.table.striped,
+		density = adminConfig.table.density,
 		rowHref,
 		onRowClick,
 		rowActions,
@@ -218,9 +260,6 @@ export function AdminTable<T, D = ListResponse<T>>(props: AdminTableProps<T, D>)
 		if (q !== searchText.trim()) setSearchText(q);
 	}
 	const searchTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-	/** The last page loaded, with the state it was loaded for. */
-	const [loaded, setLoaded] = useState<{ data: D; page: number; pageSize: number } | null>(null);
-	const [loadFailed, setLoadFailed] = useState(false);
 	const [reloads, setReloads] = useState(0);
 	const [selecting, setSelecting] = useState(false);
 	const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set());
@@ -228,69 +267,91 @@ export function AdminTable<T, D = ListResponse<T>>(props: AdminTableProps<T, D>)
 	/** The open confirmation, and what it runs once confirmed. */
 	const [pending, setPending] = useState<{ confirm: Confirmation; destructive?: boolean; icon?: LucideIcon; run: () => Promise<void> } | null>(null);
 
-	// The latest functions, so a new one each render does not load again.
-	const loader = useRef({ load: props.load, queryParams: props.queryParams });
-	useEffect(() => {
-		loader.current = { load: props.load, queryParams: props.queryParams };
-	});
-
-	const paramsKey = JSON.stringify(params ?? {});
 	const plural = noun[1];
-	/** The request the current inputs make; the list is loading until the answer to it is in. */
-	const requestKey = JSON.stringify([url, paramsKey, page, pageSize, q, sort, dir, reloads, String(reloadKey)]);
-	const [settledKey, setSettledKey] = useState<string | null>(null);
+	const paramsKey = JSON.stringify(params ?? {});
+	const [loader] = useState(() => new PageLoader<T>());
+	const snapshot = useSyncExternalStore(loader.subscribe, loader.getSnapshot);
+	// Kept current every render, so a request made later (a page ahead) asks with the props of now.
 	useEffect(() => {
-		if (external) return;
-		let current = true;
-		const query: ListQuery = { page, pageSize, q, sort, dir };
-		const { load, queryParams } = loader.current;
-		const request = load
-			? load(query)
-			: (() => {
-					const search = new URLSearchParams(queryParams ? queryParams(query) : listParams(query));
-					for (const [key, value] of Object.entries(JSON.parse(paramsKey) as Record<string, string | undefined>)) {
-						if (value !== undefined) search.set(key, value);
-					}
-					return http(`${url}${url!.includes("?") ? "&" : "?"}${search}`).then((res) => res.json() as Promise<D>);
-				})();
-		// A failure has been shown by the HTTP layer; the list keeps what it had.
-		request
-			.then((next) => {
-				if (!current) return;
-				setLoaded({ data: next, page, pageSize });
-				setLoadFailed(false);
-				setSelected(new Set());
-			})
-			.catch((error: unknown) => {
-				if (!current) return;
-				setLoadFailed(true);
-				if (!isHandledHttpError(error)) toast.error(`The ${plural} could not be loaded.`);
-			})
-			.finally(() => current && setSettledKey(requestKey));
-		return () => {
-			current = false;
+		const fetchRows = (offset: number, count: number | "all"): Promise<LoadedRows<T>> => {
+			const request: ListRequest = fullData ? { offset: 0, count: "all", q: "", sort: null, dir: "asc" } : { offset, count, q, sort, dir };
+			const response = props.load
+				? props.load(request)
+				: (() => {
+						const search = new URLSearchParams(props.queryParams ? props.queryParams(request) : listParams(request));
+						for (const [key, value] of Object.entries(params ?? {})) if (value !== undefined) search.set(key, value);
+						return http(`${url}${url!.includes("?") ? "&" : "?"}${search}`).then((res) => res.json() as Promise<D>);
+					})();
+			return response.then(
+				(data) => ({ rows: rowsOf(data), total: totalOf(data) }),
+				(error: unknown) => {
+					// A failure has been shown by the HTTP layer; the list keeps what it had.
+					if (!isHandledHttpError(error)) toast.error(`The ${plural} could not be loaded.`);
+					throw error;
+				},
+			);
 		};
-	}, [external, url, paramsKey, page, pageSize, q, sort, dir, plural, requestKey]);
+		loader.configure({ pageSize, prefetch, cache, all: fullData, fetch: fetchRows });
+	});
+	/** What, changed, makes the loaded rows useless: with `fullData`, only what reaches the server. */
+	const listKey = JSON.stringify(fullData ? [url, paramsKey, reloads, String(reloadKey)] : [url, paramsKey, q, sort, dir, pageSize, reloads, String(reloadKey)]);
+	useEffect(() => {
+		if (!external) loader.show(page, listKey);
+	}, [external, loader, page, listKey]);
 
-	const shown = external ? (props.data ? { data: props.data, page, pageSize } : null) : loaded;
-	const loading = external ? Boolean(props.loading) || !props.data : settledKey !== requestKey;
-	const failed = external ? Boolean(props.failed) : loadFailed;
+	/** Every row, when the browser does the work. */
+	const allRows = fullData ? (external ? (props.data ? rowsOf(props.data) : null) : snapshot.rows) : null;
+	const worked = useMemo(() => (allRows ? clientList(allRows, { columns, filter, q, sort, dir }) : null), [allRows, columns, filter, q, sort, dir]);
+
+	let rows: T[] | null;
+	let total: number | null;
+	let shownPage: number;
+	if (worked) {
+		rows = worked.slice((page - 1) * pageSize, page * pageSize);
+		total = worked.length;
+		shownPage = page;
+	} else if (external) {
+		rows = !fullData && props.data ? rowsOf(props.data) : null;
+		total = !fullData && props.data ? totalOf(props.data) : null;
+		shownPage = page;
+	} else {
+		rows = fullData ? null : snapshot.rows;
+		total = snapshot.total;
+		shownPage = snapshot.page ?? page;
+	}
+	const loading = external ? Boolean(props.loading) || !props.data : snapshot.loading;
+	const failed = external ? Boolean(props.failed) : snapshot.failed;
+	const shown = rows !== null;
+	const visible = rows ?? [];
+	const pages = Math.max(1, Math.ceil((total ?? 0) / pageSize));
+	const firstOrdinal = (shownPage - 1) * pageSize + 1;
+
+	// A page past the end (the last rows were deleted, a shorter search): go to the last one.
+	useEffect(() => {
+		if (shown && !loading && total !== null && page > pages) list.update({ page: pages });
+	}, [shown, loading, total, page, pages, list]);
+
 	const reload = () => (external ? props.onReload?.() : setReloads((n) => n + 1));
-	const rows = shown ? rowsOf(shown.data) : [];
-	const total = shown ? totalOf(shown.data) : 0;
-	const pages = Math.max(1, Math.ceil(total / pageSize));
-	const firstOrdinal = shown ? (shown.page - 1) * shown.pageSize + 1 : 1;
-	/** Only rows on screen: rows that went away (pushed data, a reload) are no longer selected. */
-	const selectedRows = rows.filter((r) => selected.has(keyOf(r)));
+	/** Only rows on screen: rows that went away (another page, pushed data) are no longer selected. */
+	const selectedRows = visible.filter((r) => selected.has(keyOf(r)));
 
 	const onSearch = (value: string) => {
 		setSearchText(value);
 		clearTimeout(searchTimer.current);
 		// Search as the user types, once they pause.
-		searchTimer.current = setTimeout(() => list.update({ q: value.trim() }), 300);
+		searchTimer.current = setTimeout(() => {
+			list.update({ q: value.trim() });
+			setSelected(new Set());
+		}, 300);
 	};
-	const onSort = (field: string) => list.update(nextSort({ sort, dir }, field));
-	const onPage = (n: number) => list.update({ page: n });
+	const onSort = (field: string) => {
+		list.update(nextSort({ sort, dir }, field));
+		setSelected(new Set());
+	};
+	const onPage = (n: number) => {
+		list.update({ page: n });
+		setSelected(new Set());
+	};
 
 	// Deleting is the common bulk action, so it is built in.
 	const deleteRows = deletable
@@ -345,7 +406,7 @@ export function AdminTable<T, D = ListResponse<T>>(props: AdminTableProps<T, D>)
 		else void go();
 	};
 
-	const allSelected = rows.length > 0 && selectedRows.length === rows.length;
+	const allSelected = visible.length > 0 && selectedRows.length === visible.length;
 	const toggleRow = (id: string) =>
 		setSelected((prev) => {
 			const next = new Set(prev);
@@ -417,7 +478,7 @@ export function AdminTable<T, D = ListResponse<T>>(props: AdminTableProps<T, D>)
 									{action.label}
 								</Button>
 							))}
-						{shown && (
+						{shown && total !== null && (
 							<span className="text-sm text-muted-foreground">
 								{selecting && selectedRows.length > 0 ? `${selectedRows.length} selected of ` : ""}
 								{total} {total === 1 ? noun[0] : noun[1]}
@@ -426,7 +487,7 @@ export function AdminTable<T, D = ListResponse<T>>(props: AdminTableProps<T, D>)
 					</div>
 				</div>
 				<CardContent className="px-0">
-					<Table className="table-fixed">
+					<Table className={cn("table-fixed", density === "compact" && COMPACT)}>
 						<TableHeader className="bg-(--admin-table-head)">
 							<TableRow>
 								{ordinal && <TableHead className={`${ORDINAL} font-bold`}>#</TableHead>}
@@ -435,8 +496,8 @@ export function AdminTable<T, D = ListResponse<T>>(props: AdminTableProps<T, D>)
 										<Checkbox
 											className={CHECKBOX}
 											checked={allSelected ? true : selectedRows.length > 0 ? "indeterminate" : false}
-											onCheckedChange={() => setSelected(allSelected ? new Set() : new Set(rows.map(keyOf)))}
-											disabled={rows.length === 0}
+											onCheckedChange={() => setSelected(allSelected ? new Set() : new Set(visible.map(keyOf)))}
+											disabled={visible.length === 0}
 											aria-label={`Select all ${noun[1]}`}
 										/>
 									</TableHead>
@@ -477,14 +538,14 @@ export function AdminTable<T, D = ListResponse<T>>(props: AdminTableProps<T, D>)
 											</span>
 										),
 									)
-								: rows.length === 0
+								: visible.length === 0
 									? panel(emptyMessage)
-									: rows.map((row, i) => {
+									: visible.map((row, i) => {
 											const id = keyOf(row);
 											return (
 												<TableRow
 													key={id}
-													className={cn((clickable || selecting) && "cursor-pointer")}
+													className={cn(ROW, striped && STRIPE, (clickable || selecting) && "cursor-pointer")}
 													data-state={selected.has(id) ? "selected" : undefined}
 													onClick={clickable || selecting ? () => onRow(row) : undefined}
 												>

@@ -20,6 +20,9 @@
 	--admin-toolbar: #f4f4f4; /* a list's search bar */
 	--admin-table-head: #fafafa;
 	--admin-table-foot: #f6f6f6; /* a list's pagination */
+	--admin-table-stripe: #f7f7f7; /* every other row, in a striped list */
+	--admin-table-row-hover: #efefef;
+	--admin-table-row-selected: #e6e6e6; /* over the stripe and the hover */
 }
 
 /* One width for the action buttons (components/actions), like ACTION_BUTTON in styles.ts. */
@@ -43,4 +46,7 @@
 	--admin-toolbar: #161616;
 	--admin-table-head: #131313;
 	--admin-table-foot: #141414;
+	--admin-table-stripe: #171717;
+	--admin-table-row-hover: #1f1f1f;
+	--admin-table-row-selected: #282828;
 }
