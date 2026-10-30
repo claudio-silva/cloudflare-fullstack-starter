@@ -89,7 +89,7 @@ function TopLevelItem({ item, onNavigate }: { item: AdminNavItem; onNavigate: ()
 			<SidebarMenuItem>
 				<DropdownMenu modal={false}>
 					<DropdownMenuTrigger asChild>
-						<SidebarMenuButton isActive={isActive(item, pathname)} className="font-bold data-[active=true]:bg-(--admin-sidebar-active) data-[state=open]:bg-sidebar-accent">
+						<SidebarMenuButton tooltip={item.title} isActive={isActive(item, pathname)} className="font-bold data-[active=true]:bg-(--admin-sidebar-active) data-[state=open]:bg-sidebar-accent">
 							{Icon && <Icon />}
 							<span>{item.title}</span>
 						</SidebarMenuButton>
