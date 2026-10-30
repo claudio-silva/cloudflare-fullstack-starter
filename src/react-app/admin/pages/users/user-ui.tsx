@@ -43,7 +43,20 @@ export function SignInMethods({ methods }: { methods: string[] }) {
 }
 
 /** The picture an OAuth provider gave, else the initials. */
-export function UserAvatar({ name, email, image, className }: { name: string | null; email: string; image?: string | null; className?: string }) {
+export function UserAvatar({
+	name,
+	email,
+	image,
+	className,
+	fallbackClassName,
+}: {
+	name: string | null;
+	email: string;
+	image?: string | null;
+	className?: string;
+	/** Colours of the initials when there is no picture. */
+	fallbackClassName?: string;
+}) {
 	const initials = (name || email)
 		.split(/\s+/)
 		.map((part) => part[0])
@@ -53,7 +66,7 @@ export function UserAvatar({ name, email, image, className }: { name: string | n
 	return (
 		<Avatar className={cn("size-8", className)}>
 			{image && <AvatarImage src={image} alt="" referrerPolicy="no-referrer" />}
-			<AvatarFallback className="bg-primary/10 text-xs font-medium text-primary">{initials}</AvatarFallback>
+			<AvatarFallback className={cn("bg-primary/10 text-xs font-medium text-primary", fallbackClassName)}>{initials}</AvatarFallback>
 		</Avatar>
 	);
 }

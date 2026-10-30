@@ -376,7 +376,7 @@ export function UserForm() {
 								title={
 									<div className="space-y-3 py-2">
 										<div className="flex items-center gap-3">
-											<UserAvatar name={user.name} email={user.email} image={user.image} className="size-12 bg-background" />
+											<UserAvatar name={user.name} email={user.email} image={user.image} className="size-12" fallbackClassName="bg-primary text-sm text-primary-foreground" />
 											<div className="min-w-0">
 												<div className="truncate font-medium">{user.name || "—"}</div>
 												<div className="truncate text-sm text-muted-foreground">{user.email}</div>

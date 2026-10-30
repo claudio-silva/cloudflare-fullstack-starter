@@ -259,7 +259,7 @@ export function Profile() {
 									<div className="flex items-center gap-3">
 										<Avatar className="size-12">
 											{user.image && <AvatarImage src={user.image} alt="" referrerPolicy="no-referrer" />}
-											<AvatarFallback className="bg-background text-sm font-medium text-primary">{initials}</AvatarFallback>
+											<AvatarFallback className="bg-primary text-sm font-medium text-primary-foreground">{initials}</AvatarFallback>
 										</Avatar>
 										<div className="min-w-0">
 											<div className="truncate font-medium">{user.name || "—"}</div>
