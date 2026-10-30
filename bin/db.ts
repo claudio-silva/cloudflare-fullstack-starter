@@ -476,7 +476,8 @@ Reads the login_events table, which records successful and failed sign-ins. The 
 cannot answer this: it holds only sessions that still exist, so it forgets expired logins and
 never saw the failures.
 
-IP addresses are personal data and are pruned on a schedule (AUTH_LOG_RETENTION_DAYS, default 90).
+IP addresses are personal data. The log is kept unless AUTH_LOG_RETENTION_DAYS is set (the cron then
+deletes older rows; per-user totals in user_stats stay).
 
 Examples:
   db logins --env production

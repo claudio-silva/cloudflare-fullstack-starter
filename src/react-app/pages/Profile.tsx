@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { authClient } from "@/lib/auth/client";
 import {
@@ -11,13 +11,12 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Panel } from "@/components/Panel";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { Save, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
@@ -36,6 +35,15 @@ export function Profile() {
 	const [confirmPassword, setConfirmPassword] = useState("");
 	const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 	const dateOf = (value: Date | string) => new Date(value).toLocaleDateString();
+	// How this account signs in: one signed up with Google has no password to change.
+	const [providers, setProviders] = useState<string[] | null>(null);
+	useEffect(() => {
+		authClient
+			.listAccounts()
+			.then((result) => setProviders(result.data?.map((a) => a.providerId) ?? []))
+			.catch(() => setProviders([]));
+	}, []);
+	const hasPassword = providers === null || providers.includes("credential");
 
 	const nameChanged = name !== (session?.user.name ?? "");
 	const wantsPassword = Boolean(currentPassword || newPassword || confirmPassword);
@@ -172,12 +180,7 @@ export function Profile() {
 
 				<div className="grid items-start gap-6 lg:grid-cols-3">
 					<div className="space-y-6 lg:col-span-2">
-						<Card>
-							<CardHeader>
-								<CardTitle>Details</CardTitle>
-								<CardDescription>How you appear in the app.</CardDescription>
-							</CardHeader>
-							<CardContent>
+						<Panel title="Details" description="How you appear in the app.">
 								<div className="grid items-start gap-5 sm:grid-cols-2">
 									<div className="grid content-start gap-2">
 										<Label htmlFor="name">Name</Label>
@@ -188,15 +191,10 @@ export function Profile() {
 										<Input id="email" value={user.email} disabled readOnly />
 									</div>
 								</div>
-							</CardContent>
-						</Card>
+						</Panel>
 
-						<Card>
-							<CardHeader>
-								<CardTitle>Password</CardTitle>
-								<CardDescription>Leave empty to keep the current one. Changing it signs you out of every other device.</CardDescription>
-							</CardHeader>
-							<CardContent>
+						{hasPassword ? (
+						<Panel title="Password" description="Leave empty to keep the current one. Changing it signs you out of every other device.">
 								<div className="grid items-start gap-5 sm:grid-cols-2">
 									<div className="grid content-start gap-2 sm:col-span-2 sm:max-w-[calc(50%-0.625rem)]">
 										<Label htmlFor="currentPassword">Current password</Label>
@@ -233,8 +231,13 @@ export function Profile() {
 										/>
 									</div>
 								</div>
-							</CardContent>
-						</Card>
+						</Panel>
+						) : (
+							<Panel
+								title="Password"
+								description={`You sign in with ${providers!.map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(" or ")}, so you have no password. To also sign in with your email and a password, use "Forgot password" on the sign-in page: the link it sends lets you set one.`}
+							/>
+						)}
 
 						<div className="flex justify-end gap-2">
 							<Button variant="outline" onClick={handleCancel} disabled={saving} className="w-40">
@@ -249,46 +252,44 @@ export function Profile() {
 					</div>
 
 					<div className="space-y-6">
-						<Card>
-							<CardContent className="space-y-5">
-								<div className="flex items-center gap-3">
-									<Avatar className="size-12">
-										<AvatarFallback className="bg-primary/10 text-sm font-medium text-primary">{initials}</AvatarFallback>
-									</Avatar>
-									<div className="min-w-0">
-										<div className="truncate font-medium">{user.name || "—"}</div>
-										<div className="truncate text-sm text-muted-foreground">{user.email}</div>
+						<Panel
+							tone="soft"
+							title={
+								<div className="space-y-3 py-2">
+									<div className="flex items-center gap-3">
+										<Avatar className="size-12">
+											{user.image && <AvatarImage src={user.image} alt="" referrerPolicy="no-referrer" />}
+											<AvatarFallback className="bg-background text-sm font-medium text-primary">{initials}</AvatarFallback>
+										</Avatar>
+										<div className="min-w-0">
+											<div className="truncate font-medium">{user.name || "—"}</div>
+											<div className="truncate text-sm text-muted-foreground">{user.email}</div>
+										</div>
 									</div>
+									{user.role && (
+										<div className="flex flex-wrap gap-2">
+											<Badge variant="outline" className="bg-background capitalize">
+												{user.role}
+											</Badge>
+										</div>
+									)}
 								</div>
-								{user.role && (
-									<div className="flex flex-wrap gap-2">
-										<Badge variant="outline" className="capitalize">
-											{user.role}
-										</Badge>
-									</div>
-								)}
-								<Separator />
+							}
+						>
 								<dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
 									<dt className="text-muted-foreground">Member since</dt>
 									<dd className="text-right">{dateOf(user.createdAt)}</dd>
 									<dt className="text-muted-foreground">Updated</dt>
 									<dd className="text-right">{dateOf(user.updatedAt)}</dd>
 								</dl>
-							</CardContent>
-						</Card>
+						</Panel>
 
-						<Card className="border-destructive/30">
-							<CardHeader>
-								<CardTitle>Delete account</CardTitle>
-								<CardDescription>Removes your account and everything attached to it. This cannot be undone.</CardDescription>
-							</CardHeader>
-							<CardContent>
+						<Panel tone="danger" title="Delete account" description="Removes your account and everything attached to it. This cannot be undone.">
 								<Button variant="destructive" onClick={() => setShowDeleteConfirm(true)} disabled={isDeletingAccount} className="w-40">
 									{isDeletingAccount ? <Spinner /> : <Trash2 />}
 									Delete account
 								</Button>
-							</CardContent>
-						</Card>
+						</Panel>
 					</div>
 				</div>
 			</div>

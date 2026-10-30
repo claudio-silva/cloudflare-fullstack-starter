@@ -28,7 +28,7 @@ import { SortHeader } from "../../components/SortHeader";
 import { AdminPage } from "../../components/AdminPage";
 import { PageBar } from "../../components/PageBar";
 import { ACTION_BUTTON, ORDINAL } from "../../styles";
-import { formatDate, formatDateTime, formatIdle } from "./format";
+import { formatDate, formatDateTime, formatDuration, formatIdle } from "./format";
 import { RoleBadge, StatusBadge, UserAvatar } from "./user-ui";
 
 const PAGE_SIZE = 20;
@@ -40,6 +40,7 @@ const ROLE_COL = "w-[110px] min-w-[110px] whitespace-nowrap";
 const STATUS_COL = "hidden w-[110px] min-w-[110px] whitespace-nowrap sm:table-cell";
 const SIGN_IN_COL = "hidden w-[150px] min-w-[150px] whitespace-nowrap lg:table-cell";
 const IDLE_COL = "hidden w-[100px] min-w-[100px] whitespace-nowrap lg:table-cell";
+const USAGE_COL = "hidden w-[110px] min-w-[110px] whitespace-nowrap xl:table-cell";
 const CREATED_COL = "hidden w-[90px] min-w-[90px] whitespace-nowrap md:table-cell";
 /** As wide as the row-number column, with the box in the middle. */
 const SELECT_COL = "w-[50px] min-w-[50px] max-w-[50px] px-0";
@@ -255,6 +256,11 @@ export function UserList() {
 											Idle
 										</SortHeader>
 									</TableHead>
+									<TableHead className={USAGE_COL}>
+										<SortHeader field="usageSeconds" {...sortProps}>
+											Usage
+										</SortHeader>
+									</TableHead>
 									<TableHead className={CREATED_COL}>
 										<SortHeader field="createdAt" {...sortProps}>
 											Created
@@ -287,7 +293,7 @@ export function UserList() {
 												)}
 												<TableCell>
 													<div className="flex items-center gap-3">
-														<UserAvatar name={user.name} email={user.email} />
+														<UserAvatar name={user.name} email={user.email} image={user.image} />
 														<div className="min-w-0">
 															<div className="truncate font-medium">{user.name || user.email}</div>
 															{user.name && <div className="truncate text-xs text-muted-foreground">{user.email}</div>}
@@ -302,6 +308,7 @@ export function UserList() {
 												</TableCell>
 												<TableCell className={`${SIGN_IN_COL} text-muted-foreground`}>{formatDateTime(user.lastSignInAt)}</TableCell>
 												<TableCell className={`${IDLE_COL} text-muted-foreground`}>{formatIdle(user.idleSeconds)}</TableCell>
+												<TableCell className={`${USAGE_COL} text-muted-foreground`}>{formatDuration(user.usageSeconds)}</TableCell>
 												<TableCell className={`${CREATED_COL} text-muted-foreground`}>{formatDate(user.createdAt)}</TableCell>
 												<TableCell className={MENU_COL} onClick={(e) => e.stopPropagation()}>
 													<DropdownMenu>
@@ -346,6 +353,9 @@ export function UserList() {
 													<Skeleton className="h-4 w-24" />
 												</TableCell>
 												<TableCell className={IDLE_COL}>
+													<Skeleton className="h-4 w-12" />
+												</TableCell>
+												<TableCell className={USAGE_COL}>
 													<Skeleton className="h-4 w-12" />
 												</TableCell>
 												<TableCell className={CREATED_COL}>

@@ -120,6 +120,11 @@ Action buttons (Save, New, Cancel, Delete, Back) have icons and one width,
 `ACTION_BUTTON` in `styles.ts`. While saving, a spinner takes the place of the
 Save icon.
 
+Two things here are app-wide rather than the area's: outline buttons (Cancel,
+Back, Select) are a light grey, `--button-outline` and `--button-outline-hover`
+in `src/react-app/index.css`, and sections are `Panel`s with a coloured header
+band (see [Panels](#panels)). Both stay if the area is removed.
+
 ## Adding a page
 
 1. Add the page under `src/react-app/admin/pages/` and wrap its content in
@@ -164,52 +169,115 @@ for the selected rows. Saving the form returns to the list.
 
 Rules the API enforces:
 
-- A superadmin cannot change their own role, deactivate themselves or delete
+- A superadmin cannot change their own role, disable themselves or delete
   themselves here (their profile page deletes their account).
-- The last user who can open the admin area cannot be demoted or deleted.
-- Setting a password, lowering a role or deactivating signs the user out
+- The last user who can open the admin area cannot be demoted, disabled or deleted.
+- Setting a password, lowering a role or disabling signs the user out
   everywhere.
 - In [demo mode](MECHANISMS.md#demo-mode), every write is refused, as everywhere else.
 
-"Active" is `emailVerified`, the same flag `npm run auth activate-user` sets.
-While email verification is required, an unverified user cannot sign in.
+### Enabled and Verified
+
+Two separate switches:
+
+- **Enabled** (`users.disabled`, migration 0007) decides whether the user can
+  sign in at all. A disabled account is refused at sign-in with a message
+  (password) or gets no session (Google, email links), and disabling ends its
+  sessions.
+- **Verified** is Better Auth's `emailVerified`: the address is confirmed, by
+  the emailed link, by Google, or by an admin here (or `npm run auth
+  activate-user`). While email verification is required, an unverified user
+  cannot sign in either.
+
+### Accounts that sign in with Google
+
+Nothing in the form assumes a password. The panel lists the sign-in methods
+(**Password**, **Google**); the avatar is the picture Google gave
+(`users.image`); the Verified switch says that Google confirms the address.
+For an account with no password, the Password panel says so, and setting one
+there adds email-and-password sign-in beside Google (`setPassword()` creates
+the credential account). On their own profile page, such users are pointed to
+"Forgot password", whose link does the same. The Activity tab shows how each
+sign-in authenticated.
 
 ### Status
 
 The list's **Status** column says what the user is doing now, from their
-sessions (`userStatus()` in `src/shared/admin-users.ts`):
+sessions and the two switches (`userStatus()` in `src/shared/admin-users.ts`):
 
 | Status | When |
 |---|---|
 | Active (green dot) | in session, last seen less than 5 minutes ago |
 | Idle (grey dot) | in session, last seen 5 minutes ago or more |
-| Disabled (red dot) | not `emailVerified`; wins over the other two |
+| Unverified (amber dot) | no session, and the address is not confirmed |
+| Disabled (red dot) | not enabled; wins over everything else |
 | — (no pill) | no live session |
 
-The column sorts too (active, idle, disabled, then those with no session), as do **Last sign-in** and **Idle**. Both come from the sessions and the log, not from a column, so those sorts are done in the Worker over everyone who matches the search, then paged. Empty values ("—": no session, no sign-in yet) always sort last, in either direction.
+### Columns and sorting
 
-Every sortable heading cycles through three states: ascending, descending, and no sort (back to newest first, with no arrow). The **Idle** column is the time since the user's latest session was used.
+Besides name, role and creation date, the list shows **Status**, **Last
+sign-in**, **Idle** (time since the latest session was used) and **Usage**
+(total time in session). Every one of them sorts, in SQL: the query joins
+`users` to its live sessions and to `user_stats`, so a sort over thousands of
+users is still one query and one page. Status sorts active, idle, unverified,
+disabled. Empty values ("—") always come last, in either direction, and every
+heading cycles through ascending, descending and no sort (newest first). A page
+holds at most 50 users: D1 binds at most 100 parameters per query.
 
-The Activity tab's **Browser** column is `describeBrowser()` (`src/shared/admin-users.ts`), a small User-Agent reading ("Chrome · Desktop"; Mobile and Tablet too). It is deliberately not a library or a fingerprint: an iPad in desktop mode reports itself as a Mac. If you need exact devices, record what the page knows (`navigator.userAgentData`, `maxTouchPoints`) in a header of the sign-in request and store it in `login_events`.
+Usage is the sum of every session's length, kept in `user_stats` as each
+session ends, plus the open ones so far: from sign-in to sign-out, or to the
+last use when the session expired or was revoked (see
+[Sign-in log](MECHANISMS.md#sign-in-log)). Sessions open at the same time on
+two devices both count.
 
-Sessions expire after 24 hours without use (`session.expiresIn` in `middleware/auth.ts`); each use, at most once a minute, pushes the expiry a day ahead, so someone working in the app stays signed in. An absolute 24 hours from sign-in would need `disableSessionRefresh`, which would also stop "last seen" from updating.
-
-"Last seen" is the latest `sessions.updatedAt` of the user's unexpired sessions.
-Better Auth touches it at most once per `session.updateAge`, which the starter
-sets to 60 seconds (`middleware/auth.ts`), so idle time is accurate to about a
-minute, at the price of one small write per active session per minute.
+Sessions expire after 24 hours without use (`session.expiresIn` in
+`middleware/auth.ts`); each use, at most once a minute, pushes the expiry a day
+ahead, so someone working in the app stays signed in. An absolute 24 hours from
+sign-in would need `disableSessionRefresh`, which would also stop "last seen"
+from updating. "Last seen" is the latest `sessions.updatedAt` of the user's
+unexpired sessions, accurate to about a minute (`session.updateAge` is 60
+seconds), at the price of one small write per active session per minute.
 
 ### The user page
 
-Two tabs. **Profile** has the form (the password is typed twice) and a panel
-with the status, in-session flag, idle time, last sign-in and last sign-out.
-The panel also shows the IP address and country of the session used last while the user is in session, and **Sign out everywhere** ends every session at once (`POST /api/admin/users/:id/sign-out`; each is logged as revoked). The IP comes from the session; `sessions` keeps no country, so that is the one of the latest sign-in. Countries are stored as ISO codes (Cloudflare's `cf.country`, empty locally) and shown by name through `countryName()` (`lib/countries.ts`), which uses the browser's `Intl.DisplayNames` in the app's language (`getLocale()` / `setLocale()` in `lib/i18n.ts`), so a translation needs nothing more.
+Two tabs. **Profile** has the form (the password is typed twice) and a panel:
+a header with the avatar, name, role and status, then the dates, sign-in
+methods, last sign-in and sign-out, number of sign-ins (and failed ones), time
+in session and, while the user is in session, the idle time and the IP address
+and country of the session used last. **Sign out everywhere** ends every
+session at once (`POST /api/admin/users/:id/sign-out`; each is logged as
+revoked, by you). The IP comes from the session; `sessions` keeps no country,
+so that is the one of the latest sign-in. Countries are stored as ISO codes
+(Cloudflare's `cf.country`, empty locally) and shown by name through
+`countryName()` (`lib/countries.ts`), which uses the browser's
+`Intl.DisplayNames` in the app's language (`getLocale()` / `setLocale()` in
+`lib/i18n.ts`), so a translation needs nothing more.
 
-**Activity** (with the number of entries beside its name, when not zero) pages through the sign-ins, failed attempts, sign-outs and sessions that ended
-without one (**Session expired**, **Session revoked**) from
-`login_events` (`GET /api/admin/users/:id/activity?page=&pageSize=`), 10 a
-page, in a table styled like the user list; they are pruned after `AUTH_LOG_RETENTION_DAYS`. Sign-outs are
-recorded since migration `0006_login_event_kind`; earlier rows are sign-ins. A session is recorded as expired when Better Auth finds it past its expiry or when the daily cron removes it (dated at the expiry), and as revoked when a password or role change, an admin, the CLI or "sign out of other devices" ends it (`recordSessionEnds()` in `lib/login-log.ts`); both events carry the address and browser of the session itself. Deleting a user adds a `user-deleted` row (id and email of the account, address and browser of whoever deleted it); it never shows in these lists, because the user is gone.
+**Activity** (with the number of entries beside its name, when not zero) pages
+through the user's history in `login_events`
+(`GET /api/admin/users/:id/activity?page=&pageSize=&sort=&dir=`), 10 a page:
+sign-ins with their method, failed attempts, sign-outs, and sessions that
+**expired** or were **revoked**, each ending with its length, and for a
+revocation by someone else, who. The columns sort like the list's. Newest first
+is a page of an indexed query; other sorts read the user's history, because the
+browser and the country name are worked out when shown. Deleting a user adds a
+`user-deleted` row with who deleted them; it never shows here, because the user
+is gone.
+
+The **Browser** column is `describeBrowser()` (`src/shared/admin-users.ts`), a
+small User-Agent reading ("Chrome · Desktop"; Mobile and Tablet too). It is
+deliberately not a library or a fingerprint: an iPad in desktop mode reports
+itself as a Mac. If you need exact devices, record what the page knows
+(`navigator.userAgentData`, `maxTouchPoints`) in a header of the sign-in
+request and store it in `login_events`.
+
+### Panels
+
+Sections are `Panel`s (`src/react-app/components/Panel.tsx`, shared with the
+profile page): a `Card` with a coloured header band, `strong` (dark) for a
+title, `soft` (light) for a summary like the user's, `danger` for deletion. The
+colours are theme variables in `src/react-app/index.css` (`--panel-header*`),
+next to `--button-outline*`, the light grey of outline buttons.
 
 ## Removing it
 

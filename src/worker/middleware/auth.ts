@@ -1,6 +1,6 @@
 import { betterAuth } from "better-auth";
 import bcrypt from "bcryptjs";
-import { recordSessionEnds } from "../lib/login-log";
+import { recordSessionEnds, recordSignIn, requestOrigin, signInMethod } from "../lib/login-log";
 import { createDb, databaseKind } from "../db";
 import type { AppContext, AppUser } from "../types/context";
 import { createEmailSender, type EmailSender } from "../adapters/email";
@@ -40,6 +40,19 @@ function getAuthEmailSender(c: AppContext, environment: Environment, authEmailsE
 		}
 
 		throw error;
+	}
+}
+
+/**
+ * Lets a log write finish after the response (it never throws: see
+ * lib/login-log.ts). Without an ExecutionContext (tests) it is awaited, so the
+ * log is not quietly incomplete there.
+ */
+async function inBackground(c: AppContext, write: Promise<void>): Promise<void> {
+	try {
+		c.executionCtx.waitUntil(write);
+	} catch {
+		await write;
 	}
 }
 
@@ -118,14 +131,28 @@ export function createAuth(c: AppContext) {
 			// leave it a day stale; a minute costs one small write per active session.
 			updateAge: 60,
 		},
-		// Better Auth deletes an expired session when it is looked up again, which
-		// the cron cannot see afterwards: record it here (see lib/login-log.ts).
+		// The sign-in log follows the sessions (lib/login-log.ts): a disabled
+		// account gets none; a session created by a sign-in is recorded with how it
+		// authenticated; and Better Auth deletes an expired session when it is looked
+		// up again, which the cron cannot see afterwards.
 		databaseHooks: {
 			session: {
+				create: {
+					before: async (session) => {
+						// Password sign-in is refused earlier, with a message (index.ts);
+						// this covers every other way in (OAuth, email links).
+						const user = await db.selectFrom("users").select("disabled").where("id", "=", session.userId).executeTakeFirst();
+						if (user && Boolean(user.disabled)) return false;
+					},
+					after: async (session, context) => {
+						const method = signInMethod(context?.path, context?.params as Record<string, string> | undefined);
+						if (method) await inBackground(c, recordSignIn(db, session, method, requestOrigin(c)));
+					},
+				},
 				delete: {
 					before: async (session) => {
 						if (new Date(session.expiresAt).getTime() < Date.now()) {
-							await recordSessionEnds(db, [{ userId: session.userId, ipAddress: session.ipAddress ?? null, userAgent: session.userAgent ?? null, expiresAt: session.expiresAt }], "session-expired");
+							await recordSessionEnds(db, [{ ...session, ipAddress: session.ipAddress ?? null, userAgent: session.userAgent ?? null }], "session-expired");
 						}
 					},
 				},

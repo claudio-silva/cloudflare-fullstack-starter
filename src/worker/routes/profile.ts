@@ -25,7 +25,7 @@ profile.delete("/profile", authMiddleware, async (c) => {
 	const db = createDb(c.env);
 
 	// Delete all user data
-	await deleteUser(db, user, requestOrigin(c));
+	await deleteUser(db, user, { actorId: user.id, origin: requestOrigin(c) });
 
 	return c.json({ success: true, message: "Account deleted successfully" });
 });

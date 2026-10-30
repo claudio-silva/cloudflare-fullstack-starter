@@ -18,7 +18,7 @@ export async function pruneExpiredAuthRows(env: Parameters<typeof createDb>[0]):
 	const db = createDb(env);
 	let deleted = 0;
 	// Each expired session goes in the sign-in log first: the log is the only place that remembers it.
-	const expired = await db.selectFrom("sessions").select(["userId", "ipAddress", "userAgent", "expiresAt"]).where("expiresAt", "<", value).execute();
+	const expired = await db.selectFrom("sessions").select(["id", "userId", "ipAddress", "userAgent", "createdAt", "updatedAt", "expiresAt"]).where("expiresAt", "<", value).execute();
 	await recordSessionEnds(db, expired, "session-expired");
 	for (const table of ["sessions", "verifications"] as const) {
 		const result = await db.deleteFrom(table).where("expiresAt", "<", value).executeTakeFirst();

@@ -135,7 +135,7 @@ import { createDb } from "../db";
 const db = createDb(c.env);
 const users = await db.selectFrom("users").selectAll().execute();
 ```
-**Portability scope:** starter-owned database code (the auth tables, the CLI routes, migrations 0001-0003, seed helpers) is kept portable across D1/SQLite, PostgreSQL and MySQL so every supported database works out of the box; keep it that way when you edit those files (helpers: `dbNow()`, `dbBool()`, `toIso()`, `ignoreConflict()`, `columnTypes()`). **Your own code is not restricted:** once the project has chosen its database, use whatever that database supports (transactions on PostgreSQL/MySQL, `RETURNING`, native types, raw SQL). Differences worth knowing, other databases and provider APIs: `docs/DATABASES.md`.
+**Portability scope:** starter-owned database code (the auth tables, the CLI routes, migrations 0001-0003, seed helpers) is kept portable across D1/SQLite, PostgreSQL and MySQL so every supported database works out of the box; keep it that way when you edit those files (helpers: `dbNow()`, `dbBool()`, `toIso()`, `ignoreConflict()`, `dbSecondsBetween()`, `columnTypes()`). **Your own code is not restricted:** once the project has chosen its database, use whatever that database supports (transactions on PostgreSQL/MySQL, `RETURNING`, native types, raw SQL). Differences worth knowing, other databases and provider APIs: `docs/DATABASES.md`.
 
 ## Commands
 

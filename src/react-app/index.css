@@ -34,6 +34,12 @@
   --color-destructive-foreground: hsl(var(--destructive-foreground));
 
   --color-border: hsl(var(--border));
+
+  --color-button-outline: hsl(var(--button-outline));
+  --color-button-outline-hover: hsl(var(--button-outline-hover));
+  --color-panel-header: hsl(var(--panel-header));
+  --color-panel-header-foreground: hsl(var(--panel-header-foreground));
+  --color-panel-header-soft: hsl(var(--panel-header-soft));
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
 
@@ -118,6 +124,13 @@
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
     --radius: 0.5rem;
+    /* Outline ("normal") buttons: a light grey, darker on hover. */
+    --button-outline: 0 0% 94%;
+    --button-outline-hover: 0 0% 87%;
+    /* Panel headers (components/Panel.tsx): strong for titles, soft for a summary. */
+    --panel-header: 0 0% 33%;
+    --panel-header-foreground: 0 0% 100%;
+    --panel-header-soft: 0 0% 93%;
   }
 
   .dark {
@@ -145,6 +158,11 @@
     --chart-3: 30 80% 55%;
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
+    --button-outline: 0 0% 13%;
+    --button-outline-hover: 0 0% 20%;
+    --panel-header: 0 0% 22%;
+    --panel-header-foreground: 0 0% 98%;
+    --panel-header-soft: 0 0% 12%;
   }
 }
 

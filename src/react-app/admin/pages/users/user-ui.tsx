@@ -1,8 +1,8 @@
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { UserStatus } from "../../../../shared/admin-users";
-import { ROLE_LABELS } from "./format";
+import { ROLE_LABELS, methodLabel } from "./format";
 
 export function RoleBadge({ role }: { role: string }) {
 	const variant = role === "superadmin" ? "default" : role === "admin" ? "secondary" : "outline";
@@ -12,6 +12,7 @@ export function RoleBadge({ role }: { role: string }) {
 const STATUS: Record<Exclude<UserStatus, "offline">, { label: string; dot: string }> = {
 	active: { label: "Active", dot: "bg-emerald-500" },
 	idle: { label: "Idle", dot: "bg-neutral-400" },
+	unverified: { label: "Unverified", dot: "bg-amber-500" },
 	disabled: { label: "Disabled", dot: "bg-red-500" },
 };
 
@@ -27,7 +28,22 @@ export function StatusBadge({ status }: { status: UserStatus }) {
 	);
 }
 
-export function UserAvatar({ name, email, className }: { name: string | null; email: string; className?: string }) {
+/** How the user can sign in: one badge per method ("Password", "Google"). */
+export function SignInMethods({ methods }: { methods: string[] }) {
+	if (methods.length === 0) return <span className="text-muted-foreground">—</span>;
+	return (
+		<span className="inline-flex flex-wrap justify-end gap-1">
+			{methods.map((m) => (
+				<Badge key={m} variant="outline">
+					{methodLabel(m)}
+				</Badge>
+			))}
+		</span>
+	);
+}
+
+/** The picture an OAuth provider gave, else the initials. */
+export function UserAvatar({ name, email, image, className }: { name: string | null; email: string; image?: string | null; className?: string }) {
 	const initials = (name || email)
 		.split(/\s+/)
 		.map((part) => part[0])
@@ -36,6 +52,7 @@ export function UserAvatar({ name, email, className }: { name: string | null; em
 		.toUpperCase();
 	return (
 		<Avatar className={cn("size-8", className)}>
+			{image && <AvatarImage src={image} alt="" referrerPolicy="no-referrer" />}
 			<AvatarFallback className="bg-primary/10 text-xs font-medium text-primary">{initials}</AvatarFallback>
 		</Avatar>
 	);

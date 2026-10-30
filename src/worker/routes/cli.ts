@@ -311,7 +311,7 @@ cli.delete("/users/:email", async (c) => {
 		return c.json({ error: "User not found" }, 404);
 	}
 
-	await deleteUser(db, user, requestOrigin(c));
+	await deleteUser(db, user, { actorId: null, origin: requestOrigin(c) });
 
 	return c.json({ success: true, message: "User deleted successfully" });
 });

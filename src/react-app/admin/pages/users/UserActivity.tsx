@@ -13,7 +13,7 @@ import { getLocale } from "@/lib/i18n";
 import { countryName } from "@/lib/countries";
 import { PageBar } from "../../components/PageBar";
 import { ORDINAL } from "../../styles";
-import { formatDateTime } from "./format";
+import { formatDateTime, formatDuration, methodLabel } from "./format";
 
 const PAGE_SIZE = 10;
 
@@ -73,7 +73,7 @@ export function UserActivity({ userId }: { userId: string }) {
 									When
 								</SortHeader>
 							</TableHead>
-							<TableHead className="w-[160px]">
+							<TableHead className="w-[250px]">
 								<SortHeader field="kind" {...sortProps}>
 									Event
 								</SortHeader>
@@ -128,6 +128,14 @@ export function UserActivity({ userId }: { userId: string }) {
 
 function EventRow({ event, ordinal }: { event: ActivityEvent; ordinal: number }) {
 	const { label, icon: Icon, variant } = KINDS[event.kind];
+	// How a sign-in authenticated; how long a session lasted, and who ended it if not the user.
+	const detail = [
+		event.method && methodLabel(event.method),
+		event.durationSeconds !== null && formatDuration(Math.max(1, event.durationSeconds)),
+		event.kind === "session-revoked" && event.actor && `by ${event.actor}`,
+	]
+		.filter(Boolean)
+		.join(" · ");
 	return (
 		<TableRow>
 			<TableHead scope="row" className={`${ORDINAL} font-normal text-muted-foreground`}>
@@ -135,12 +143,17 @@ function EventRow({ event, ordinal }: { event: ActivityEvent; ordinal: number })
 			</TableHead>
 			<TableCell className="whitespace-nowrap">{formatDateTime(event.createdAt)}</TableCell>
 			<TableCell>
-				<Badge variant={variant} className="gap-1.5">
-					<Icon />
-					{label}
-				</Badge>
+				<div className="flex min-w-0 items-center gap-2">
+					<Badge variant={variant} className="shrink-0 gap-1.5">
+						<Icon />
+						{label}
+					</Badge>
+					<span className="truncate text-xs text-muted-foreground" title={detail}>
+						{detail}
+					</span>
+				</div>
 			</TableCell>
-			<TableCell className="truncate">{event.ip ?? "—"}</TableCell>
+			<TableCell className="truncate">{event.ip || "—"}</TableCell>
 			<TableCell className="truncate" title={event.country ?? undefined}>
 				{countryName(event.country)}
 			</TableCell>

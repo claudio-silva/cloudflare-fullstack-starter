@@ -14,7 +14,9 @@ const userFields = z.object({
 	name: z.string().trim().max(100, "At most 100 characters."),
 	email,
 	role: z.enum(ROLES),
-	/** Shown as "active": an unverified user cannot sign in while verification is required. */
+	/** A disabled user cannot sign in, whatever else is true. */
+	enabled: z.boolean(),
+	/** The address is confirmed (by the emailed link, by Google, or by an admin). Unverified users cannot sign in while verification is required. */
 	emailVerified: z.boolean(),
 });
 
@@ -32,15 +34,16 @@ export const IDLE_AFTER_SECONDS = 5 * 60;
 /**
  * - `active`: in session, last seen under five minutes ago
  * - `idle`: in session, last seen five minutes ago or more
- * - `disabled`: cannot sign in
- * - `offline`: has no session
+ * - `unverified`: no session, and the address is not confirmed
+ * - `disabled`: cannot sign in (wins over everything else)
+ * - `offline`: no session
  */
-export type UserStatus = "active" | "idle" | "disabled" | "offline";
+export type UserStatus = "active" | "idle" | "unverified" | "disabled" | "offline";
 
-export function userStatus(emailVerified: boolean, idleSeconds: number | null): UserStatus {
-	if (!emailVerified) return "disabled";
-	if (idleSeconds === null) return "offline";
-	return idleSeconds < IDLE_AFTER_SECONDS ? "active" : "idle";
+export function userStatus(user: { enabled: boolean; emailVerified: boolean }, idleSeconds: number | null): UserStatus {
+	if (!user.enabled) return "disabled";
+	if (idleSeconds !== null) return idleSeconds < IDLE_AFTER_SECONDS ? "active" : "idle";
+	return user.emailVerified ? "offline" : "unverified";
 }
 
 export type AdminUser = {
@@ -48,12 +51,17 @@ export type AdminUser = {
 	name: string | null;
 	email: string;
 	role: Role | string;
+	/** The profile picture an OAuth provider gave, if any. */
+	image: string | null;
+	enabled: boolean;
 	emailVerified: boolean;
 	status: UserStatus;
 	/** Seconds since the user's most recent session was last used; null when they have none. */
 	idleSeconds: number | null;
-	/** The most recent successful sign-in in `login_events`; null when none is recorded. */
+	/** The most recent successful sign-in (`user_stats`); null when none is recorded. */
 	lastSignInAt: string | null;
+	/** Time in session: every ended session (`user_stats`) plus the open ones so far. */
+	usageSeconds: number;
 	createdAt: string;
 	updatedAt: string;
 };
@@ -63,6 +71,8 @@ export type AdminUserDetail = AdminUser & {
 	signInMethods: string[];
 	activeSessions: number;
 	lastSignOutAt: string | null;
+	signIns: number;
+	failedSignIns: number;
 	/** Where the most recently used session comes from; null when the user is not in session. */
 	currentSession: { ip: string | null; country: string | null } | null;
 	/** Entries in the activity log (the Activity tab's pill). */
@@ -73,6 +83,12 @@ export type ActivityEvent = {
 	id: string;
 	/** `failed` is a sign-in attempt that did not succeed. */
 	kind: "sign-in" | "sign-out" | "failed" | "session-expired" | "session-revoked";
+	/** How a sign-in authenticated: "password", "google", … */
+	method: string | null;
+	/** Who revoked the session, when it was not the user; null if that account is gone. */
+	actor: string | null;
+	/** On a session's last event: how long it lasted. */
+	durationSeconds: number | null;
 	ip: string | null;
 	country: string | null;
 	userAgent: string | null;
@@ -84,7 +100,7 @@ export type ActivitySortField = (typeof ACTIVITY_SORT_FIELDS)[number];
 
 export type AdminUserActivity = { events: ActivityEvent[]; total: number; page: number; pageSize: number };
 
-export const USER_SORT_FIELDS = ["name", "email", "role", "status", "lastSignInAt", "idleSeconds", "createdAt"] as const;
+export const USER_SORT_FIELDS = ["name", "email", "role", "status", "lastSignInAt", "idleSeconds", "usageSeconds", "createdAt"] as const;
 export type UserSortField = (typeof USER_SORT_FIELDS)[number];
 
 export type AdminUserList = {

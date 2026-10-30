@@ -2,7 +2,7 @@ import bcrypt from "bcryptjs";
 import type { Kysely } from "kysely";
 import type { Database } from "../types/database";
 import { dbBool, dbNow } from "../db";
-import { recordSessionEnds, recordUserDeleted, type RequestOrigin } from "./login-log";
+import { recordSessionEnds, recordUserDeleted, sessionsOf, type RequestOrigin } from "./login-log";
 import { ROLES, hasRole, type Role } from "../../shared/roles";
 
 /**
@@ -19,7 +19,7 @@ const ADMIN_ROLES = ROLES.filter((role) => hasRole(role, "admin"));
 /** Creates a user who signs in with email and password. Returns the new id. */
 export async function createPasswordUser(
 	db: Db,
-	input: { email: string; password: string; name?: string | null; role?: Role; emailVerified?: boolean },
+	input: { email: string; password: string; name?: string | null; role?: Role; emailVerified?: boolean; disabled?: boolean },
 ): Promise<string> {
 	const now = dbNow();
 	const userId = crypto.randomUUID();
@@ -34,6 +34,7 @@ export async function createPasswordUser(
 			createdAt: now,
 			updatedAt: now,
 			role: input.role ?? "user",
+			disabled: dbBool(input.disabled ?? false),
 		})
 		.execute();
 	await setPassword(db, { id: userId, email: input.email }, input.password);
@@ -87,22 +88,22 @@ export async function setPassword(db: Db, user: { id: string; email: string }, p
 
 /**
  * Deletes the user with everything that refers to them, and records it in the
- * sign-in log (their earlier entries stay, until the log is pruned).
- * `origin` is the request that asked for it.
+ * sign-in log (their history and totals stay). `by` is who asked (the user
+ * themselves, an admin; no actor for the CLI) and from where.
  */
-export async function deleteUser(db: Db, user: { id: string; email: string }, origin?: RequestOrigin): Promise<void> {
+export async function deleteUser(db: Db, user: { id: string; email: string }, by?: { actorId: string | null; origin: RequestOrigin }): Promise<void> {
 	await db.deleteFrom("sessions").where("userId", "=", user.id).execute();
 	await db.deleteFrom("verifications").where("identifier", "=", user.email).execute();
 	await db.deleteFrom("accounts").where("userId", "=", user.id).execute();
 	await db.deleteFrom("users").where("id", "=", user.id).execute();
-	await recordUserDeleted(db, user, origin);
+	await recordUserDeleted(db, user, by?.actorId ?? null, by?.origin);
 }
 
-/** Signs the user out everywhere. */
-export async function revokeSessions(db: Db, userId: string): Promise<void> {
-	const sessions = await db.selectFrom("sessions").select(["userId", "ipAddress", "userAgent", "expiresAt"]).where("userId", "=", userId).execute();
+/** Signs the user out everywhere, recording each session as revoked (by `actorId`, when it is someone else). */
+export async function revokeSessions(db: Db, userId: string, actorId?: string | null): Promise<void> {
+	const sessions = await sessionsOf(db, userId);
 	await db.deleteFrom("sessions").where("userId", "=", userId).execute();
-	await recordSessionEnds(db, sessions, "session-revoked");
+	await recordSessionEnds(db, sessions, "session-revoked", actorId);
 }
 
 /**

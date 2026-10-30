@@ -17,12 +17,10 @@ import {
 	AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
@@ -35,10 +33,11 @@ import { ROLES } from "../../../../shared/roles";
 import { createUserSchema, type AdminUser, type AdminUserDetail } from "../../../../shared/admin-users";
 import { AdminPage } from "../../components/AdminPage";
 import { ACTION_BUTTON, TAB_LIST, TAB_TRIGGER } from "../../styles";
-import { ROLE_LABELS, formatDateTime, formatIdle } from "./format";
+import { ROLE_LABELS, formatDateTime, formatDuration, formatIdle, methodLabel } from "./format";
 import { UserActivity } from "./UserActivity";
 import { countryName } from "@/lib/countries";
-import { RoleBadge, StatusBadge, UserAvatar } from "./user-ui";
+import { RoleBadge, SignInMethods, StatusBadge, UserAvatar } from "./user-ui";
+import { Panel } from "@/components/Panel";
 
 /** The server's rules (src/shared/admin-users.ts), except that editing may leave the password empty. */
 const formSchema = (isNew: boolean) =>
@@ -59,12 +58,13 @@ const formSchema = (isNew: boolean) =>
 
 type FormValues = z.input<ReturnType<typeof formSchema>>;
 
-const EMPTY: FormValues = { name: "", email: "", role: "user", emailVerified: true, password: "", confirmPassword: "" };
+const EMPTY: FormValues = { name: "", email: "", role: "user", enabled: true, emailVerified: true, password: "", confirmPassword: "" };
 
 const toValues = (user: AdminUser): FormValues => ({
 	name: user.name ?? "",
 	email: user.email,
 	role: (ROLES as readonly string[]).includes(user.role) ? (user.role as FormValues["role"]) : "user",
+	enabled: user.enabled,
 	emailVerified: user.emailVerified,
 	password: "",
 	confirmPassword: "",
@@ -106,8 +106,8 @@ export function UserForm() {
 	}, [id, form]);
 
 	const onSubmit = async (values: z.output<typeof schema>) => {
-		const { name, email, role, emailVerified, password } = values;
-		const body = { name, email, role, emailVerified, ...(password ? { password } : {}) };
+		const { name, email, role, enabled, emailVerified, password } = values;
+		const body = { name, email, role, enabled, emailVerified, ...(password ? { password } : {}) };
 		try {
 			// 409 is ours: an email already in use belongs next to the field.
 			const res = await http(isNew ? "/api/admin/users" : `/api/admin/users/${id}`, {
@@ -186,6 +186,10 @@ export function UserForm() {
 	if (!isNew && !user) return <FormSkeleton />;
 
 	const title = isNew ? "New user" : user!.name || user!.email;
+	const methods = isNew ? [] : user!.signInMethods;
+	const hasPassword = methods.includes("credential");
+	const usesGoogle = methods.includes("google");
+	const otherMethods = methods.filter((m) => m !== "credential").map(methodLabel).join(" or ") || "another method";
 	const { isSubmitting, isDirty } = form.formState;
 
 	return (
@@ -216,12 +220,7 @@ export function UserForm() {
 			<Form {...form}>
 				<form onSubmit={form.handleSubmit(onSubmit)} className="grid items-start gap-6 lg:grid-cols-3">
 					<div className="space-y-6 lg:col-span-2">
-						<Card>
-							<CardHeader>
-								<CardTitle>Details</CardTitle>
-								<CardDescription>Who the user is and what they may do.</CardDescription>
-							</CardHeader>
-							<CardContent className="grid gap-5 sm:grid-cols-2">
+						<Panel title="Details" description="Who the user is and what they may do." bodyClassName="grid gap-5 sm:grid-cols-2">
 								<FormField
 									control={form.control}
 									name="name"
@@ -277,34 +276,55 @@ export function UserForm() {
 								/>
 								<FormField
 									control={form.control}
-									name="emailVerified"
+									name="enabled"
 									render={({ field }) => (
 										<FormItem>
-											<FormLabel>Active</FormLabel>
+											<FormLabel>Enabled</FormLabel>
 											<div className="flex h-9 items-center gap-3">
 												<FormControl>
 													<Switch checked={field.value} onCheckedChange={field.onChange} disabled={isMe} />
 												</FormControl>
 												<span className="text-sm text-muted-foreground">{field.value ? "Can sign in" : "Cannot sign in"}</span>
 											</div>
-											<FormDescription>The email is treated as verified.</FormDescription>
+											<FormDescription>{isMe ? "You can't disable yourself." : "Disabling signs the user out everywhere."}</FormDescription>
 											<FormMessage />
 										</FormItem>
 									)}
 								/>
-							</CardContent>
-						</Card>
+								<FormField
+									control={form.control}
+									name="emailVerified"
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel>Verified</FormLabel>
+											<div className="flex h-9 items-center gap-3">
+												<FormControl>
+													<Switch checked={field.value} onCheckedChange={field.onChange} />
+												</FormControl>
+												<span className="text-sm text-muted-foreground">{field.value ? "Email address confirmed" : "Not confirmed"}</span>
+											</div>
+											<FormDescription>
+												{usesGoogle
+													? "Google confirms the address when they sign in with it."
+													: "Unverified users can't sign in while email verification is required."}
+											</FormDescription>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+						</Panel>
 
-						<Card>
-							<CardHeader>
-								<CardTitle>Password</CardTitle>
-								<CardDescription>
-									{isNew
-										? "The user signs in with it and can change it from their profile."
-										: "Leave empty to keep the current one. Setting a new one signs the user out everywhere."}
-								</CardDescription>
-							</CardHeader>
-							<CardContent className="grid gap-5 sm:grid-cols-2">
+						<Panel
+							title="Password"
+							description={
+								isNew
+									? "The user signs in with it and can change it from their profile."
+									: hasPassword
+										? "Leave empty to keep the current one. Setting a new one signs the user out everywhere."
+										: `They sign in with ${otherMethods} and have no password. Setting one lets them also sign in with their email and password.`
+							}
+							bodyClassName="grid gap-5 sm:grid-cols-2"
+						>
 								<FormField
 									control={form.control}
 									name="password"
@@ -331,8 +351,7 @@ export function UserForm() {
 										</FormItem>
 									)}
 								/>
-							</CardContent>
-						</Card>
+						</Panel>
 
 						<div className="flex justify-end gap-2">
 							<Button type="button" variant="outline" asChild className={ACTION_BUTTON}>
@@ -351,48 +370,60 @@ export function UserForm() {
 
 					{!isNew && user && (
 						<div className="space-y-6">
-							<Card>
-								<CardContent className="space-y-5">
-									<div className="flex items-center gap-3">
-										<UserAvatar name={user.name} email={user.email} className="size-12" />
-										<div className="min-w-0">
-											<div className="truncate font-medium">{user.name || "—"}</div>
-											<div className="truncate text-sm text-muted-foreground">{user.email}</div>
+							<Panel
+								tone="soft"
+								title={
+									<div className="space-y-3 py-2">
+										<div className="flex items-center gap-3">
+											<UserAvatar name={user.name} email={user.email} image={user.image} className="size-12 bg-background" />
+											<div className="min-w-0">
+												<div className="truncate font-medium">{user.name || "—"}</div>
+												<div className="truncate text-sm text-muted-foreground">{user.email}</div>
+											</div>
+										</div>
+										<div className="flex flex-wrap gap-2">
+											<RoleBadge role={user.role} />
+											<StatusBadge status={user.status} />
 										</div>
 									</div>
-									<div className="flex flex-wrap gap-2">
-										<RoleBadge role={user.role} />
-										<StatusBadge status={user.status} />
-									</div>
-									<Separator />
-									<dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-										<dt className="text-muted-foreground">Created</dt>
-										<dd className="text-right">{formatDateTime(user.createdAt)}</dd>
-										<dt className="text-muted-foreground">Updated</dt>
-										<dd className="text-right">{formatDateTime(user.updatedAt)}</dd>
-										<dt className="text-muted-foreground">Last sign-in</dt>
-										<dd className="text-right">{formatDateTime(user.lastSignInAt)}</dd>
-										<dt className="text-muted-foreground">Last sign-out</dt>
-										<dd className="text-right">{formatDateTime(user.lastSignOutAt)}</dd>
-										<dt className="text-muted-foreground">In session</dt>
-										<dd className="text-right">{user.idleSeconds === null ? "No" : "Yes"}</dd>
-										<dt className="text-muted-foreground">Idle time</dt>
-										<dd className="text-right">{formatIdle(user.idleSeconds)}</dd>
-										{user.currentSession && (
-											<>
-												<dt className="text-muted-foreground">IP address</dt>
-												<dd className="text-right">{user.currentSession.ip ?? "—"}</dd>
-												<dt className="text-muted-foreground">Country</dt>
-												<dd className="text-right" title={user.currentSession.country ?? undefined}>
-													{countryName(user.currentSession.country)}
-												</dd>
-											</>
-										)}
-										<dt className="text-muted-foreground">Sign-in with</dt>
-										<dd className="text-right">{user.signInMethods.map((m) => (m === "credential" ? "password" : m)).join(", ") || "—"}</dd>
-										<dt className="text-muted-foreground">Sessions</dt>
-										<dd className="text-right">{user.activeSessions}</dd>
-									</dl>
+								}
+								bodyClassName="space-y-5"
+							>
+								<dl className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 text-sm">
+									<dt className="text-muted-foreground">Created</dt>
+									<dd className="text-right">{formatDateTime(user.createdAt)}</dd>
+									<dt className="text-muted-foreground">Updated</dt>
+									<dd className="text-right">{formatDateTime(user.updatedAt)}</dd>
+									<dt className="text-muted-foreground">Sign-in with</dt>
+									<dd className="text-right">
+										<SignInMethods methods={user.signInMethods} />
+									</dd>
+									<dt className="text-muted-foreground">Last sign-in</dt>
+									<dd className="text-right">{formatDateTime(user.lastSignInAt)}</dd>
+									<dt className="text-muted-foreground">Last sign-out</dt>
+									<dd className="text-right">{formatDateTime(user.lastSignOutAt)}</dd>
+									<dt className="text-muted-foreground">Sign-ins</dt>
+									<dd className="text-right tabular-nums">
+										{user.signIns}
+										{user.failedSignIns > 0 && <span className="text-muted-foreground"> ({user.failedSignIns} failed)</span>}
+									</dd>
+									<dt className="text-muted-foreground">Time in session</dt>
+									<dd className="text-right">{formatDuration(user.usageSeconds)}</dd>
+									<dt className="text-muted-foreground">In session</dt>
+									<dd className="text-right">{user.idleSeconds === null ? "No" : `Yes, ${user.activeSessions} ${user.activeSessions === 1 ? "session" : "sessions"}`}</dd>
+									{user.currentSession && (
+										<>
+											<dt className="text-muted-foreground">Idle time</dt>
+											<dd className="text-right">{formatIdle(user.idleSeconds)}</dd>
+											<dt className="text-muted-foreground">IP address</dt>
+											<dd className="text-right">{user.currentSession.ip || "—"}</dd>
+											<dt className="text-muted-foreground">Country</dt>
+											<dd className="text-right" title={user.currentSession.country ?? undefined}>
+												{countryName(user.currentSession.country)}
+											</dd>
+										</>
+									)}
+								</dl>
 									<AlertDialog>
 										<AlertDialogTrigger asChild>
 											<Button type="button" variant="outline" disabled={signingOut || user.activeSessions === 0} className="w-full">
@@ -421,16 +452,10 @@ export function UserForm() {
 											</AlertDialogFooter>
 										</AlertDialogContent>
 									</AlertDialog>
-								</CardContent>
-							</Card>
+							</Panel>
 
 							{!isMe && (
-								<Card className="border-destructive/30">
-									<CardHeader>
-										<CardTitle>Delete user</CardTitle>
-										<CardDescription>Removes the account, its sign-in methods and sessions. This cannot be undone.</CardDescription>
-									</CardHeader>
-									<CardContent>
+								<Panel tone="danger" title="Delete user" description="Removes the account, its sign-in methods and sessions. Its history stays in the sign-in log. This cannot be undone.">
 										<AlertDialog>
 											<AlertDialogTrigger asChild>
 												<Button type="button" variant="destructive" disabled={deleting} className={ACTION_BUTTON}>
@@ -457,8 +482,7 @@ export function UserForm() {
 												</AlertDialogFooter>
 											</AlertDialogContent>
 										</AlertDialog>
-									</CardContent>
-								</Card>
+								</Panel>
 							)}
 						</div>
 					)}

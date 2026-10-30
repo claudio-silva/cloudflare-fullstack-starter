@@ -49,14 +49,14 @@ describe("admin API", () => {
 		const { call } = await userWithRole("superadmin");
 		const email = `crud-${Date.now()}@example.com`;
 
-		const bad = await call("/users", { method: "POST", body: { name: "", email: "nope", role: "user", emailVerified: true, password: "short" } });
+		const bad = await call("/users", { method: "POST", body: { name: "", email: "nope", role: "user", enabled: true, emailVerified: true, password: "short" } });
 		expect(bad.status).toBe(400);
 
-		const created = await call("/users", { method: "POST", body: { name: "Crud", email: email.toUpperCase(), role: "user", emailVerified: true, password: "password-123" } });
+		const created = await call("/users", { method: "POST", body: { name: "Crud", email: email.toUpperCase(), role: "user", enabled: true, emailVerified: true, password: "password-123" } });
 		expect(created.status).toBe(201);
 		const { id, email: stored } = (await created.json()) as { id: string; email: string };
 		expect(stored).toBe(email);
-		expect((await call("/users", { method: "POST", body: { name: "", email, role: "user", emailVerified: true, password: "password-123" } })).status).toBe(409);
+		expect((await call("/users", { method: "POST", body: { name: "", email, role: "user", enabled: true, emailVerified: true, password: "password-123" } })).status).toBe(409);
 
 		const list = (await (await call(`/users?q=${encodeURIComponent(email)}`)).json()) as { users: { id: string }[]; total: number };
 		expect(list.total).toBe(1);
@@ -76,7 +76,7 @@ describe("admin API", () => {
 	it("a superadmin cannot demote, deactivate or delete themselves", async () => {
 		const me = await userWithRole("superadmin");
 		expect((await me.call(`/users/${me.id}`, { method: "PATCH", body: { role: "user" } })).status).toBe(403);
-		expect((await me.call(`/users/${me.id}`, { method: "PATCH", body: { emailVerified: false } })).status).toBe(403);
+		expect((await me.call(`/users/${me.id}`, { method: "PATCH", body: { enabled: false } })).status).toBe(403);
 		expect((await me.call(`/users/${me.id}`, { method: "DELETE" })).status).toBe(403);
 		expect((await me.call(`/users/${me.id}`, { method: "PATCH", body: { name: "Still me" } })).status).toBe(200);
 	});
@@ -100,15 +100,22 @@ describe("admin API", () => {
 		expect(active.status).toBe("active");
 		expect(active.idleSeconds).toBeLessThan(300);
 
-		// Disabled takes precedence over the session.
-		await call(`/users/${target.id}`, { method: "PATCH", body: { emailVerified: false } });
+		// Disabling ends the sessions and wins over everything else; a disabled user cannot sign in.
+		await call(`/users/${target.id}`, { method: "PATCH", body: { enabled: false } });
 		expect((await find()).status).toBe("disabled");
+		const refused = await app.request("/api/auth/sign-in/email", { method: "POST", headers: json, body: JSON.stringify({ email: target.email, password: "password-123" }) }, local);
+		expect(refused.status).toBeGreaterThanOrEqual(400);
 		// Sorted by status, a disabled user comes after the active ones ascending, and first descending.
 		const byStatus = async (dir: string) =>
 			((await (await call(`/users?sort=status&dir=${dir}&pageSize=100`)).json()) as { users: Row[] }).users.map((u) => u.status);
 		const asc = await byStatus("asc");
 		expect(asc.indexOf("active")).toBeLessThan(asc.indexOf("disabled"));
 		expect((await byStatus("desc"))[0]).toBe("disabled");
+		await call(`/users/${target.id}`, { method: "PATCH", body: { enabled: true } });
+
+		// Without a session, an unconfirmed address shows as unverified.
+		await call(`/users/${target.id}`, { method: "PATCH", body: { emailVerified: false } });
+		expect((await find()).status).toBe("unverified");
 		await call(`/users/${target.id}`, { method: "PATCH", body: { emailVerified: true } });
 
 		// Sign-in with a wrong password is a failure; signing out is recorded.
@@ -134,9 +141,15 @@ describe("admin API", () => {
 
 		const row = await find();
 		expect((row as Row & { lastSignInAt: string | null }).lastSignInAt).not.toBeNull();
-		const detail = (await (await call(`/users/${target.id}`)).json()) as { lastSignOutAt: string | null; activityCount: number };
+		const detail = (await (await call(`/users/${target.id}`)).json()) as { lastSignOutAt: string | null; activityCount: number; signIns: number; failedSignIns: number };
 		expect(detail.lastSignOutAt).not.toBeNull();
 		expect(detail.activityCount).toBe(kinds.length);
+		// The totals follow the log: two sign-ins (setup and before the sign-out), two failures (wrong password, disabled).
+		expect(detail.signIns).toBe(2);
+		expect(detail.failedSignIns).toBe(2);
+		const signOutEvent = (await (await call(`/users/${target.id}/activity`)).json()) as { events: { kind: string; method: string | null; durationSeconds: number | null }[] };
+		expect(signOutEvent.events.find((e) => e.kind === "sign-out")?.durationSeconds).not.toBeNull();
+		expect(signOutEvent.events.find((e) => e.kind === "sign-in")?.method).toBe("password");
 
 		// Sorted by idle time, users without a session come last in either direction.
 		for (const dir of ["asc", "desc"]) {
@@ -148,12 +161,16 @@ describe("admin API", () => {
 });
 
 describe("session endings in the log", () => {
-	it("records the deletion of a user", async () => {
-		const { call } = await userWithRole("superadmin");
+	it("records the deletion of a user, and who deleted them", async () => {
+		const admin = await userWithRole("superadmin");
 		const target = await userWithRole("user");
-		expect((await call(`/users/${target.id}`, { method: "DELETE" })).status).toBe(204);
-		const event = await createDb(local).selectFrom("login_events").select(["email", "event"]).where("user_id", "=", target.id).where("event", "=", "user-deleted").executeTakeFirst();
+		expect((await admin.call(`/users/${target.id}`, { method: "DELETE" })).status).toBe(204);
+		const db = createDb(local);
+		const event = await db.selectFrom("login_events").select(["email", "actor_id"]).where("user_id", "=", target.id).where("event", "=", "user-deleted").executeTakeFirst();
 		expect(event?.email).toBe(target.email);
+		expect(event?.actor_id).toBe(admin.id);
+		// The totals outlive the account.
+		expect((await db.selectFrom("user_stats").select("sign_ins").where("user_id", "=", target.id).executeTakeFirst())?.sign_ins).toBe(1);
 	});
 
 	it("records revoked and expired sessions", async () => {
