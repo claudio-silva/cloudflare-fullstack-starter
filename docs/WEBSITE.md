@@ -145,7 +145,7 @@ npm run setup:domain -- acme.io      --env production --website    # the website
 
 ## The maintenance page
 
-`<dir>/public/maintenance.html` is where the **emergency** maintenance redirect sends people (`deploy.config.ts` → `maintenance`, docs/DEPLOYMENT.md). It is served by the website Worker on purpose: the app being broken is the reason anyone is reading it. It has no script of its own and no link back to the app.
+`<dir>/public/maintenance.html`, served at **`/maintenance`** (Cloudflare's assets drop the `.html`, and redirect the longer form to it), is where the **emergency** maintenance redirect sends people (`deploy.config.ts` → `maintenance`, docs/DEPLOYMENT.md). It is served by the website Worker on purpose: the app being broken is the reason anyone is reading it. It has no script of its own and no link back to the app.
 
 To use it:
 
@@ -154,7 +154,7 @@ To use it:
 maintenance: {
     mechanism: "redirect",
     zoneId: "<the zone id setup:domain printed>",
-    redirectTo: "https://acme.io/maintenance.html",
+    redirectTo: "https://acme.io/maintenance",
     …
 }
 ```

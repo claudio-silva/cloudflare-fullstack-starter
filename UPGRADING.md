@@ -74,7 +74,7 @@ None. Every existing command behaves exactly as before until `npm run setup:webs
 - **Take** the added files: `templates/website/`, `bin/setup-website.ts`, `bin/dev-all.ts`, `bin/deploy-website.ts`, `bin/worktree-website`, `bin/lib/website.ts`, `bin/lib/website-config.ts`, `tsconfig.website.json`, `docs/WEBSITE.md`, `e2e/website.spec.ts`, `test/scripts/website*.test.ts`. **Merge** `package.json` (`setup:website`, `test:website:integration`), `tsconfig.json` (the new reference), `eslint.config.js`, `playwright.config.ts`, `bin/init.ts`, `bin/setup-domain.ts`, `bin/deploy-production.ts`, `bin/lib/custom-domain.ts`, `AGENTS.md`, `README.md` and `docs/DEPLOYMENT.md`.
 - Nothing else is required: without `website.config.ts` the project behaves exactly as it did. Verify with the standard commands.
 - **To adopt the website**, run `npm run setup:website -- --dry-run`, then without it, and read `docs/WEBSITE.md`. If the app is **already live on the apex domain**, the move to `app.<domain>` is a cutover whose order matters (`APP_BASE_URL` applies the moment it is synced, and `wrangler deploy` reassigns a Custom Domain rather than refusing it): follow *Moving a live project* in `docs/WEBSITE.md` and do preview first. Sessions on the old origin are not carried over — cookies are host-only, so users sign in again once.
-- If the project uses the emergency maintenance redirect, point `maintenance.redirectTo` at `https://<site>/maintenance.html` once the site is live.
+- If the project uses the emergency maintenance redirect, point `maintenance.redirectTo` at `https://<site>/maintenance` once the site is live.
 
 ---
 

@@ -83,7 +83,7 @@ Recovery is normally **forward**: leave the state as it is, correct the migratio
 
 Two mechanisms, for two different problems. Do not reach for the wrong one.
 
-> A project with a product website ([WEBSITE.md](WEBSITE.md)) already hosts the page the emergency redirect needs, on a Worker that does not depend on the app: set `maintenance.redirectTo` to `https://<site>/maintenance.html`.
+> A project with a product website ([WEBSITE.md](WEBSITE.md)) already hosts the page the emergency redirect needs, on a Worker that does not depend on the app: set `maintenance.redirectTo` to `https://<site>/maintenance`.
 
 ### Planned window — the `MAINTENANCE` var
 

@@ -9,7 +9,9 @@
 		<link rel="stylesheet" href="/styles.css" />
 		<!--
 			Where the emergency maintenance redirect sends people
-			(deploy.config.ts → maintenance.redirectTo; docs/DEPLOYMENT.md). It is
+			(deploy.config.ts → maintenance.redirectTo; docs/DEPLOYMENT.md). Its
+			URL is /maintenance: Cloudflare's assets serve this file there and
+			redirect /maintenance.html to it. It is
 			served by the website Worker on purpose: the app being broken is the
 			reason anyone is reading this, so the page must not come from it.
 

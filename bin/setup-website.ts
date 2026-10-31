@@ -406,7 +406,7 @@ async function main(): Promise<void> {
 	console.log(`\n  • An app already live on https://${hosts.site.production} needs the cutover procedure first: docs/WEBSITE.md.`);
 	console.log(`  • For the emergency maintenance page, set in deploy.config.ts:`);
 	console.log(`        maintenance.mechanism = "redirect"`);
-	console.log(`        maintenance.redirectTo = "https://${hosts.site.production}/maintenance.html"`);
+	console.log(`        maintenance.redirectTo = "https://${hosts.site.production}/maintenance"`);
 }
 
 main().catch((error: unknown) => die(error instanceof Error ? error.message : String(error)));

@@ -33,7 +33,8 @@ test.describe("product website", () => {
 	});
 
 	test("the maintenance page stands on its own", async ({ page }) => {
-		const response = await page.goto(`${websiteUrl}/maintenance.html`);
+		// Served at /maintenance: Cloudflare's assets drop the .html extension.
+		const response = await page.goto(`${websiteUrl}/maintenance`);
 		expect(response?.status()).toBe(200);
 		await expect(page.getByRole("heading", { name: "We are back shortly" })).toBeVisible();
 	});
