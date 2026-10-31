@@ -385,6 +385,30 @@ describe("setup:website --dry-run", () => {
 	});
 });
 
+describe("setup:website on a project already serving the apex", () => {
+	it("stops the app serving what the website is about to claim", () => {
+		const root = fixture();
+		// What `setup:domain` leaves behind on a project live on its apex.
+		writeFileSync(
+			join(root, "wrangler.toml"),
+			readFileSync(join(root, "wrangler.toml"), "utf-8").replace(
+				"[env.production]\n",
+				'[env.production]\nroutes = [{ pattern = "acme.io", custom_domain = true }]\n',
+			),
+		);
+		const output = setup(root, ["--domain", "acme.io"]);
+
+		// Both halves: the app gains app.acme.io and loses acme.io, which a
+		// later `wrangler deploy` would otherwise take back from the website.
+		const toml = read(root, "wrangler.toml");
+		expect(toml).toContain('{ pattern = "app.acme.io", custom_domain = true }');
+		expect(toml).not.toContain('{ pattern = "acme.io", custom_domain = true }');
+		expect(output).toContain("stop the production app serving acme.io");
+		expect(output).toContain("still attached to the app's Worker on Cloudflare");
+		rmSync(root, { recursive: true, force: true });
+	});
+});
+
 describe("setup:website on a project that has chosen its hostnames", () => {
 	it("leaves a URL someone set, and says so", () => {
 		const root = fixture();

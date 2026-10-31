@@ -38,7 +38,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSyn
 import { dirname, join, relative, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
-import { withCustomDomainRoute } from "./lib/custom-domain";
+import { withCustomDomainRoute, withoutRoute } from "./lib/custom-domain";
 import { fillEnv } from "./lib/setup-ci";
 import {
 	resolveOptions,
@@ -191,34 +191,33 @@ function websiteWrangler(root: string, options: WebsiteOptions, hosts: WebsiteHo
 	write(file, websiteWranglerToml({ workerName, compatibilityDate, hosts }));
 }
 
-/** Move the app's routes to `app.*`. A project that already has routes keeps them. */
+/**
+ * Move the app's routes to `app.*`, and take the website's hostnames out of
+ * them. Both halves matter: `wrangler deploy` *reassigns* a Custom Domain
+ * rather than refusing it, so an app that still lists the apex takes it back
+ * from the website on its next deploy, without a word.
+ */
 function appRoutes(root: string, hosts: WebsiteHosts): void {
 	const file = resolve(root, "wrangler.toml");
 	let source = readFileSync(file, "utf-8");
 	for (const env of ["preview", "production"] as const) {
 		const hostname = hosts.app[env];
-		const block = source.slice(source.indexOf(`[env.${env}]`), nextSection(source, `[env.${env}]`));
-		const hadRoutes = /routes\s*=/.test(block);
-		const updated = withCustomDomainRoute(source, env, hostname);
-		if (!updated) {
+		const added = withCustomDomainRoute(source, env, hostname);
+		if (added) {
+			source = added;
+			change(`serve the ${env} app on ${hostname} (wrangler.toml, [env.${env}] routes)`);
+		} else {
 			ok(`wrangler.toml: [env.${env}] already serves ${hostname}`);
-			continue;
 		}
-		source = updated;
-		change(`serve the ${env} app on ${hostname} (wrangler.toml, [env.${env}] routes)`);
-		if (hadRoutes) {
-			warn(`[env.${env}] had routes already; ${hostname} is added beside them. Releasing a hostname the app no longer serves is a manual step — docs/WEBSITE.md, "Moving a live project".`);
+
+		const taken = withoutRoute(source, env, hosts.site[env]);
+		if (taken) {
+			source = taken;
+			change(`stop the ${env} app serving ${hosts.site[env]}: it is the website's now (wrangler.toml)`);
+			warn(`${hosts.site[env]} is still attached to the app's Worker on Cloudflare. Deploying the website moves it; until then the app answers there — docs/WEBSITE.md, "Moving a live project".`);
 		}
 	}
 	write(file, source);
-}
-
-function nextSection(source: string, header: string): number {
-	const start = source.indexOf(header);
-	if (start === -1) return source.length;
-	const rest = source.slice(start + header.length);
-	const next = rest.search(/^\s*\[/m);
-	return next === -1 ? source.length : start + header.length + next;
 }
 
 /**

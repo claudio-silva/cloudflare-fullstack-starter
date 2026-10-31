@@ -95,6 +95,49 @@ export function withCustomDomainRoute(source: string, env: string, hostname: str
 	return result;
 }
 
+/**
+ * wrangler.toml **without** `hostname` under `[env.<env>]`; null when it is not
+ * there. The counterpart of `withCustomDomainRoute`, for a hostname that has
+ * moved to another Worker: two Workers cannot share a Custom Domain, and the
+ * one that still lists it takes it back on its next deploy — silently, because
+ * `wrangler deploy` reassigns a Custom Domain rather than refusing it.
+ */
+export function withoutRoute(source: string, env: string, hostname: string): string | null {
+	const patternOf = (r: Route) => (typeof r === "string" ? r : r.pattern);
+	const existing = routesOf(source, env);
+	if (!existing.some((r) => patternOf(r) === hostname)) return null;
+	const lines = source.split("\n");
+
+	// Table form: drop the whole [[env.<env>.routes]] block that holds it.
+	for (let i = 0; i < lines.length; i++) {
+		if (lines[i].trim() !== `[[env.${env}.routes]]`) continue;
+		let end = i + 1;
+		while (end < lines.length && !lines[end].trim().startsWith("[")) end++;
+		const block = lines.slice(i, end);
+		if (!block.some((l) => new RegExp(`^\\s*pattern\\s*=\\s*"${hostname.replace(/\./g, "\\.")}"`).test(l))) continue;
+		// Take the blank lines the block left behind with it.
+		while (end < lines.length && lines[end].trim() === "") end++;
+		lines.splice(i, end - i);
+		return lines.join("\n");
+	}
+
+	// Array form: rewrite the line, or drop it when nothing is left.
+	const header = lines.findIndex((l) => l.trim() === `[env.${env}]`);
+	let stop = lines.findIndex((l, i) => i > header && l.trim().startsWith("["));
+	if (stop === -1) stop = lines.length;
+	const at = lines.findIndex((l, i) => i > header && i < stop && /^\s*routes\s*=/.test(l));
+	if (at === -1) throw new Error(`the routes of [env.${env}] in wrangler.toml span several lines; remove ${hostname} by hand`);
+	let kept: Route[];
+	try {
+		kept = (parseToml(lines[at]) as { routes: Route[] }).routes.filter((r) => patternOf(r) !== hostname);
+	} catch (error) {
+		throw new Error(`cannot read the routes of [env.${env}] in wrangler.toml; remove ${hostname} by hand`, { cause: error });
+	}
+	if (kept.length === 0) lines.splice(at, 1);
+	else lines[at] = `routes = [${kept.map(tomlRoute).join(", ")}]`;
+	return lines.join("\n");
+}
+
 // --- Cloudflare -----------------------------------------------------------------
 
 export type DomainReporter = {

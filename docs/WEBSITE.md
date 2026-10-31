@@ -53,12 +53,12 @@ It changes **local files only** — nothing is deployed, no domain is attached, 
 
 1. scaffolds the site in `<dir>/` from `templates/website/`, with the app's logos copied into `<dir>/public/assets/`;
 2. writes `<dir>/wrangler.toml` (local / preview / production, each with its routes and its `APP_URL`);
-3. adds the `app.*` custom-domain routes to `[env.preview]` and `[env.production]` of the app's `wrangler.toml`;
+3. adds the `app.*` custom-domain routes to `[env.preview]` and `[env.production]` of the app's `wrangler.toml`, and takes the website's own hostnames out of them — an app that still lists the apex takes it back from the website on its next deploy;
 4. points `APP_BASE_URL` and `CLI_API_URL_*` at the app's new hostnames in `.env.preview`, `.env.production` and the `env/*.template` files, and `config.baseUrls` in `src/config.ts` with them;
 5. adds the website scripts to `package.json` and the `website` dev service to `paseo.json`;
 6. writes **`website.config.ts`**, which is what every other script reads.
 
-Run it twice and the second run changes nothing: it reports what is already there and stops. A file the project already has — `<dir>/wrangler.toml`, a page you edited, `website.config.ts` — is never overwritten, and a hostname you chose deliberately is never silently repointed (it says so and leaves it; see [Moving a live project](#moving-a-live-project)).
+Run it twice and the second run changes nothing: it reports what is already there and stops. A file the project already has — `<dir>/wrangler.toml`, a page you edited, `website.config.ts` — is never overwritten, and a hostname you chose deliberately is never silently repointed in `.env.<env>` (it says so and leaves it; see [Moving a live project](#moving-a-live-project)).
 
 ### `website.config.ts` is the switch
 
@@ -165,20 +165,27 @@ The planned-window mechanism is a different thing and is unaffected: a deploy th
 
 ## Moving a live project
 
-If the app is already in production **on the apex**, the move is a cutover, not a setup step, because a Custom Domain belongs to exactly one Worker: the app must release `acme.io` before the website can claim it. `setup:website` therefore never repoints a hostname you chose — it says what it left alone.
+If the app is already in production **on the apex**, turning the website on is a cutover: a Custom Domain belongs to exactly one Worker, and the app is holding it.
 
-Do it in this order, per environment, starting with preview:
+Two facts decide the order, and both were learned the hard way:
 
-1. **Attach the new app hostname first** and let it settle: `npm run setup:domain -- app.acme.io --env production`. The app now answers on both `acme.io` and `app.acme.io`; `APP_BASE_URL` and `CLI_API_URL_PRODUCTION` become `https://app.acme.io` and are synced.
-2. **Tell everything that holds the old URL.** OAuth redirect URIs (Google, …), any R2 bucket CORS `AllowedOrigins`, webhooks, API clients, status monitors, the DNS of anything that pointed at the apex for the app.
-3. **Deploy the app**, so the new base URL is the one it runs with. Sign in on `https://app.acme.io` and confirm sessions and emails are right. Sessions on the old origin are *not* carried over: cookies are host-only, so everyone signs in again once.
-4. **Release the apex from the app**: dashboard → Workers → `<project>-production` → Settings → Domains & Routes → remove `acme.io`. Until this is done the next step fails, and it says so.
-5. **Deploy the website and claim the apex**: `npm run deploy:website:production`, then `npm run setup:domain -- acme.io --env production --website`.
-6. **Decide what `www` does** (a redirect rule to the apex is usually right) and check the apex serves the site, `app.acme.io` serves the app, and sign-in works.
+- **`wrangler deploy` reassigns a Custom Domain rather than refusing it.** Deploying the website takes `acme.io` from the app Worker, silently and in seconds. No dashboard step is needed — and, the other way round, an app whose `wrangler.toml` still lists the apex **takes it straight back** on its next deploy. That is why `setup:website` removes the website's hostnames from the app's routes, and says so.
+- **`APP_BASE_URL` is a secret, so it applies without a deploy.** The moment `setup:domain` syncs it, sign-in accepts only `app.acme.io`; the apex, still served by the app until the website claims it, answers 403 to a sign-in. So the window between those two steps should be minutes, not days.
 
-Rolling back is the same list in reverse: release the apex from the website, attach it to the app, put `APP_BASE_URL` back, deploy.
+In this order, per environment, preview first:
 
----
+1. **`npm run setup:website`** — the app's routes gain `app.acme.io` and lose `acme.io`; `APP_BASE_URL`, `CLI_API_URL_*` and `config.baseUrls` move with them. Nothing remote has happened yet.
+2. **Attach the app's new hostname:** `npm run setup:domain -- app.acme.io --env production`. It waits until it answers, then makes it the app's URL and syncs that. From here on, sign-in works only there — the next two steps are what people see.
+3. **Tell everything that holds the old URL**: OAuth redirect URIs (Google, …), R2 bucket CORS `AllowedOrigins`, webhooks, API clients, monitors.
+4. **Deploy the website:** `npm run deploy:website:production`. It claims `acme.io` as it deploys, so the apex becomes the marketing site and anyone signing in is on `app.acme.io`.
+5. **Deploy the app:** `npm run deploy:production`. Its route set is now `app.*` only; the apex is already the website's, so there is nothing for it to release.
+6. **Check all three**: `https://acme.io` serves the site, `https://app.acme.io` serves the app, sign-in works there, and "Open app" on the site lands on the app in the theme chosen. Decide what `www` does (a redirect rule to the apex is usually right).
+
+> Deploying the **app** between steps 1 and 4 is the one thing to avoid: its routes no longer list the apex, so that deploy releases it and nothing serves it until the website is deployed.
+
+Sessions are not carried over: cookies are host-only, so everyone signs in again once, on the new hostname.
+
+Rolling back is the same list in reverse: put `acme.io` back in the app's `[env.production]` routes and `APP_BASE_URL`, deploy the app (which takes the domain back), and leave the website Worker without its route.
 
 ## Turning it off
 
