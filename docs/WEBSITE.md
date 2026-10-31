@@ -98,7 +98,7 @@ npm run dev:website   # the website alone, pointing at the app's usual URL
 npm run dev:all       # both, the website pointing at the app that just started
 ```
 
-`dev:all` (`bin/dev-all.ts`) decides the app's port **once** and passes it both ways — `--port <p> --strictPort` to Vite, `--var APP_URL:http://localhost:<p>` to the website Worker. Nothing is scraped from any output. The port is, in order: `--app-port`, else the one in `APP_BASE_URL` in `.env.local` (what `bin/worktree-dev` writes, and what the auth CLI and the E2E tests already read), else `5173`. The website's own port is `--website-port` or a free one.
+`dev:all` (`bin/dev-all.ts`) starts the app, waits until it is listening, and only then starts the website — two Workers runtimes coming up in the same instant fight over a socket workerd picks for itself, and the website is the one that dies. It decides the app's port **once** and passes it both ways — `--port <p> --strictPort` to Vite, `--var APP_URL:http://localhost:<p>` to the website Worker. Nothing is scraped from any output. The port is, in order: `--app-port`, else the one in `APP_BASE_URL` in `.env.local` (what `bin/worktree-dev` writes, and what the auth CLI and the E2E tests already read), else `5173`. The website's own port is `--website-port` or a free one.
 
 In a git worktree, `bin/worktree-website` starts the site beside `bin/worktree-dev`; Paseo offers it as the `website` service (added to `paseo.json` by the setup), so start both services and each worktree has its own pair.
 

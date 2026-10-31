@@ -22,6 +22,13 @@ export function resolveAppUrl(appUrl: string | undefined, requestUrl: string): s
 	return `${url.protocol}//app.${url.hostname.replace(/^www\./, "")}`;
 }
 
+/**
+ * The loopback, however it was typed. `[::1]` matters: a URL's hostname keeps
+ * the brackets, and without it a dev server reached over IPv6 — which is what
+ * `localhost` resolves to first on macOS — would be redirected to https and
+ * fail to connect.
+ */
 export function isLocalHost(hostname: string): boolean {
-	return hostname === "localhost" || hostname === "127.0.0.1" || hostname.endsWith(".localhost");
+	const host = hostname.replace(/^\[|\]$/g, "");
+	return host === "localhost" || host === "::1" || /^127\./.test(host) || host.endsWith(".localhost");
 }

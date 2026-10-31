@@ -110,6 +110,9 @@ describe("the app's URL, as the site's Worker sees it", () => {
 		expect(resolveAppUrl(undefined, "https://preview-acme.io/pricing")).toBe("https://app.preview-acme.io");
 		expect(resolveAppUrl("", "https://www.acme.io/")).toBe("https://app.acme.io");
 		expect(resolveAppUrl(undefined, "http://localhost:8788/")).toBe("http://localhost:5173");
+		// The loopback however it was typed: `localhost` resolves to ::1 first on macOS.
+		expect(resolveAppUrl(undefined, "http://[::1]:8788/")).toBe("http://localhost:5173");
+		expect(resolveAppUrl(undefined, "http://127.0.0.1:8788/")).toBe("http://localhost:5173");
 	});
 });
 

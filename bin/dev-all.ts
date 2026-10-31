@@ -19,7 +19,7 @@
  * Usage: tsx bin/dev-all.ts [--website-only] [--app-port <n>] [--website-port <n>]
  */
 import { spawn, type ChildProcess } from "node:child_process";
-import { createServer } from "node:net";
+import { connect, createServer } from "node:net";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { requireWebsiteConfig } from "./lib/website-config";
@@ -38,6 +38,46 @@ export function appPortFrom(envLocal: string | null, override?: string): number 
 	const url = envLocal ? /^APP_BASE_URL=["']?(https?:\/\/[^\s"']+)/m.exec(envLocal)?.[1] : undefined;
 	const port = url ? Number(new URL(url).port) : NaN;
 	return Number.isInteger(port) && port > 0 ? port : 5173;
+}
+
+const sleep = (ms: number) => new Promise<void>((done) => setTimeout(done, ms));
+
+/**
+ * Is something listening on `port`? Asked of both loopback addresses: Vite
+ * binds `localhost`, which on macOS is ::1, so an IPv4-only probe waits for
+ * ever on a server that is already up.
+ */
+function listening(port: number): Promise<boolean> {
+	const onHost = (host: string) =>
+		new Promise<boolean>((done) => {
+			const socket = connect({ port, host });
+			const settle = (answer: boolean) => {
+				socket.destroy();
+				done(answer);
+			};
+			socket.setTimeout(1_000);
+			socket.on("connect", () => settle(true));
+			socket.on("error", () => settle(false));
+			socket.on("timeout", () => settle(false));
+		});
+	return Promise.all([onHost("127.0.0.1"), onHost("::1")]).then((answers) => answers.includes(true));
+}
+
+/**
+ * Wait until the app's dev server is up before starting the website's.
+ *
+ * Not politeness: both run a Workers runtime, and two of them coming up in the
+ * same instant fight over a socket workerd picks for itself — the website then
+ * dies with "Address already in use (socket \"direct:1:default\")" while the app
+ * is fine. Started a moment apart, they coexist happily.
+ */
+async function waitForApp(port: number, timeoutMs = 90_000): Promise<void> {
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		if (await listening(port)) return;
+		await sleep(300);
+	}
+	console.log(`  (the app is not listening on ${port} yet; starting the website anyway)`);
 }
 
 function freePort(): Promise<number> {
@@ -76,7 +116,10 @@ async function main(): Promise<void> {
 	};
 
 	console.log(websiteOnly ? "Website dev server:" : "App and website dev servers:");
-	if (!websiteOnly) start(packageManager, ["run", "dev", "--", "--port", String(appPort), "--strictPort"]);
+	if (!websiteOnly) {
+		start(packageManager, ["run", "dev", "--", "--port", String(appPort), "--strictPort"]);
+		await waitForApp(appPort);
+	}
 	start("npx", ["wrangler", "dev", "--config", `${website.dir}/wrangler.toml`, "--port", String(websitePort), "--var", `APP_URL:${appUrl}`]);
 
 	console.log(`\n  website  http://localhost:${websitePort}`);
