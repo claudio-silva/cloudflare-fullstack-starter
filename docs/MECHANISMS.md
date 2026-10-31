@@ -663,6 +663,34 @@ API. A token with API access and Maintainer rights reads the value regardless.
 
 ---
 
+## Which hosts may sign in
+
+Better Auth refuses a sign-in whose `Origin` is not trusted, answering
+`403 INVALID_ORIGIN`. Preview and production keep that strict check against
+their `baseURL` — exactly what you want for a deployed app.
+
+**Local trusts any host** (`trustedOrigins: ["*"]` in
+`src/worker/middleware/auth.ts`) and derives `baseURL` from the incoming
+request rather than from `config.baseUrls.local`. Dev is reached under an
+open-ended set of hostnames: another port when 5173 is taken, a LAN IP when
+testing from a phone, `host.docker.internal`, or a dev-workspace proxy such as
+`dev--<workspace>.localhost:6767`. An allow-list cannot keep up with that —
+and note that `http://localhost:*` matches the *port*, not a subdomain of
+`localhost`, so a proxy hostname is refused by a pattern that looks like it
+should cover it. There is nothing to protect on a developer's own machine, and
+a miss is expensive: it reads like a wrong password.
+
+Which brings us to the second half. The sign-in form maps Better Auth failures
+by **`error.code`**, never by substring-matching the English `message`
+(`src/shared/sign-in-error-message.ts`). The obvious test —
+`message.includes("Invalid")` — also catches `Invalid origin`, so a host
+problem told the user their password was wrong: the one thing they could not
+fix, on the one screen with no other diagnostics. Origin rejections
+(`INVALID_ORIGIN`, `MISSING_OR_NULL_ORIGIN`, the callback and redirect
+variants, `CROSS_SITE_NAVIGATION_LOGIN_BLOCKED`) now say the *address* was
+refused and name it; credential codes keep the credentials message; anything
+unmapped shows what the server actually said.
+
 ## Sign-in log
 
 `login_events` is a permanent history of every user, indexed by

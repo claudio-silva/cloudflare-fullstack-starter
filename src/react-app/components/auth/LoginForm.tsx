@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { authClient } from "@/lib/auth/client";
+import { signInErrorMessage } from "../../../shared/sign-in-error-message";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
@@ -56,13 +57,7 @@ export function LoginForm({ onSuccess, showSignupLink = true }: LoginFormProps) 
 				},
 			});
 			if (result.error) {
-				if (result.error.message?.includes("not verified")) {
-					setError("Please verify your email before signing in.");
-				} else if (result.error.message?.includes("Invalid")) {
-					setError("Invalid email or password.");
-				} else {
-					setError(result.error.message || "Failed to sign in.");
-				}
+				setError(signInErrorMessage(result.error, window.location.origin));
 			}
 		} catch (err: unknown) {
 			const message = err instanceof Error ? err.message : "An unexpected error occurred.";

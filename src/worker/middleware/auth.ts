@@ -11,11 +11,44 @@ import { fail, failForAuthClient } from "../lib/errors";
 type Environment = "local" | "preview" | "production" | "test";
 
 function getBaseURL(c: AppContext, environment: Environment): string {
+	/*
+	 * Locally the app is reached under whatever host happens to serve it — plain
+	 * `localhost:5173`, another port when that one is taken, a LAN IP from a phone,
+	 * or a proxy hostname from a container or dev-workspace tool. Deriving the base
+	 * URL from the request keeps callback and redirect URLs on the host the user is
+	 * actually browsing instead of bouncing them to a different one.
+	 */
+	if (environment === "local") {
+		const origin = originOfRequest(c);
+		if (origin) return origin;
+	}
+
 	if (c.env.APP_BASE_URL) return c.env.APP_BASE_URL;
 
 	return environment === "preview" || environment === "production"
 		? config.baseUrls[environment]
 		: config.baseUrls.local;
+}
+
+/**
+ * The origin this Worker was actually reached on, preferring what the browser
+ * declared. (Distinct from `requestOrigin` in `lib/login-log`, which is the
+ * caller's IP / user agent / country.)
+ */
+function originOfRequest(c: AppContext): string | null {
+	const header = c.req.header("origin");
+	if (header && header !== "null") {
+		try {
+			return new URL(header).origin;
+		} catch {
+			/* malformed header: fall through to the request URL */
+		}
+	}
+	try {
+		return new URL(c.req.url).origin;
+	} catch {
+		return null;
+	}
 }
 
 function isEnabled(value?: string): boolean {
@@ -208,6 +241,18 @@ export function createAuth(c: AppContext) {
 			ipAddress: { ipAddressHeaders: ["cf-connecting-ip", "x-forwarded-for"] },
 		},
 		baseURL: getBaseURL(c, environment),
+		/*
+		 * Local dev is reached under an open-ended set of hosts: a different port when
+		 * 5173 is taken, a LAN IP when testing from a phone, `host.docker.internal`, or
+		 * a dev-workspace proxy hostname such as `dev--<workspace>.localhost:6767`. A
+		 * host allow-list cannot keep up — and note `http://localhost:*` matches the
+		 * *port*, not a subdomain of `localhost`. Every miss surfaces as an opaque
+		 * `INVALID_ORIGIN` that reads like a wrong password. There is nothing to
+		 * protect on a developer's own machine, so local trusts whatever host served
+		 * the page; preview and production keep Better Auth's strict check against
+		 * their `baseURL`.
+		 */
+		...(environment === "local" ? { trustedOrigins: ["*"] } : {}),
 	});
 }
 

@@ -351,6 +351,8 @@ Projects built on this starter should edit few starter files so later upstream p
 - Don't call a service SDK/API directly from feature code when an adapter exists (go through `src/worker/adapters/`)
 - Don't call the app's API with bare `fetch` (it would bypass the HTTP layer), and don't show API errors at call sites (`if (!res.ok) toast.error(...)`): use `http()`, with `handles` for statuses the call deals with itself
 - Don't put internal details (SQL, ids of other users, stack traces) in an error's user message: they go in `log`
+- Don't narrow local auth to a host allow-list: in `local`, `createAuth` trusts any origin and derives `baseURL` from the request, because dev is reached under arbitrary hostnames (other ports, LAN IPs, container and dev-workspace proxies). Preview and production keep the strict check (`docs/MECHANISMS.md`, "Which hosts may sign in")
+- Don't branch on a Better Auth error's English `message` in the UI: match `error.code` through `signInErrorMessage` (`src/shared/sign-in-error-message.ts`). A test for `"Invalid"` also catches `Invalid origin` and tells users their password is wrong
 
 ## Project-Specific Notes
 

@@ -16,6 +16,59 @@ describe("auth", () => {
 		expect(res.status).toBe(401);
 	});
 
+	/*
+	 * Local dev is reached under arbitrary hostnames (another port, a LAN IP, a
+	 * container or dev-workspace proxy), and a refused origin used to surface as a
+	 * "wrong password" the developer could not fix.
+	 */
+	it("local trusts whatever host served the page, so a proxy hostname can sign in", async () => {
+		const email = `origin-local-${Date.now()}@example.com`;
+		const password = "right-password-1";
+		expect((await createUser(email, password)).status).toBeLessThan(300);
+		const local = { ...env, ENVIRONMENT: "local" };
+		const res = await post(
+			"/api/auth/sign-in/email",
+			{ email, password },
+			{ origin: "http://dev--workspace-1a2b3c.localhost:6767" },
+			local,
+		);
+		expect(res.status).toBeLessThan(300);
+	});
+
+	it("a wrong password is still a wrong password, whatever host it comes from", async () => {
+		const email = `origin-wrong-${Date.now()}@example.com`;
+		expect((await createUser(email, "right-password-1")).status).toBeLessThan(300);
+		const local = { ...env, ENVIRONMENT: "local" };
+		const res = await post(
+			"/api/auth/sign-in/email",
+			{ email, password: "wrong-password-2" },
+			{ origin: "http://dev--workspace-1a2b3c.localhost:6767" },
+			local,
+		);
+		expect(res.status).toBe(401);
+		expect((await res.json() as { code?: string }).code).toBe("INVALID_EMAIL_OR_PASSWORD");
+	});
+
+	it("preview keeps the strict origin check, so a foreign host is refused", async () => {
+		const email = `origin-preview-${Date.now()}@example.com`;
+		const password = "right-password-1";
+		expect((await createUser(email, password)).status).toBeLessThan(300);
+		const preview = {
+			...env,
+			ENVIRONMENT: "preview",
+			APP_BASE_URL: "https://preview.example.com",
+			BETTER_AUTH_SECRET: "test-secret-for-the-preview-path",
+		};
+		const res = await post(
+			"/api/auth/sign-in/email",
+			{ email, password },
+			{ origin: "https://attacker.example.net" },
+			preview,
+		);
+		expect(res.status).toBe(403);
+		expect((await res.json() as { code?: string }).code).toBe("INVALID_ORIGIN");
+	});
+
 	it("the reset answer does not wait for the email provider, so it cannot tell whether an account exists", async () => {
 		const email = `send-slow-${Date.now()}@example.com`;
 		expect((await createUser(email, "old-password-1")).status).toBeLessThan(300);
