@@ -15,7 +15,12 @@
  * hostname free of DNS records. Credentials: CLOUDFLARE_API_TOKEN from the
  * environment or .env.setup.local, else wrangler's own login (`npx wrangler login`).
  *
- * Usage: npm run setup:domain -- <hostname> [--env production|preview] [--yes] [--dry-run]
+ * With `--website`, the hostname is attached to the **product website's**
+ * Worker instead (website.config.ts, docs/WEBSITE.md): same three steps, minus
+ * the fourth — a marketing site is not what sign-in accepts, so the app's URL
+ * is left alone.
+ *
+ * Usage: npm run setup:domain -- <hostname> [--env production|preview] [--website] [--yes] [--dry-run]
  */
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -25,10 +30,12 @@ import { cf } from "./lib/cloudflare-api";
 import { attachCustomDomain, normalizeHostname } from "./lib/custom-domain";
 import { cloudflareCredentials } from "./lib/deploy-config";
 import { resolveWorkerName, workerExists } from "./lib/worker";
+import { requireWebsiteConfig } from "./lib/website-config";
 
-const USAGE = "Usage: npm run setup:domain -- <hostname> [--env production|preview] [--yes] [--dry-run]";
+const USAGE = "Usage: npm run setup:domain -- <hostname> [--env production|preview] [--website] [--yes] [--dry-run]";
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
+const website = args.includes("--website");
 const yes = args.includes("--yes") || args.includes("-y");
 const envIndex = args.indexOf("--env");
 const env = envIndex === -1 ? "production" : args[envIndex + 1];
@@ -76,12 +83,17 @@ async function main(): Promise<void> {
 
 	const token = apiToken() || die("no Cloudflare credentials: run `npx wrangler login`, or set CLOUDFLARE_API_TOKEN in .env.setup.local.");
 	const account = await accountId(token);
-	const workerName = resolveWorkerName("wrangler.toml", env);
+	// The website is a Worker of its own, with its own config and no app URL.
+	const configPath = website ? `${requireWebsiteConfig().dir}/wrangler.toml` : "wrangler.toml";
+	const workerName = resolveWorkerName(configPath, env);
 	process.env.CLOUDFLARE_ACCOUNT_ID ||= account;
-	if (workerExists(workerName) === false) die(`the Worker ${workerName} does not exist yet: deploy ${env} once first.`);
+	if (workerExists(workerName) === false) die(`the Worker ${workerName} does not exist yet: deploy ${env} once first (${website ? `npm run deploy:website:${env}` : `npm run deploy:${env}`}).`);
 
 	console.log(`${dryRun ? "Dry run: nothing is changed.\n" : ""}${env}: https://${hostname} → Worker ${workerName}`);
-	if (!dryRun && !(await confirm(`The app's URL becomes https://${hostname}; sign-in then works only there. Go ahead?`))) die("aborted");
+	const question = website
+		? `https://${hostname} will serve the product website. Go ahead?`
+		: `The app's URL becomes https://${hostname}; sign-in then works only there. Go ahead?`;
+	if (!dryRun && !(await confirm(question))) die("aborted");
 
 	const zone = await attachCustomDomain({
 		token,
@@ -90,6 +102,8 @@ async function main(): Promise<void> {
 		hostname,
 		workerName,
 		dryRun,
+		configPath,
+		appUrl: !website,
 		report: {
 			ok: (m) => console.log(`  ✓ ${m}`),
 			note: (m) => console.log(`  · ${m}`),
@@ -98,7 +112,7 @@ async function main(): Promise<void> {
 	});
 
 	if (dryRun) return;
-	console.log(`\nhttps://${hostname} is the ${env} app's URL. Commit wrangler.toml, so every deploy keeps the domain.`);
+	console.log(`\nhttps://${hostname} ${website ? `serves the ${env} website` : `is the ${env} app's URL`}. Commit ${configPath}, so every deploy keeps the domain.`);
 	if (!deployConfig.maintenance.zoneId) {
 		console.log(`For an emergency maintenance window (deploy.config.ts → maintenance), the zone id is ${zone.id}.`);
 	}

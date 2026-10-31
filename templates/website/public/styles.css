@@ -1,0 +1,467 @@
+/*
+ * The product website's styles. Hand-written and self-contained: no build
+ * step, no framework, no CDN — a marketing page that must stay up when
+ * everything else is down should depend on as little as possible.
+ *
+ * Colours are custom properties, with the dark set under `.dark` on <html>
+ * (public/js/site.js puts it there). To rebrand, the accent and the two
+ * surface colours are usually enough.
+ */
+
+:root {
+	--bg: #ffffff;
+	--bg-subtle: #f7f7f8;
+	--surface: #ffffff;
+	--border: #e5e5e8;
+	--text: #18181b;
+	--text-muted: #5f5f6b;
+	--accent: #4f46e5;
+	--accent-contrast: #ffffff;
+	--accent-soft: #eef0ff;
+	--ring: #a5b4fc;
+	--shadow: 0 1px 2px rgb(16 16 24 / 6%), 0 8px 24px -12px rgb(16 16 24 / 18%);
+	--radius: 12px;
+	--container: 68rem;
+	color-scheme: light;
+}
+
+.dark {
+	--bg: #0b0b0f;
+	--bg-subtle: #121218;
+	--surface: #15151c;
+	--border: #26262f;
+	--text: #f4f4f5;
+	--text-muted: #a1a1ad;
+	--accent: #818cf8;
+	--accent-contrast: #15151c;
+	--accent-soft: #1d1d2b;
+	--ring: #4f46e5;
+	--shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 10px 30px -14px rgb(0 0 0 / 70%);
+	color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+html {
+	background: var(--bg);
+	scroll-behavior: smooth;
+}
+
+body {
+	margin: 0;
+	background: var(--bg);
+	color: var(--text);
+	font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+	font-size: 17px;
+	line-height: 1.6;
+	-webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+	line-height: 1.15;
+	letter-spacing: -0.02em;
+	margin: 0;
+	text-wrap: balance;
+}
+
+p {
+	margin: 0;
+	text-wrap: pretty;
+}
+
+a {
+	color: inherit;
+}
+
+:focus-visible {
+	outline: 2px solid var(--ring);
+	outline-offset: 2px;
+	border-radius: 6px;
+}
+
+.sr-only {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
+
+.skip-link {
+	position: absolute;
+	left: 50%;
+	translate: -50% -150%;
+	z-index: 10;
+	margin-top: 0.5rem;
+	padding: 0.5rem 1rem;
+	border-radius: 8px;
+	background: var(--surface);
+	border: 1px solid var(--border);
+	text-decoration: none;
+	transition: translate 150ms ease;
+}
+
+.skip-link:focus-visible {
+	translate: -50% 0;
+}
+
+.container {
+	width: 100%;
+	max-width: var(--container);
+	margin-inline: auto;
+	padding-inline: 1.25rem;
+}
+
+/* --- Buttons ------------------------------------------------------------- */
+
+.button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.5rem;
+	padding: 0.5rem 0.95rem;
+	border: 1px solid transparent;
+	border-radius: 9px;
+	font-size: 0.95rem;
+	font-weight: 600;
+	text-decoration: none;
+	white-space: nowrap;
+	cursor: pointer;
+	transition:
+		background-color 150ms ease,
+		border-color 150ms ease,
+		translate 150ms ease;
+}
+
+.button-lg {
+	padding: 0.7rem 1.35rem;
+	font-size: 1rem;
+}
+
+.button-primary {
+	background: var(--accent);
+	color: var(--accent-contrast);
+}
+
+.button-primary:hover {
+	translate: 0 -1px;
+	filter: brightness(1.07);
+}
+
+.button-ghost {
+	border-color: var(--border);
+	background: var(--surface);
+	color: var(--text);
+}
+
+.button-ghost:hover {
+	background: var(--bg-subtle);
+}
+
+/* --- Header -------------------------------------------------------------- */
+
+.site-header {
+	position: sticky;
+	top: 0;
+	z-index: 5;
+	background: color-mix(in srgb, var(--bg) 88%, transparent);
+	backdrop-filter: blur(10px);
+	border-bottom: 1px solid var(--border);
+}
+
+.header-inner {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+	min-height: 4rem;
+}
+
+.brand {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.6rem;
+	text-decoration: none;
+	font-weight: 650;
+	letter-spacing: -0.01em;
+}
+
+.brand-logo {
+	display: block;
+	height: 2rem;
+	width: auto;
+}
+
+.brand-logo-dark,
+.dark .brand-logo-light {
+	display: none;
+}
+
+.dark .brand-logo-dark {
+	display: block;
+}
+
+.header-actions {
+	display: flex;
+	align-items: center;
+	gap: 0.6rem;
+}
+
+.theme-switch {
+	display: inline-flex;
+	padding: 2px;
+	gap: 2px;
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	background: var(--bg-subtle);
+}
+
+.theme-switch button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 2rem;
+	height: 2rem;
+	padding: 0;
+	border: 0;
+	border-radius: 8px;
+	background: transparent;
+	color: var(--text-muted);
+	cursor: pointer;
+	transition:
+		background-color 120ms ease,
+		color 120ms ease;
+}
+
+.theme-switch button:hover {
+	color: var(--text);
+}
+
+.theme-switch button[aria-pressed="true"] {
+	background: var(--surface);
+	color: var(--text);
+	box-shadow: var(--shadow);
+}
+
+.theme-switch svg {
+	width: 1.05rem;
+	height: 1.05rem;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.7;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+/* --- Hero ---------------------------------------------------------------- */
+
+.hero {
+	position: relative;
+	overflow: hidden;
+	padding: clamp(3.5rem, 9vw, 7rem) 0 clamp(3rem, 7vw, 5rem);
+	background:
+		radial-gradient(60rem 28rem at 50% -8rem, var(--accent-soft), transparent 70%),
+		var(--bg);
+}
+
+.hero-inner {
+	max-width: 46rem;
+	text-align: center;
+}
+
+.eyebrow {
+	display: inline-block;
+	margin-bottom: 1rem;
+	padding: 0.25rem 0.7rem;
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	background: var(--surface);
+	color: var(--text-muted);
+	font-size: 0.8rem;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+}
+
+.hero h1 {
+	font-size: clamp(2.2rem, 6vw, 3.6rem);
+	font-weight: 700;
+}
+
+.lede {
+	margin-top: 1.1rem;
+	color: var(--text-muted);
+	font-size: clamp(1.02rem, 2.4vw, 1.18rem);
+}
+
+.hero-actions {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: 0.75rem;
+	margin-top: 2rem;
+}
+
+.hero-note {
+	margin-top: 1rem;
+	color: var(--text-muted);
+	font-size: 0.9rem;
+}
+
+/* --- Features ------------------------------------------------------------ */
+
+.features {
+	padding: clamp(3rem, 7vw, 5rem) 0;
+	background: var(--bg-subtle);
+	border-block: 1px solid var(--border);
+}
+
+.features h2 {
+	font-size: clamp(1.6rem, 3.6vw, 2.1rem);
+	text-align: center;
+}
+
+.card-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+	gap: 1.25rem;
+	margin: 2.5rem 0 0;
+	padding: 0;
+	list-style: none;
+}
+
+.card {
+	padding: 1.5rem;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	background: var(--surface);
+	box-shadow: var(--shadow);
+}
+
+.card h3 {
+	margin: 1rem 0 0.5rem;
+	font-size: 1.1rem;
+}
+
+.card p {
+	color: var(--text-muted);
+	font-size: 0.97rem;
+}
+
+.card-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 2.5rem;
+	height: 2.5rem;
+	border-radius: 10px;
+	background: var(--accent-soft);
+	color: var(--accent);
+}
+
+.card-icon svg {
+	width: 1.3rem;
+	height: 1.3rem;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.7;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+/* --- Final call ---------------------------------------------------------- */
+
+.cta {
+	padding: clamp(3rem, 7vw, 5rem) 0;
+}
+
+.cta-inner {
+	max-width: 40rem;
+	text-align: center;
+}
+
+.cta h2 {
+	font-size: clamp(1.5rem, 3.4vw, 2rem);
+}
+
+.cta p {
+	margin: 0.85rem 0 1.8rem;
+	color: var(--text-muted);
+}
+
+/* --- Footer -------------------------------------------------------------- */
+
+.site-footer {
+	padding: 2rem 0;
+	border-top: 1px solid var(--border);
+	background: var(--bg-subtle);
+	color: var(--text-muted);
+	font-size: 0.9rem;
+}
+
+.footer-inner {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+}
+
+.footer-inner nav {
+	display: flex;
+	gap: 1.25rem;
+}
+
+.footer-inner a {
+	text-decoration: none;
+}
+
+.footer-inner a:hover {
+	color: var(--text);
+}
+
+/* --- Maintenance --------------------------------------------------------- */
+
+.notice {
+	display: grid;
+	place-items: center;
+	min-height: 100dvh;
+	padding: 2rem 1.25rem;
+	text-align: center;
+}
+
+.notice-inner {
+	max-width: 32rem;
+}
+
+.notice h1 {
+	margin-top: 1.5rem;
+	font-size: clamp(1.6rem, 4vw, 2.2rem);
+}
+
+.notice p {
+	margin-top: 0.9rem;
+	color: var(--text-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	html {
+		scroll-behavior: auto;
+	}
+
+	*,
+	*::before,
+	*::after {
+		transition-duration: 0.01ms !important;
+		animation-duration: 0.01ms !important;
+	}
+}

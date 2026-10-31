@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>__APP_NAME__ — back shortly</title>
+		<meta name="robots" content="noindex" />
+		<link rel="icon" href="/favicon.ico" sizes="any" />
+		<link rel="stylesheet" href="/styles.css" />
+		<!--
+			Where the emergency maintenance redirect sends people
+			(deploy.config.ts → maintenance.redirectTo; docs/DEPLOYMENT.md). It is
+			served by the website Worker on purpose: the app being broken is the
+			reason anyone is reading this, so the page must not come from it.
+
+			No script and no app link: nothing here may depend on the app, and a
+			link to it right now would lead straight back to the redirect.
+		-->
+		<script>
+			(function () {
+				try {
+					var theme = localStorage.getItem("app-theme") || "light";
+					var dark = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+					document.documentElement.classList.toggle("dark", dark);
+				} catch (e) {
+					/* storage off: the light theme it is */
+				}
+			})();
+		</script>
+	</head>
+	<body>
+		<main class="notice">
+			<div class="notice-inner">
+				<img class="brand-logo brand-logo-light" src="/assets/logo-light.svg" alt="__APP_NAME__" width="48" height="48" />
+				<img class="brand-logo brand-logo-dark" src="/assets/logo-dark.svg" alt="__APP_NAME__" width="48" height="48" />
+				<h1>We are back shortly</h1>
+				<p>__APP_NAME__ is briefly unavailable while we put something right. Nothing you have saved is affected.</p>
+				<p>Try again in a few minutes — this page will not change, but the app will be back on its own.</p>
+			</div>
+		</main>
+	</body>
+</html>

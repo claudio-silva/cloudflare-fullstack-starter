@@ -32,6 +32,11 @@
  * `starter.version` with `APP_VERSION_FROM=starter`: that is how the starter
  * releases itself while `version` stays at the 0.0.1 new projects start from.
  *
+ * The product website, when the project has one (docs/WEBSITE.md), is a
+ * separate Worker with no version of its own: `--website-only` deploys just
+ * it, cutting no release, and `--with-website` deploys it after the app's
+ * release is live.
+ *
  * NEVER run this against production without explicit approval.
  */
 
@@ -44,6 +49,7 @@ import { nextVersion as computeNextVersion, type BumpKind } from "./lib/release-
 import { resolveWorkerName } from "./lib/worker";
 import { ensureBuildStarted, followBuild } from "./lib/workers-builds";
 import { resolve } from "node:path";
+import { deployWebsite } from "./deploy-website";
 import { createInterface } from "node:readline";
 
 const ENV = "production" as const;
@@ -72,6 +78,8 @@ function usage(): void {
   --version, -v X.Y.Z           Use this exact version
   --local                       Build and deploy from this machine, whatever the mode
   --release-only                Bump, tag and push; do not deploy or trigger CI
+  --website-only                Deploy the product website alone; cut no release
+  --with-website                Deploy the product website too, after the release is live
   --no-ci-check                 Release even though CI has not passed (emergencies only)
   --yes, -y                     Do not prompt
   --dry-run                     Show the plan; change nothing
@@ -177,6 +185,11 @@ async function requireGreenCi(sha: string, what: string, appearWithinMs = 0): Pr
 async function main(): Promise<void> {
 	const args = process.argv.slice(2);
 	if (args.includes("--help") || args.includes("-h")) return usage();
+
+	// The website carries no version and gates on nothing: it is simply deployed.
+	if (args.includes("--website-only")) {
+		return deployWebsite("production", { yes: args.includes("--yes") || args.includes("-y"), dryRun: args.includes("--dry-run") });
+	}
 
 	const kind = args.includes("--major") ? "major" : args.includes("--minor") ? "minor" : "patch";
 	const explicit = args.includes("-v") ? args[args.indexOf("-v") + 1] : args.includes("--version") ? args[args.indexOf("--version") + 1] : "";
@@ -333,6 +346,8 @@ async function main(): Promise<void> {
 		}
 		await waitForRelease(version);
 	}
+
+	if (args.includes("--with-website")) await deployWebsite("production", { yes, dryRun });
 
 	console.log(`Done: ${version}`);
 }

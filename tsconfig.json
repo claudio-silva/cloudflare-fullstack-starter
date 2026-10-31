@@ -5,6 +5,7 @@
     { "path": "./tsconfig.node.json" },
     { "path": "./tsconfig.worker.json" },
     { "path": "./tsconfig.cli.json" },
+    { "path": "./tsconfig.website.json" },
     { "path": "./test" }
 ],
 "compilerOptions": {

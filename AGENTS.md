@@ -63,6 +63,8 @@ src/
     ├── adapters/           # Swappable service adapters (email)
     └── utils/              # Email templates and helpers
 
+website/                    # The optional product website, when the project has one (docs/WEBSITE.md)
+templates/website/          # Its scaffold, copied by `setup:website`
 src/cli/                    # CLI commands (auth user management + db utilities)
 src/config.ts               # Global app configuration (app name, etc.)
 bin/                        # CLI entry points (init, auth, db) and worktree scripts
@@ -117,6 +119,9 @@ if (!post) return fail(c, 404, "That post no longer exists.", { log: `post ${id}
 throw new AppError(403, "You can't edit someone else's post.", { log: `user ${user.id} → post ${id}` });
 ```
 In the browser, call the API with `http()` (`import { http } from "@/lib/http"`) rather than bare `fetch`, which skips the error handling. The HTTP layer (`src/react-app/lib/http/`) shows every failure of a managed call and then makes it **reject** with `HandledHttpError`. So call sites do not check `res.ok` or show error messages; code after `await http()` runs only on success. A call that handles a status itself lists it: `http(url, { handles: [404] })`; `[0]` takes network failures, `"all"` everything. A `catch` that exists to undo local state must not show `HandledHttpError` again (`isHandledHttpError()`). Error responses are handled only for calls with a `handles` key other than `null` (which `http()` adds): a plain `fetch`, or `handles: null`, gets its statuses untouched. Lost connections and maintenance are ridden out for **every** same-origin request, aware or not: held, and sent again in order, writes included, with a stable `Idempotency-Key` — an endpoint where a duplicate would do harm should deduplicate on it. A library with its own offline strategy goes in `installHttpLayer({ exclude })`. For offline support, register `http.addOfflineHandler()` (answer from local data) and `http.beforeReconnect()` (send an outbox); read `http.online` / `http.state`, or listen to `app:online` / `app:offline`, rather than `navigator.onLine`. While requests are held the layer blocks the page (`inert` on everything outside `#http-layer`); a page of your own that is fixed to the viewport should offset by `--app-banner-h`. See `docs/MECHANISMS.md`, *The HTTP layer* and *Lost connection*.
+
+### The product website (optional)
+`npm run setup:website` adds a marketing site on the apex domain and moves the app to `app.<domain>`; `website.config.ts` is the switch, and a project without it has none of this. The site is a **separate Worker** (`website/`) with no D1, no secrets and no auth, and it must stay that way: isolation here is the script name, not discipline. Its "Open app" URL comes from the Worker var `APP_URL`, one per environment — never hardcode it in a page — and the link carries `?theme=` so the app opens in the theme chosen on the site. `dev`, `deploy:preview` and `deploy:production` stay app-only; the site has `dev:website`/`dev:all`, `deploy:website:*` and `deploy:all:*`. Full guide, including the cutover for a project already live on its apex: `docs/WEBSITE.md`.
 
 ### Localisation (i18n)
 User-facing strings of the starter's own UI — the HTTP layer's dialogs, banners and toasts among them — live in `src/react-app/lib/i18n.ts` and are read through `t(key, params)`. Add new ones there under a stable key with an English default. No i18n library is imposed: an app plugs its own in with `setTranslator()`, or changes a few words with `overrideMessages()`; a missing translation falls back to the default. Server messages are looked up as `error.<code>` first, so the server keeps writing English and the client translates by code. See `docs/MECHANISMS.md`, *Localising*.
@@ -195,7 +200,14 @@ npm run build                  # Build for production
 npm run deploy:production      # Versioned release: secrets + build vars + build + deploy + tag + migrate (patch; --minor/--major)
 npm run deploy:preview         # Same steps on preview, without versioning
 npm run setup:ci               # Connect Cloudflare Workers Builds to GitHub (idempotent; --dry-run). Needs the user's approval: it deploys
-npm run setup:domain -- <host> # Serve an environment on a custom domain (--env preview; --dry-run). Needs the user's approval: it changes the live URL
+npm run setup:domain -- <host> # Serve an environment on a custom domain (--env preview; --dry-run; --website for the product website's Worker). Needs the user's approval: it changes the live URL
+npm run setup:website          # Add the optional product website (docs/WEBSITE.md). Local files only; --dry-run, idempotent
+
+# Product website (only after setup:website)
+npm run dev:website            # The site alone; dev:all runs it beside the app
+npm run deploy:website:preview # Deploy the site (deploy:preview/:production stay app-only)
+npm run deploy:all:production  # The app's release, then the site
+npm run check:website          # wrangler deploy --dry-run of the site
 npm run sync-env -- <env>      # Send what changed in .env.<env> (secrets + build variables); before pushing to the preview branch
 
 # Logs (deployed environments only)
@@ -213,6 +225,7 @@ A worktree needs its own dependencies, local settings and database, and its own 
 |---|---|---|
 | Set up (once) | `bin/worktree-setup` | Installs the dependencies (pnpm if the source checkout has a `pnpm-lock.yaml`, npm otherwise), copies the source checkout's `.env.local`, and takes a snapshot of its local D1 database (test users and content included) |
 | Dev server | `bin/worktree-dev [port]` | Writes the port into `.env.local` (`APP_BASE_URL`, `CLI_API_URL`) and starts `npm run dev` on it; with no port, it picks a free one |
+| Website (only with one) | `bin/worktree-website` | The product website's dev server beside the app's, pointing at this worktree's app (Paseo: the `website` service) |
 | Tear down | stop the dev server, then `git worktree remove <path>` | Nothing else: the database and settings live inside the worktree |
 
 **Under Paseo**, `paseo.json` already does this: it runs `bin/worktree-setup` when it creates the worktree and offers `bin/worktree-dev` as the `dev` service, which it stops on archive. Start that service rather than `npm run dev`. **Without Paseo** — including a worktree Claude Code created (`claude --worktree`, a subagent with `isolation: worktree`), which it checks out but does not set up — run the commands above yourself: `bin/worktree-setup` once, then `bin/worktree-dev` in the background.
@@ -347,6 +360,9 @@ Projects built on this starter should edit few starter files so later upstream p
 - Don't run separate frontend/backend servers
 - Don't rewrite a shadcn/ui component in place so it no longer matches the official one: small `// project:` edits are fine; a reworked component gets its own name outside `components/ui/`
 - Don't hardcode URLs (use environment-based config)
+- Don't put a hostname or the app's URL in the product website's static files: it comes from the Worker's `APP_URL` var per environment
+- Don't give the product website's Worker a binding, a secret or a route of the app's: a separate script is the isolation
+- Don't make `deploy:preview` / `deploy:production` deploy the website too (`deploy:all:*` exists for that)
 - Don't deploy to production without the user's explicit approval, and never with raw `wrangler deploy`: use `npm run deploy:production` (`bin/deploy-production`)
 - Don't call a service SDK/API directly from feature code when an adapter exists (go through `src/worker/adapters/`)
 - Don't call the app's API with bare `fetch` (it would bypass the HTTP layer), and don't show API errors at call sites (`if (!res.ok) toast.error(...)`): use `http()`, with `handles` for statuses the call deals with itself

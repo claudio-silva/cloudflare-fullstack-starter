@@ -83,6 +83,8 @@ Recovery is normally **forward**: leave the state as it is, correct the migratio
 
 Two mechanisms, for two different problems. Do not reach for the wrong one.
 
+> A project with a product website ([WEBSITE.md](WEBSITE.md)) already hosts the page the emergency redirect needs, on a Worker that does not depend on the app: set `maintenance.redirectTo` to `https://<site>/maintenance.html`.
+
 ### Planned window — the `MAINTENANCE` var
 
 A `breaking` migration needs the app to stop while it runs, and so does a release that brings migrations (see above). The deploy does this on its own:
@@ -227,6 +229,24 @@ Each step checks first, so it is safe to run again, and nothing is deployed:
 3. **The app's URL** — `APP_BASE_URL` and `CLI_API_URL_<ENV>` in `.env.<env>` become `https://<hostname>`, and are synced (`sync-secrets`, `sync-build-vars`). Only now, because sign-in accepts only that origin.
 
 The next deploy turns the `workers.dev` URL off: it is wrangler's default once a Worker has routes, and it leaves one address for the app. To keep both, set `workers_dev = true` under `[env.<env>]`.
+
+`--website` attaches the hostname to the **product website's** Worker instead, if the project has one ([WEBSITE.md](WEBSITE.md)): the same first two steps against `website/wrangler.toml`, and not the third — a marketing site is not an origin sign-in accepts, so `APP_BASE_URL` is left alone.
+
+## Deploying the product website
+
+A project with a product website ([WEBSITE.md](WEBSITE.md)) has a second Cloudflare Worker, and it deploys **separately**:
+
+```bash
+npm run check:website              # wrangler deploy --dry-run of the site
+npm run deploy:website:preview
+npm run deploy:website:production  # bin/deploy-production.ts --website-only
+npm run deploy:all:preview         # both, the app first
+npm run deploy:all:production      # the app's release, then the site
+```
+
+`deploy:preview` and `deploy:production` are untouched: they deploy the app and nothing else. The website carries no version, no migration and no release tag — there is no release to cut for it — so `--website-only` skips the version, the tag, the CI gate and the migrations and just deploys.
+
+**CI deploys the app only.** The website is deployed from a machine on purpose: it is the surface that should stay up when the app's pipeline is what is broken, it changes on a much slower cadence, and a Workers Builds trigger belongs to one script, so automating it means a second trigger for a site with no build step. WEBSITE.md says how to add that trigger if you want it anyway.
 
 ## Running it in CI
 

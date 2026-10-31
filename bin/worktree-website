@@ -1,0 +1,18 @@
+#!/bin/bash
+# Start the product website's dev server in a git worktree, beside the app's
+# (bin/worktree-dev), on a port of its own.
+#
+#   bin/worktree-website
+#
+# The port is $PASEO_PORT (Paseo runs this as the `website` service, see
+# paseo.json) or a free one. The app's URL comes from .env.local, which
+# worktree-dev wrote, so "Open app" points at this worktree's app — not at
+# whichever server happens to hold 5173.
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+if [ ! -f website.config.ts ]; then
+	echo "worktree-website: this project has no product website (npm run setup:website)." >&2
+	exit 1
+fi
+exec npx tsx bin/dev-all.ts --website-only ${PASEO_PORT:+--website-port "$PASEO_PORT"}

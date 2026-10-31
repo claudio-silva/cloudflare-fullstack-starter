@@ -25,9 +25,9 @@
 
 | Kind | Files | Rule |
 |---|---|---|
-| Starter-owned | `bin/`, `src/cli/`, `src/shared/app-version.ts`, `src/shared/build-globals.d.ts`, `src/worker/adapters/`, `src/worker/middleware/`, `src/worker/utils/`, `src/worker/db/index.ts`, `src/worker/db/d1-dialect.ts`, `src/worker/db/backup.ts`, `src/worker/db/migrations/{migrate,columns,types}.ts`, `test/support/`, `vitest.config.ts`, `playwright.config.ts`, `.github/workflows/ci.yml`, `docs/` | Take upstream changes; re-apply local edits if any |
+| Starter-owned | `bin/`, `src/cli/`, `src/shared/app-version.ts`, `src/shared/build-globals.d.ts`, `src/worker/adapters/`, `src/worker/middleware/`, `src/worker/utils/`, `src/worker/db/index.ts`, `src/worker/db/d1-dialect.ts`, `src/worker/db/backup.ts`, `src/worker/db/migrations/{migrate,columns,types}.ts`, `test/support/`, `templates/website/`, `vitest.config.ts`, `playwright.config.ts`, `.github/workflows/ci.yml`, `docs/` | Take upstream changes; re-apply local edits if any |
 | Shared (merge carefully) | `src/worker/db/migrations/{baseline,index}.ts`, `src/worker/db/migrations/incremental/`, `src/worker/db/seeds/`, `package.json`, `vite.config.ts`, `wrangler.toml`, `src/worker/index.ts`, `src/react-app/App.tsx`, `src/worker/types/*`, `AGENTS.md`, `README.md`, `docs/DEPENDENCIES.md` (its *Project choices* section is the project's) | Three-way merge, never overwrite |
-| Project-owned | `src/react-app/components/ui/` (from 3.3.0; before that, starter-owned), `src/config.ts` values, `env/*.template` values, `.env.*`, `migrations/` already applied, `seeds/`, all project pages/routes/components | Never overwrite; only add what a log entry requires |
+| Project-owned | `src/react-app/components/ui/` (from 3.3.0; before that, starter-owned), `src/config.ts` values, `env/*.template` values, `.env.*`, `website.config.ts` and the website folder it names (`website/`) once scaffolded, `migrations/` already applied, `seeds/`, all project pages/routes/components | Never overwrite; only add what a log entry requires |
 
 ### Rules for database migrations
 
@@ -45,6 +45,36 @@ npm run build
 npm run db:migrate     # local
 npm run test:e2e       # from 2.0.0 on, optional
 ```
+
+---
+
+## 3.8.0 — 2026-10-31
+
+An **optional** product website: a marketing site on the apex domain, served by a Worker of its own, with the app moved to `app.<domain>`. Nothing changes for a project that does not turn it on.
+
+### Breaking changes
+
+None. Every existing command behaves exactly as before until `npm run setup:website` is run, and the feature's switch (`website.config.ts`) does not exist until then.
+
+### What it adds
+
+1. **`npm run setup:website`** (`bin/setup-website.ts`, decisions in `bin/lib/website.ts`): scaffolds the site from `templates/website/`, writes its `wrangler.toml`, moves the app's routes to `app.*`, repoints `APP_BASE_URL` / `CLI_API_URL_*` / `config.baseUrls`, adds the scripts and writes `website.config.ts`. Local files only — nothing remote. Idempotent, with `--dry-run`, `--domain`, `--subdomain`, `--dir`, `--preview-host`, `--preview-app-host`.
+2. **`website.config.ts`** is the switch; `bin/lib/website-config.ts` reads it (`loadWebsiteConfig()` → `null`). Scripts ask it instead of guessing from a folder on disk.
+3. **New scripts, added only by the setup:** `dev:website`, `dev:all` (`bin/dev-all.ts`), `check:website`, `deploy:website:preview|production` (`bin/deploy-website.ts`), `deploy:all:preview|production`, and `check` extended to cover both Workers. `dev`, `deploy:preview` and `deploy:production` stay app-only.
+4. **`bin/deploy-production.ts`** gains `--website-only` (deploy the site, cut no release) and `--with-website` (the release, then the site).
+5. **`npm run setup:domain -- <host> --website`** attaches a hostname to the website's Worker and leaves the app's URL alone (`bin/lib/custom-domain.ts` gained `configPath` and `appUrl` options).
+6. **`npm run init`** offers the website at the end (off by default; `--website` non-interactively).
+7. **Worktrees:** `bin/worktree-website`, offered by `paseo.json` as the `website` service (added by the setup).
+8. **`playwright.config.ts`** starts the website's dev server when there is one, and publishes its address as `WEBSITE_BASE_URL`; `e2e/website.spec.ts` skips itself otherwise.
+9. **`tsconfig.website.json`** (referenced from `tsconfig.json`) typechecks the site's Worker — the template, and the project's copy — without the app's `worker-configuration.d.ts`; `eslint.config.js` lints the site's plain-JS modules.
+10. **Docs:** `docs/WEBSITE.md` (what, why, options, dev, deploys, the maintenance page, and the manual cutover for a project already live on its apex), plus sections in `README.md`, `AGENTS.md` and `docs/DEPLOYMENT.md`.
+
+### Required actions
+
+- **Take** the added files: `templates/website/`, `bin/setup-website.ts`, `bin/dev-all.ts`, `bin/deploy-website.ts`, `bin/worktree-website`, `bin/lib/website.ts`, `bin/lib/website-config.ts`, `tsconfig.website.json`, `docs/WEBSITE.md`, `e2e/website.spec.ts`, `test/scripts/website*.test.ts`. **Merge** `package.json` (`setup:website`, `test:website:integration`), `tsconfig.json` (the new reference), `eslint.config.js`, `playwright.config.ts`, `bin/init.ts`, `bin/setup-domain.ts`, `bin/deploy-production.ts`, `bin/lib/custom-domain.ts`, `AGENTS.md`, `README.md` and `docs/DEPLOYMENT.md`.
+- Nothing else is required: without `website.config.ts` the project behaves exactly as it did. Verify with the standard commands.
+- **To adopt the website**, run `npm run setup:website -- --dry-run`, then without it, and read `docs/WEBSITE.md`. If the app is **already live on the apex domain**, the move to `app.<domain>` is a manual cutover (release the Custom Domain from the app before the site claims it, update OAuth redirect URIs and R2 CORS, redeploy): follow *Moving a live project* in `docs/WEBSITE.md` and do preview first. Sessions on the old origin are not carried over — cookies are host-only, so users sign in again once.
+- If the project uses the emergency maintenance redirect, point `maintenance.redirectTo` at `https://<site>/maintenance.html` once the site is live.
 
 ---
 

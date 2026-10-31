@@ -1,0 +1,16 @@
+{
+  // The product website's Worker: the scaffold in templates/, and the copy a
+  // project made of it (docs/WEBSITE.md). Typechecked even when the project has
+  // no website, so the template cannot rot.
+  //
+  // It uses neither the app's paths nor its generated worker-configuration.d.ts
+  // — the website Worker shares nothing with the app, and templates/website/src
+  // carries the few runtime types it needs itself.
+  "extends": "./tsconfig.node.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.website.tsbuildinfo",
+    "lib": ["ES2023", "DOM"],
+    "types": []
+  },
+  "include": ["templates/website/src", "website/src"]
+}

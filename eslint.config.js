@@ -33,6 +33,17 @@ export default tseslint.config(
     },
   },
   {
+    // The product website's browser scripts (docs/WEBSITE.md): plain ESM with
+    // no build step, so they are not covered by the TypeScript block above.
+    files: ["templates/website/public/js/**/*.js", "website/public/js/**/*.js"],
+    extends: [js.configs.recommended],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "module",
+      globals: globals.browser,
+    },
+  },
+  {
     // shadcn/ui components stay as the shadcn CLI writes them, so that
     // `npx shadcn add` and `npx shadcn diff` keep working on them. Rules their
     // upstream code does not follow are off here only. See docs/SHADCN_COMPONENTS.md.

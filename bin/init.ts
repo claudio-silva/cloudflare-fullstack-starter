@@ -1,3 +1,4 @@
+import { execFileSync } from "child_process";
 import fs from "fs";
 import path from "path";
 import readline from "readline";
@@ -20,9 +21,9 @@ const run = (script: string) => `${packageManager} run ${script}`;
 
 const isInteractive = process.stdin.isTTY;
 
-function parseArgs(): Partial<Answers> & { help?: boolean } {
+function parseArgs(): Partial<Answers> & { help?: boolean; website?: boolean } {
 	const args = process.argv.slice(2);
-	const result: Partial<Answers> & { help?: boolean } = {};
+	const result: Partial<Answers> & { help?: boolean; website?: boolean } = {};
 
 	for (let i = 0; i < args.length; i++) {
 		const arg = args[i];
@@ -38,6 +39,8 @@ function parseArgs(): Partial<Answers> & { help?: boolean } {
 			result.previewDomain = args[++i];
 		} else if (arg === "--email-from" && args[i + 1]) {
 			result.emailFrom = args[++i];
+		} else if (arg === "--website") {
+			result.website = true;
 		}
 	}
 	return result;
@@ -53,6 +56,7 @@ Options:
   --app-domain <url>       Production app URL (e.g., https://app.myapp.com)
   --preview-domain <url>   Preview app URL (e.g., https://preview.myapp.com)
   --email-from <address>   Sender email address (defaults to noreply@<app-domain root>)
+  --website                Also add the product website (apex domain; app on app.<domain>)
   -h, --help               Show this help
 
 Interactive mode:
@@ -197,6 +201,17 @@ function updatePackageJsonScripts(pkgPath: string, projectName: string) {
 	writeJSON(pkgPath, pkg);
 }
 
+/**
+ * Offer the product website (docs/WEBSITE.md), then hand over to its own
+ * setup, which is where every decision about it lives.
+ */
+async function maybeAddWebsite(asked: boolean | undefined, appDomain: string): Promise<void> {
+	const wanted = asked ?? (isInteractive && (await prompt("\nAdd a product website on the apex domain, with the app on app.<domain>? (y/N)", "N")).trim().toLowerCase().startsWith("y"));
+	if (!wanted) return;
+	console.log("");
+	execFileSync("npx", ["tsx", path.join(__dirname, "setup-website.ts"), "--yes", "--domain", appDomain], { stdio: "inherit" });
+}
+
 async function main() {
 	const cliArgs = parseArgs();
 
@@ -250,6 +265,10 @@ async function main() {
 			console.log(`  ✓ removed ${dir}/ (starter distribution files)`);
 		}
 	}
+
+	// The product website is optional and off by default: most projects are
+	// just the app. Asked last, because it builds on the domains above.
+	await maybeAddWebsite(cliArgs.website, appDomain);
 
 	console.log("\n✅ Init complete!");
 	console.log("\nNext steps:");

@@ -28,6 +28,7 @@ A great starting point for your next **MVP** or **SaaS** app.
   - [Client error reporting](#client-error-reporting)
 - [Localisation (i18n)](#localisation-i18n)
 - [Demo mode](#demo-mode)
+- [Product website (optional)](#product-website-optional)
 - [Project Structure](#project-structure)
 - [CLI Commands](#cli-commands)
   - [Auth Management](#auth-management)
@@ -495,6 +496,20 @@ Setting the `DEMO_MODE` secret on a deployed Worker turns it into a public showc
 
 Everything that makes a deployment a demo lives on that deployment (Worker secrets, build variables), never in the repository. A project created from the template is not a demo, and has nothing to switch off. → [Demo mode](docs/MECHANISMS.md#demo-mode)
 
+## Product website (optional)
+
+One command gives the project a marketing site on its apex domain, with the app on `app.<domain>`:
+
+```bash
+npm run setup:website        # --dry-run shows the plan; npm run init offers it too
+```
+
+The site is a **separate Cloudflare Worker**: static files and a few lines of code, with no D1, no secrets and no auth — the public apex cannot reach the app's data because nothing binds it to it, and the app's script name never changes, so moving it to a subdomain moves a route, not data. It carries the app's logo, a light/dark/system switch that opens the app in the same theme (`?theme=`), and an "Open app" button whose URL is right in local, preview and production without being hardcoded anywhere.
+
+`npm run dev`, `deploy:preview` and `deploy:production` are unchanged and still concern the app alone; the site has `dev:website` / `dev:all`, `deploy:website:*` and `deploy:all:*` of its own. A project that does not run the setup has none of this and behaves exactly as before.
+
+→ [docs/WEBSITE.md](docs/WEBSITE.md) — options, development, deploys, the maintenance page, and the cutover for a project already live on its apex.
+
 ## Project Structure
 
 ```
@@ -521,6 +536,7 @@ Everything that makes a deployment a demo lives on that deployment (Worker secre
 ├── bin/                     # CLI entry points (init, auth, db, deploy, maintenance)
 ├── test/                    # Vitest worker integration tests
 ├── e2e/                     # Playwright smoke tests
+├── templates/website/       # Scaffold of the optional product website (docs/WEBSITE.md)
 ├── wrangler.toml            # Cloudflare config
 ├── deploy.config.ts         # Deploy mode, branches, maintenance mechanism
 └── AGENTS.md                # Instructions for AI coding agents
@@ -749,6 +765,8 @@ npm run test:e2e     # Playwright smoke test (installs: npx playwright install c
 npm run check        # Type check + build + deploy dry-run
 ```
 
+With a product website ([docs/WEBSITE.md](docs/WEBSITE.md)), `npm run dev` still starts the app alone; `npm run dev:website` starts the site, and `npm run dev:all` both, the site pointing at the app that just started.
+
 ## Deploy
 
 Releases, deploy modes, migrations and maintenance are summarised here; the reasoning is in [docs/MECHANISMS.md](docs/MECHANISMS.md) and the mechanics in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
@@ -810,9 +828,12 @@ npm run maintenance -- status --env production   # on | off | status
 npm run db -- logins --env production            # who has signed in, and how many
 ```
 
+With a product website, the two deploy commands above still deploy **only the app**; `npm run deploy:website:preview` / `:production` deploy the site, and `npm run deploy:all:preview` / `:production` both, the app first ([docs/WEBSITE.md](docs/WEBSITE.md)).
+
 Each deploy command handles secrets, the environment-specific build, deployment and database migrations in one step.
 
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — versions, migrations, deploy modes, maintenance, CI.
+- [docs/WEBSITE.md](docs/WEBSITE.md) — the optional product website on the apex domain.
 - [docs/VITE_CLOUDFLARE_BRIDGE.md](docs/VITE_CLOUDFLARE_BRIDGE.md) — how environment config is handled under the hood.
 
 ## Customization

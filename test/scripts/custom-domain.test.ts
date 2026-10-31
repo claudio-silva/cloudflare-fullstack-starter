@@ -53,11 +53,14 @@ describe("custom domain in wrangler.toml", () => {
 		expect(customDomains(withCustomDomainRoute(noHeader, "preview", "preview.acme.io")!, "preview")).toEqual(["preview.acme.io"]);
 	});
 
-	it("edits the starter's own wrangler.toml", () => {
+	it("edits the project's own wrangler.toml", () => {
 		const source = readFileSync("wrangler.toml", "utf-8");
-		const out = withCustomDomainRoute(source, "production", "app.acme.io")!;
-		expect(customDomains(out, "production")).toEqual(["app.acme.io"]);
-		expect(out.split("\n").length).toBe(source.split("\n").length + 1);
+		// A project that already serves a domain (setup:domain, setup:website)
+		// keeps it: the new one joins the routes it has, on the same line.
+		const before = customDomains(source, "production");
+		const out = withCustomDomainRoute(source, "production", "app.starter-test.invalid")!;
+		expect(customDomains(out, "production")).toEqual([...before, "app.starter-test.invalid"]);
+		expect(out.split("\n").length).toBe(source.split("\n").length + (before.length ? 0 : 1));
 	});
 
 	it("refuses a routes array it cannot edit safely", () => {

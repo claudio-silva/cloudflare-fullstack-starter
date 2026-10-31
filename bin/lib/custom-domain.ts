@@ -111,6 +111,14 @@ export type AttachOptions = {
 	workerName: string;
 	dryRun: boolean;
 	report: DomainReporter;
+	/** wrangler config the route is recorded in. The website Worker has its own. */
+	configPath?: string;
+	/**
+	 * Make the hostname the app's URL (APP_BASE_URL, CLI_API_URL_<ENV>) and sync
+	 * that to Cloudflare. False for a Worker that is not the app — the product
+	 * website, say, whose hostname must not become what sign-in accepts.
+	 */
+	appUrl?: boolean;
 };
 
 type Zone = { id: string; name: string; status: string; name_servers: string[] };
@@ -148,8 +156,8 @@ async function authoritativeResolver(zone: Zone): Promise<Resolver> {
 	return resolver;
 }
 
-/** GET https://<hostname>/api/, the name resolved by `dns`. */
-function probe(hostname: string, dns: Resolver): Promise<{ status: number; body: string }> {
+/** GET https://<hostname><path>, the name resolved by `dns`. */
+function probe(hostname: string, path: string, dns: Resolver): Promise<{ status: number; body: string }> {
 	const lookup: LookupFunction = (name, options, callback) => {
 		dns.resolve4(name).then(
 			(addresses) =>
@@ -158,7 +166,7 @@ function probe(hostname: string, dns: Resolver): Promise<{ status: number; body:
 		);
 	};
 	return new Promise((done, fail) => {
-		const req = request({ host: hostname, path: "/api/", lookup, timeout: 10_000 }, (res) => {
+		const req = request({ host: hostname, path, lookup, timeout: 10_000 }, (res) => {
 			let body = "";
 			res.on("data", (chunk) => (body += chunk));
 			res.on("end", () => done({ status: res.statusCode ?? 0, body }));
@@ -169,15 +177,19 @@ function probe(hostname: string, dns: Resolver): Promise<{ status: number; body:
 	});
 }
 
-/** Wait until https://<hostname>/api/ answers, which needs its DNS record and certificate. */
-async function waitUntilServing(hostname: string, zone: Zone, report: DomainReporter, timeoutMs = 600_000): Promise<void> {
+/**
+ * Wait until https://<hostname> answers, which needs its DNS record and its
+ * certificate. The app is asked for `/api/`, whose body says it is the app;
+ * any other Worker (the website) only has to answer at all.
+ */
+async function waitUntilServing(hostname: string, zone: Zone, report: DomainReporter, isApp: boolean, timeoutMs = 600_000): Promise<void> {
 	const dns = await authoritativeResolver(zone);
 	const deadline = Date.now() + timeoutMs;
 	let last = "";
 	while (Date.now() < deadline) {
 		try {
-			const { status, body } = await probe(hostname, dns);
-			if (status === 200 && /"status"/.test(body)) {
+			const { status, body } = await probe(hostname, isApp ? "/api/" : "/", dns);
+			if (status === 200 && (!isApp || /"status"/.test(body))) {
 				report.ok(`https://${hostname} serves the Worker`);
 				return report.note("a machine that looked the name up before it existed may not see it for a few more minutes (cached \"not found\")");
 			}
@@ -203,6 +215,8 @@ function sync(script: string, env: string, accountId: string): void {
  */
 export async function attachCustomDomain(o: AttachOptions): Promise<Zone> {
 	const { token, accountId, env, hostname, workerName, dryRun, report } = o;
+	const configPath = o.configPath ?? "wrangler.toml";
+	const isApp = o.appUrl ?? true;
 	const zone = await findZone(token, accountId, hostname);
 	report.ok(`zone ${zone.name} (${zone.id})`);
 
@@ -230,16 +244,20 @@ export async function attachCustomDomain(o: AttachOptions): Promise<Zone> {
 			}
 		}
 	}
-	if (!dryRun) await waitUntilServing(hostname, zone, report);
+	if (!dryRun) await waitUntilServing(hostname, zone, report, isApp);
 
-	const toml = readFileSync("wrangler.toml", "utf-8");
+	const toml = readFileSync(configPath, "utf-8");
 	const updated = withCustomDomainRoute(toml, env, hostname);
 	if (updated) {
-		report.change(`record ${hostname} in wrangler.toml ([env.${env}] routes), so every deploy keeps it`);
-		if (!dryRun) writeFileSync("wrangler.toml", updated);
+		report.change(`record ${hostname} in ${configPath} ([env.${env}] routes), so every deploy keeps it`);
+		if (!dryRun) writeFileSync(configPath, updated);
 	} else {
-		report.ok(`wrangler.toml lists ${hostname}`);
+		report.ok(`${configPath} lists ${hostname}`);
 	}
+
+	// Only the app has a base URL; the website is reached by people, not by
+	// Better Auth or the CLI.
+	if (!isApp) return zone;
 
 	// The URL changes last, once the domain answers: sign-in accepts only this origin.
 	const file = `.env.${env}`;
