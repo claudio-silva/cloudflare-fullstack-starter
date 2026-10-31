@@ -21,15 +21,26 @@ import { effectiveTheme, resolveTheme, withTheme } from "../../templates/website
 const REPO = resolve(import.meta.dirname, "..", "..");
 
 describe("hostnames", () => {
-	it("takes the domain out of an app's base URL", () => {
+	it("suggests a domain from an app's base URL", () => {
 		expect(rootDomain("https://app.acme.io/")).toBe("acme.io");
 		expect(rootDomain("https://preview.acme.io")).toBe("acme.io");
 		expect(rootDomain("acme.io")).toBe("acme.io");
 		expect(rootDomain("https://my.app.co.uk")).toBe("my.app.co.uk");
 	});
 
+	it("takes a domain it is given as it is, subdomain and all", () => {
+		// Guessing here would make a website on test.acme.io impossible to ask for.
+		const hosts = websiteHosts(resolveOptions({ domain: "test.acme.io" }));
+		expect(hosts.site.production).toBe("test.acme.io");
+		expect(hosts.app.production).toBe("app.test.acme.io");
+		expect(hosts.site.preview).toBe("preview-test.acme.io");
+		expect(hosts.app.preview).toBe("app.preview-test.acme.io");
+		expect(websiteHosts(resolveOptions({ domain: "https://DEV.acme.io:8080/x" })).site.production).toBe("dev.acme.io");
+	});
+
 	it("puts the site on the apex and the app on a subdomain of it", () => {
-		const hosts = websiteHosts(resolveOptions({ domain: "https://app.acme.io" }));
+		// What the setup does with a project whose app lives on https://app.acme.io.
+		const hosts = websiteHosts(resolveOptions({ domain: rootDomain("https://app.acme.io") }));
 		expect(hosts).toEqual({
 			site: { production: "acme.io", preview: "preview-acme.io" },
 			app: { production: "app.acme.io", preview: "app.preview-acme.io" },

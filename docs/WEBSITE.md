@@ -37,7 +37,7 @@ It **asks** for every value it was not given on the command line, offering a def
 
 | Option | Default (what the prompt offers) |
 |---|---|
-| `--domain <domain>` | the registrable domain of `config.baseUrls.production` (so `https://app.acme.io` → `acme.io`) |
+| `--domain <domain>` | derived from `config.baseUrls.production` by taking the app's subdomain off (`https://app.acme.io` → `acme.io`). A domain you give is used **as it is**: `test.acme.io` is a perfectly good apex, and the app then goes to `app.test.acme.io` |
 | `--subdomain <label>` | `app` — where the app moves to |
 | `--dir <folder>` | `website` |
 | `--preview-host <host>` | `preview-<domain>` — the website's preview hostname |

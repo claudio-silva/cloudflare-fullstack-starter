@@ -26,20 +26,28 @@ export type WebsiteOptions = {
 	previewHost: string;
 };
 
+/** The hostname in what someone typed: a URL, a port, a trailing dot, capitals. */
+function hostOf(value: string): string {
+	return value.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/[/?#:].*$/, "").replace(/\.$/, "");
+}
+
 /**
- * The registrable domain behind a base URL: `https://app.acme.io/` → `acme.io`.
- * The app's own URL is what projects have, and it usually already carries a
- * subdomain the website must not inherit.
+ * The domain to **suggest** for the website, derived from the app's base URL:
+ * `https://app.acme.io/` → `acme.io`. That URL is what a project already has,
+ * and it usually carries the very subdomain the website must not inherit.
+ *
+ * Used only to work out a default. A domain someone states is taken as it is:
+ * `test.acme.io` is a perfectly good apex for a website, and guessing that its
+ * first label was a subdomain would make that impossible to ask for.
  */
 export function rootDomain(baseUrl: string): string {
-	const host = baseUrl.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/[/?#:].*$/, "").replace(/\.$/, "");
-	const labels = host.split(".").filter(Boolean);
+	const labels = hostOf(baseUrl).split(".").filter(Boolean);
 	if (labels.length > 2 && ["app", "www", "preview", "staging", "dev", "test"].includes(labels[0])) return labels.slice(1).join(".");
 	return labels.join(".");
 }
 
 export function resolveOptions(overrides: Partial<WebsiteOptions> & { domain: string }): WebsiteOptions {
-	const domain = rootDomain(overrides.domain);
+	const domain = hostOf(overrides.domain);
 	if (!domain || !domain.includes(".")) throw new Error(`"${overrides.domain}" is not a domain (example: acme.io)`);
 	const subdomain = overrides.subdomain || "app";
 	const previewHost = overrides.previewHost || `preview-${domain}`;

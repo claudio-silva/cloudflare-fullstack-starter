@@ -307,7 +307,7 @@ function readValue(source: string, key: string): string {
  * preview hostname is built from the subdomain and the preview hostname just
  * chosen — which is why this is a sequence and not a form.
  */
-async function askOptions(flags: Flags, projectDomain: string): Promise<Partial<WebsiteOptions> & { domain: string }> {
+async function askOptions(flags: Flags, defaultDomain: string): Promise<Partial<WebsiteOptions> & { domain: string }> {
 	const rl = createInterface({ input: process.stdin, output: process.stdout });
 	const ask = async (question: string, fallback: string): Promise<string> => {
 		const answer = await new Promise<string>((done) => rl.question(`  ${question} [${fallback}]: `, done));
@@ -318,7 +318,7 @@ async function askOptions(flags: Flags, projectDomain: string): Promise<Partial<
 		console.log("Answer or press Enter to take the default.\n");
 		let domain = flags.domain ?? "";
 		while (!domain) {
-			const answer = await ask("Domain the website is served on", rootDomain(projectDomain));
+			const answer = await ask("Domain the website is served on", defaultDomain);
 			try {
 				resolveOptions({ domain: answer });
 				domain = answer;
@@ -328,7 +328,7 @@ async function askOptions(flags: Flags, projectDomain: string): Promise<Partial<
 		}
 		const subdomain = flags.subdomain ?? (await ask("Subdomain the app moves to", "app"));
 		const dir = flags.dir ?? (await ask("Folder holding the website", "website"));
-		const previewHost = flags.previewHost ?? (await ask("The website's preview hostname", `preview-${rootDomain(domain)}`));
+		const previewHost = flags.previewHost ?? (await ask("The website's preview hostname", `preview-${domain}`));
 		const previewAppHost = flags.previewAppHost ?? (await ask("The app's preview hostname", `${subdomain}.${previewHost}`));
 		console.log("");
 		return { domain, subdomain, dir, previewHost, previewAppHost };
@@ -360,14 +360,17 @@ async function main(): Promise<void> {
 	const compatibilityDate = /compatibility_date\s*=\s*"([^"]+)"/.exec(wrangler)?.[1] ?? "2025-04-01";
 	const workerName = `${/^name\s*=\s*"([^"]+)"/m.exec(wrangler)?.[1] ?? pkg.name ?? "app"}-website`;
 
-	const projectDomain = flags.domain || readValue(configSource.slice(configSource.indexOf("baseUrls")), "production");
+	// A domain given on the command line is used as it is; one derived from the
+	// app's own URL has its subdomain taken off first (`https://app.acme.io` →
+	// `acme.io`), which is a guess, and so only ever a default.
+	const defaultDomain = rootDomain(readValue(configSource.slice(configSource.indexOf("baseUrls")), "production"));
 	// Nobody to ask: --defaults, or no terminal at all (CI, a subprocess).
 	const asking = !flags.defaults && Boolean(process.stdin.isTTY);
-	if (!projectDomain && !asking) die("no domain: pass --domain acme.io, or run `npm run init` first so the project has one");
+	if (!flags.domain && !defaultDomain && !asking) die("no domain: pass --domain acme.io, or run `npm run init` first so the project has one");
 
 	const answers = asking
-		? await askOptions(flags, projectDomain)
-		: { domain: projectDomain, subdomain: flags.subdomain, dir: flags.dir, previewHost: flags.previewHost, previewAppHost: flags.previewAppHost };
+		? await askOptions(flags, defaultDomain)
+		: { domain: flags.domain ?? defaultDomain, subdomain: flags.subdomain, dir: flags.dir, previewHost: flags.previewHost, previewAppHost: flags.previewAppHost };
 
 	let options: WebsiteOptions;
 	try {
