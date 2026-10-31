@@ -24,9 +24,15 @@
  * Safe to run again: every step checks first, and a file the project already
  * has is never overwritten.
  *
+ * It **asks** for every value it was not given, offering a default that Enter
+ * accepts. For automation there are two ways out of that: pass every value as
+ * an option, or pass `--defaults` and have the defaults taken for whatever is
+ * missing. Somewhere with no terminal (CI, a subprocess) behaves as
+ * `--defaults` on its own, because there is nobody to ask.
+ *
  * Usage: npm run setup:website -- [--domain acme.io] [--subdomain app] [--dir website]
  *                                 [--preview-host preview-acme.io] [--preview-app-host app.preview-acme.io]
- *                                 [--yes] [--dry-run]
+ *                                 [--defaults] [--yes] [--dry-run]
  */
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
@@ -36,6 +42,7 @@ import { withCustomDomainRoute } from "./lib/custom-domain";
 import { fillEnv } from "./lib/setup-ci";
 import {
 	resolveOptions,
+	rootDomain,
 	websiteConfigFile,
 	websiteHosts,
 	websiteWranglerToml,
@@ -45,8 +52,19 @@ import {
 	type WebsiteOptions,
 } from "./lib/website";
 
-const USAGE =
-	"Usage: npm run setup:website -- [--domain <domain>] [--subdomain app] [--dir website] [--preview-host <host>] [--preview-app-host <host>] [--yes] [--dry-run]";
+const USAGE = `Usage: npm run setup:website -- [options]
+
+  --domain <domain>          Domain the website is served on   (default: the project's own)
+  --subdomain <label>        Subdomain the app moves to        (default: app)
+  --dir <folder>             Folder holding the website        (default: website)
+  --preview-host <host>      The website, in preview           (default: preview-<domain>)
+  --preview-app-host <host>  The app, in preview               (default: <subdomain>.<preview host>)
+  --defaults                 Take the default for every option not given; ask nothing
+  --yes, -y                  Do not ask for confirmation
+  --dry-run                  Show the plan; write nothing
+  --help, -h
+
+Without --defaults it asks for each value, offering its default; Enter accepts it.`;
 
 const TEMPLATE_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..", "templates", "website");
 const LOGOS = ["logo-light.svg", "logo-dark.svg"];
@@ -62,13 +80,19 @@ type Flags = {
 	dir?: string;
 	previewHost?: string;
 	previewAppHost?: string;
+	defaults: boolean;
 	dryRun: boolean;
 	yes: boolean;
 	help: boolean;
 };
 
 function parseArgs(argv: string[]): Flags {
-	const flags: Flags = { dryRun: argv.includes("--dry-run"), yes: argv.includes("--yes") || argv.includes("-y"), help: argv.includes("--help") || argv.includes("-h") };
+	const flags: Flags = {
+		defaults: argv.includes("--defaults"),
+		dryRun: argv.includes("--dry-run"),
+		yes: argv.includes("--yes") || argv.includes("-y"),
+		help: argv.includes("--help") || argv.includes("-h"),
+	};
 	const read = (name: string) => {
 		const i = argv.indexOf(name);
 		return i === -1 ? undefined : argv[i + 1];
@@ -277,6 +301,42 @@ function readValue(source: string, key: string): string {
 	return new RegExp(`${key}:\\s*"([^"]*)"`).exec(source)?.[1] ?? "";
 }
 
+/**
+ * Ask for each value that was not given on the command line, offering the
+ * default Enter accepts. Each answer feeds the next default — the app's
+ * preview hostname is built from the subdomain and the preview hostname just
+ * chosen — which is why this is a sequence and not a form.
+ */
+async function askOptions(flags: Flags, projectDomain: string): Promise<Partial<WebsiteOptions> & { domain: string }> {
+	const rl = createInterface({ input: process.stdin, output: process.stdout });
+	const ask = async (question: string, fallback: string): Promise<string> => {
+		const answer = await new Promise<string>((done) => rl.question(`  ${question} [${fallback}]: `, done));
+		return answer.trim() || fallback;
+	};
+
+	try {
+		console.log("Answer or press Enter to take the default.\n");
+		let domain = flags.domain ?? "";
+		while (!domain) {
+			const answer = await ask("Domain the website is served on", rootDomain(projectDomain));
+			try {
+				resolveOptions({ domain: answer });
+				domain = answer;
+			} catch (error) {
+				console.log(`  ${error instanceof Error ? error.message : String(error)}`);
+			}
+		}
+		const subdomain = flags.subdomain ?? (await ask("Subdomain the app moves to", "app"));
+		const dir = flags.dir ?? (await ask("Folder holding the website", "website"));
+		const previewHost = flags.previewHost ?? (await ask("The website's preview hostname", `preview-${rootDomain(domain)}`));
+		const previewAppHost = flags.previewAppHost ?? (await ask("The app's preview hostname", `${subdomain}.${previewHost}`));
+		console.log("");
+		return { domain, subdomain, dir, previewHost, previewAppHost };
+	} finally {
+		rl.close();
+	}
+}
+
 async function confirm(question: string, yes: boolean): Promise<boolean> {
 	if (yes || !process.stdin.isTTY) return true;
 	const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -300,12 +360,18 @@ async function main(): Promise<void> {
 	const compatibilityDate = /compatibility_date\s*=\s*"([^"]+)"/.exec(wrangler)?.[1] ?? "2025-04-01";
 	const workerName = `${/^name\s*=\s*"([^"]+)"/m.exec(wrangler)?.[1] ?? pkg.name ?? "app"}-website`;
 
-	const domain = flags.domain || readValue(configSource.slice(configSource.indexOf("baseUrls")), "production");
-	if (!domain) die("no domain: pass --domain acme.io, or run `npm run init` first so the project has one");
+	const projectDomain = flags.domain || readValue(configSource.slice(configSource.indexOf("baseUrls")), "production");
+	// Nobody to ask: --defaults, or no terminal at all (CI, a subprocess).
+	const asking = !flags.defaults && Boolean(process.stdin.isTTY);
+	if (!projectDomain && !asking) die("no domain: pass --domain acme.io, or run `npm run init` first so the project has one");
+
+	const answers = asking
+		? await askOptions(flags, projectDomain)
+		: { domain: projectDomain, subdomain: flags.subdomain, dir: flags.dir, previewHost: flags.previewHost, previewAppHost: flags.previewAppHost };
 
 	let options: WebsiteOptions;
 	try {
-		options = resolveOptions({ domain, subdomain: flags.subdomain, dir: flags.dir, previewHost: flags.previewHost, previewAppHost: flags.previewAppHost });
+		options = resolveOptions(answers);
 	} catch (error) {
 		die(error instanceof Error ? error.message : String(error));
 	}

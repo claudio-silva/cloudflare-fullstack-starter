@@ -501,7 +501,7 @@ Everything that makes a deployment a demo lives on that deployment (Worker secre
 One command gives the project a marketing site on its apex domain, with the app on `app.<domain>`:
 
 ```bash
-npm run setup:website        # --dry-run shows the plan; npm run init offers it too
+npm run setup:website        # asks for each value; --defaults takes them all, --dry-run shows the plan
 ```
 
 The site is a **separate Cloudflare Worker**: static files and a few lines of code, with no D1, no secrets and no auth — the public apex cannot reach the app's data because nothing binds it to it, and the app's script name never changes, so moving it to a subdomain moves a route, not data. It carries the app's logo, a light/dark/system switch that opens the app in the same theme (`?theme=`), and an "Open app" button whose URL is right in local, preview and production without being hardcoded anywhere.

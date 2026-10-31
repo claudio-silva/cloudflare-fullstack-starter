@@ -201,7 +201,8 @@ npm run deploy:production      # Versioned release: secrets + build vars + build
 npm run deploy:preview         # Same steps on preview, without versioning
 npm run setup:ci               # Connect Cloudflare Workers Builds to GitHub (idempotent; --dry-run). Needs the user's approval: it deploys
 npm run setup:domain -- <host> # Serve an environment on a custom domain (--env preview; --dry-run; --website for the product website's Worker). Needs the user's approval: it changes the live URL
-npm run setup:website          # Add the optional product website (docs/WEBSITE.md). Local files only; --dry-run, idempotent
+npm run setup:website          # Add the optional product website (docs/WEBSITE.md). Local files only; --dry-run, idempotent.
+                               # Asks for each value it was not given: pass them all, or --defaults, when scripting it
 
 # Product website (only after setup:website)
 npm run dev:website            # The site alone; dev:all runs it beside the app

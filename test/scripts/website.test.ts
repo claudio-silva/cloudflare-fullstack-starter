@@ -334,6 +334,32 @@ describe("setup:website, with every override", () => {
 	});
 });
 
+describe("setup:website without being asked anything", () => {
+	it("takes the project's own domain and the defaults", () => {
+		const root = fixture();
+		// No --domain: the fixture's config.baseUrls.production is app.example.com.
+		const output = setup(root, ["--defaults"]);
+
+		expect(output).not.toContain("Domain the website is served on");
+		expect(loadWebsiteConfig(root)).toEqual({
+			dir: "website",
+			hosts: { production: "example.com", preview: "preview-example.com" },
+			app: { production: "https://app.example.com", preview: "https://app.preview-example.com" },
+		});
+		rmSync(root, { recursive: true, force: true });
+	});
+
+	it("asks nothing when there is no terminal either, so a subprocess cannot hang", () => {
+		const root = fixture();
+		// `setup()` runs it with a pipe for stdin, which is the case in question.
+		const output = setup(root, ["--domain", "acme.io"]);
+
+		expect(output).not.toContain("[app]:");
+		expect(loadWebsiteConfig(root)!.hosts.production).toBe("acme.io");
+		rmSync(root, { recursive: true, force: true });
+	});
+});
+
 describe("setup:website --dry-run", () => {
 	it("writes nothing at all", () => {
 		const root = fixture();

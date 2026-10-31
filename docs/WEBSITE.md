@@ -28,18 +28,24 @@ The same reasoning, with the live history behind it, is ADR-0007 in the project 
 ## Turning it on
 
 ```bash
-npm run setup:website                 # uses the domain the project already has
+npm run setup:website                 # asks for each value, offering its default
 npm run setup:website -- --dry-run    # show the plan, write nothing
+npm run setup:website -- --defaults   # ask nothing; take every default
 ```
 
-| Option | Default |
+It **asks** for every value it was not given on the command line, offering a default that Enter accepts; each answer feeds the next default, so choosing `console` as the subdomain offers `console.preview-acme.io` for the app's preview hostname. A domain it cannot use is refused on the spot and asked again.
+
+| Option | Default (what the prompt offers) |
 |---|---|
 | `--domain <domain>` | the registrable domain of `config.baseUrls.production` (so `https://app.acme.io` → `acme.io`) |
 | `--subdomain <label>` | `app` — where the app moves to |
 | `--dir <folder>` | `website` |
 | `--preview-host <host>` | `preview-<domain>` — the website's preview hostname |
-| `--preview-app-host <host>` | `<subdomain>.preview-<domain>` — the app's preview hostname |
+| `--preview-app-host <host>` | `<subdomain>.<preview host>` — the app's preview hostname |
+| `--defaults` | take the default for everything not given, and ask nothing |
 | `--yes`, `--dry-run` | |
+
+**For automation**, pass every value as an option, or pass `--defaults`. Somewhere with no terminal — CI, a subprocess, an agent — it behaves as `--defaults` on its own rather than waiting for an answer nobody can give.
 
 `npm run init` offers it at the end (off by default), and passes the domains you gave it; `init --website` takes it non-interactively.
 
