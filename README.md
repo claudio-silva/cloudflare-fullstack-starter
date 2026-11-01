@@ -66,7 +66,7 @@ And **every new project** means **repeating the same setup steps**.
 
 This starter removes that overhead **entirely**. Create a project from the template — or have your coding agent set it up — and you begin with a fully working, production-ready foundation. You can focus on building the distinctive parts of your app **right away**.
 
-And it stays useful after day one. The parts that are easy to get subtly wrong — a migration that must not take the app down, a release that carries its version, secrets that differ per environment, a lost connection, a sign-in flow — are *mechanisms* here, with the reasoning written down ([docs/MECHANISMS.md](docs/MECHANISMS.md)) and a release log to upgrade against ([UPGRADING.md](UPGRADING.md)). Not scaffolding you inherit on day one and maintain alone from day two.
+And it stays useful after day one. The parts that are easy to get subtly wrong — a migration that must not take the app down, a release that carries its version, secrets that differ per environment, a lost connection, a sign-in flow — are *mechanisms* here, with the reasoning written down ([docs/MECHANISMS.md](docs/MECHANISMS.md)) and a release log to upgrade against ([UPGRADING.md](UPGRADING.md)) — rather than scaffolding you inherit on day one and maintain alone from day two.
 
 ## Features
 
