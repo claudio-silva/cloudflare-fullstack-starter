@@ -85,6 +85,9 @@ npm install
 2. Updates `wrangler.toml` top-level worker `name`, all D1 `database_name` values (convention above), optional `[env.production] name = "<slug>-production"`, and email sender allow-lists
 3. Creates `.env.local`, `.env.preview`, `.env.production` from templates (fills in your choices; does **not** overwrite existing files)
 4. Removes starter-distribution files that a project does not need (`skills/`, `.claude-plugin/`)
+5. **Cuts the ties to the starter's repository**, when there are any: a project created with `git clone` (rather than "Use this template") inherits the starter's `origin` remote and all of its release tags. Left in place, `deploy:production` would push the release commit and its tag to the starter's repository, and would number the project's first release from the starter's latest tag (v3.7.1 rather than v0.0.2). `init` removes both and says so; `--keep-git` keeps them and prints what they will do. `deploy:production` refuses to run while either is still there.
+
+> Running the starter's own `bin/init.ts` from another directory is refused: it edits the project its file belongs to, which would be the starter.
 
 > Migrations are **not** run by `init`. Run them manually after init (see below).
 

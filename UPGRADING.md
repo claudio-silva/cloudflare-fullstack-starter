@@ -60,11 +60,12 @@ Google sign-in is off in a new project and set up by one command; the sign-in bu
 ### What it adds
 
 3. **`npm run setup:google`** (`bin/setup-google.ts`, decisions and probes in `bin/lib/google-oauth.ts`): prints every value the Google console needs — origins and `/api/auth/callback/google` per environment — then **verifies** without a browser (Google's authorization endpoint says whether the client exists and whether each redirect URI is registered; the token endpoint says whether the secret is right), writes the credentials into each `.env.<env>`, turns the flag on and offers to sync. `--check` only verifies and exits non-zero when something is wrong; `--client-id` / `--client-secret` / `--yes` / `--sync` / `--dry-run` for automation.
-4. **`docs/GOOGLE_AUTH.md`**, and `npm run setup:website` now asks Cloudflare (read-only, skipped without credentials) who already serves the hostnames it is about to use. The token and account helpers moved to `bin/lib/cloudflare-api.ts`.
+4. **A project cloned from the starter is cut loose from it.** `npm run init` removes the starter's `origin` remote and its inherited release tags (`--keep-git` keeps them, with a warning), and `npm run deploy:production` refuses to release while either is there: otherwise the release is pushed to the starter's repository and numbered from the starter's latest tag. New in `bin/lib/project-git.ts`; `bin/init.ts` also refuses to run against a project the caller is not standing in.
+5. **`docs/GOOGLE_AUTH.md`**, and `npm run setup:website` now asks Cloudflare (read-only, skipped without credentials) who already serves the hostnames it is about to use. The token and account helpers moved to `bin/lib/cloudflare-api.ts`.
 
 ### Required actions
 
-- **Take** `bin/setup-google.ts`, `bin/lib/google-oauth.ts`, `src/react-app/lib/auth-features.ts`, `docs/GOOGLE_AUTH.md` and `test/scripts/google-oauth.test.ts`. **Merge** `src/worker/index.ts` (the `googleAuth` field), `LoginForm.tsx`, `SignUp.tsx`, `package.json` (`setup:google`), `bin/setup-domain.ts`, `bin/setup-website.ts`, `bin/lib/cloudflare-api.ts`, `env/*.template`, `AGENTS.md` and `README.md`.
+- **Take** `bin/setup-google.ts`, `bin/lib/google-oauth.ts`, `bin/lib/project-git.ts`, `src/react-app/lib/auth-features.ts`, `docs/GOOGLE_AUTH.md` and the new tests (`test/scripts/{google-oauth,project-git}.test.ts`). **Merge** `src/worker/index.ts` (the `googleAuth` field), `LoginForm.tsx`, `SignUp.tsx`, `package.json` (`setup:google`), `bin/setup-domain.ts`, `bin/setup-website.ts`, `bin/init.ts`, `bin/deploy-production.ts`, `bin/lib/cloudflare-api.ts`, `env/*.template`, `AGENTS.md`, `README.md` and `docs/AGENTS_SETUP.md`.
 - A project **using** Google sign-in: nothing changes, but run `npm run setup:google -- --check` once — it is also the check to run after any change to an app URL.
 - A project **not** using it: no action. If you want the starter's default, set `enableGoogleAuth: false`.
 

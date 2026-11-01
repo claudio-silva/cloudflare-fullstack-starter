@@ -172,7 +172,7 @@ The procedures live in the repository, so they are always current:
 
 ## Manual Installation
 
-> ⚠️ Do **not** clone this repo directly for your project. Follow the instructions below to create your own copy, so pushes go to your repo.
+> ⚠️ Do **not** clone this repo directly for your project. Follow the instructions below to create your own copy, so pushes go to your repo. (If you did clone it, `npm run init` cuts the ties — the starter's `origin` and its release tags — and `npm run deploy:production` refuses to run until they are gone.)
 
 ### 1. Create from template
 

@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import readline from "readline";
 import { fileURLToPath } from "url";
+import { detachAdvice, detachFromStarter, inheritedFromStarter } from "./lib/project-git";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,9 +22,9 @@ const run = (script: string) => `${packageManager} run ${script}`;
 
 const isInteractive = process.stdin.isTTY;
 
-function parseArgs(): Partial<Answers> & { help?: boolean; website?: boolean } {
+function parseArgs(): Partial<Answers> & { help?: boolean; website?: boolean; keepGit?: boolean } {
 	const args = process.argv.slice(2);
-	const result: Partial<Answers> & { help?: boolean; website?: boolean } = {};
+	const result: Partial<Answers> & { help?: boolean; website?: boolean; keepGit?: boolean } = {};
 
 	for (let i = 0; i < args.length; i++) {
 		const arg = args[i];
@@ -41,6 +42,8 @@ function parseArgs(): Partial<Answers> & { help?: boolean; website?: boolean } {
 			result.emailFrom = args[++i];
 		} else if (arg === "--website") {
 			result.website = true;
+		} else if (arg === "--keep-git") {
+			result.keepGit = true;
 		}
 	}
 	return result;
@@ -57,6 +60,7 @@ Options:
   --preview-domain <url>   Preview app URL (e.g., https://preview.myapp.com)
   --email-from <address>   Sender email address (defaults to noreply@<app-domain root>)
   --website                Also add the product website (apex domain; app on app.<domain>)
+  --keep-git               Keep the starter's origin remote and release tags (a clone inherits them)
   -h, --help               Show this help
 
 Interactive mode:
@@ -212,6 +216,29 @@ async function maybeAddWebsite(asked: boolean | undefined, appDomain: string): P
 	execFileSync("npx", ["tsx", path.join(__dirname, "setup-website.ts"), "--yes", "--domain", appDomain], { stdio: "inherit" });
 }
 
+/**
+ * Forget the starter's `origin` and its release tags. The project's own
+ * repository is added later (`git remote add origin <url>`), and its first
+ * release then starts from its own version rather than from the starter's.
+ */
+function detachStarterGit(pkgPath: string, keep: boolean): void {
+	const pkg = readJSON(pkgPath) as { version?: string; starter?: { repo?: string; version?: string } };
+	const starter = { repo: pkg.starter?.repo ?? "", version: pkg.starter?.version ?? "" };
+	if (!starter.repo) return;
+
+	const inherited = inheritedFromStarter(starter, pkg.version ?? "");
+	if (!inherited.origin && inherited.tags.length === 0) return;
+
+	if (keep) {
+		console.log("  ! kept the starter's git remote and tags (--keep-git):");
+		for (const line of detachAdvice(inherited)) console.log(`    ${line}`);
+		return;
+	}
+	detachFromStarter(inherited);
+	if (inherited.origin) console.log(`  ✓ removed the starter's \`origin\` remote (${inherited.origin})`);
+	if (inherited.tags.length) console.log(`  ✓ removed ${inherited.tags.length} release tag(s) of the starter`);
+}
+
 async function main() {
 	const cliArgs = parseArgs();
 
@@ -220,7 +247,15 @@ async function main() {
 		process.exit(0);
 	}
 
+	// The project this script belongs to — and the one the caller is standing
+	// in must be the same. They differ only when the script was reached from
+	// somewhere else (`tsx /elsewhere/bin/init.ts`, a globally installed copy),
+	// and then every edit below would land in that other project.
 	const root = path.resolve(__dirname, "..");
+	if (path.resolve(process.cwd()) !== root) {
+		console.error(`init: run it from the project root.\n  this script belongs to ${root}\n  but it was run in       ${process.cwd()}`);
+		process.exit(1);
+	}
 	const pkgPath = path.join(root, "package.json");
 	const wranglerPath = path.join(root, "wrangler.toml");
 	const configPath = path.join(root, "src", "config.ts");
@@ -257,6 +292,11 @@ async function main() {
 	updateEnvFiles(root, answers);
 	console.log("  ✓ env files");
 
+	// Cut the ties a `git clone` of the template leaves behind, before they can
+	// do damage: a release pushed to the starter's repository, or numbered from
+	// the starter's tags. "Use this template" leaves none of this.
+	detachStarterGit(pkgPath, Boolean(cliArgs.keepGit));
+
 	// Starter-distribution files (agent skill + plugin manifests) are not part of a project.
 	for (const dir of ["skills", ".claude-plugin"]) {
 		const target = path.join(root, dir);
@@ -272,9 +312,10 @@ async function main() {
 
 	console.log("\n✅ Init complete!");
 	console.log("\nNext steps:");
-	console.log("  1. Local migrations run automatically on the first request of the dev server");
-	console.log("  2. Set CLI_API_KEY in .env.local (and in each .env.<env> for remote envs)");
-	console.log(`  3. Start dev server: ${run("dev")}`);
+	console.log("  1. Create your repository and point git at it: git remote add origin <your repository>");
+	console.log("  2. Local migrations run automatically on the first request of the dev server");
+	console.log("  3. Set CLI_API_KEY in .env.local (and in each .env.<env> for remote envs)");
+	console.log(`  4. Start dev server: ${run("dev")}`);
 	console.log("\nOptional:");
 	console.log("  • Set AUTH_EMAILS_LOCAL_ENABLED=true in .env.local to test auth emails locally");
 	console.log("  • Set BETTER_AUTH_SECRET in each .env.<env> (required for preview/production)");

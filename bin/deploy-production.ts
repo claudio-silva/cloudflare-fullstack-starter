@@ -50,6 +50,7 @@ import { resolveWorkerName } from "./lib/worker";
 import { ensureBuildStarted, followBuild } from "./lib/workers-builds";
 import { resolve } from "node:path";
 import { deployWebsite } from "./deploy-website";
+import { detachAdvice, inheritedFromStarter } from "./lib/project-git";
 import { createInterface } from "node:readline";
 
 const ENV = "production" as const;
@@ -203,6 +204,23 @@ async function main(): Promise<void> {
 	const mode = forceLocal ? "manual" : cfg.mode;
 
 	// --- Preconditions -------------------------------------------------------
+	// A project cloned from the template still points at it, and still carries
+	// its tags: this release would push to the starter's repository and take
+	// the starter's next version number. `npm run init` cuts both ties; this is
+	// the net under it, because the damage is remote and hard to undo.
+	const pkg = JSON.parse(readFileSync("package.json", "utf-8")) as { name?: string; version?: string; starter?: { name?: string; repo?: string; version?: string } };
+	const releasingTheStarter = pkg.name === pkg.starter?.name || process.env.APP_VERSION_FROM === "starter";
+	if (!releasingTheStarter && pkg.starter?.repo) {
+		const inherited = inheritedFromStarter({ repo: pkg.starter.repo, version: pkg.starter.version ?? "" }, pkg.version ?? "");
+		// An explicit version answers the tag half: the number is yours either way.
+		const blocking = { origin: inherited.origin, tags: explicit ? [] : inherited.tags };
+		if (blocking.origin || blocking.tags.length) {
+			console.error(`\nThis repository is still the starter's in ways that would spoil the release:\n`);
+			for (const line of detachAdvice(blocking)) console.error(`  ${line}`);
+			die("fix the above (or run `npm run init`), then release again.");
+		}
+	}
+
 	const branch = git(["rev-parse", "--abbrev-ref", "HEAD"]);
 	if (branch !== "main") die(`production releases are cut from main (on ${branch})`);
 	const dirty = git(["status", "--porcelain"]);
