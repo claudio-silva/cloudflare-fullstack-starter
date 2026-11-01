@@ -228,7 +228,9 @@ function fixture(): string {
 
 function setup(root: string, args: string[] = []): string {
 	// The repo's own tsx, not npx's: the copy has no node_modules of its own.
-	return execFileSync(join(REPO, "node_modules", ".bin", "tsx"), [join(REPO, "bin", "setup-website.ts"), "--yes", ...args], {
+	// --no-check keeps the tests offline: the only call the setup makes is the
+	// read-only "who serves these hostnames?", and a test must not need an account.
+	return execFileSync(join(REPO, "node_modules", ".bin", "tsx"), [join(REPO, "bin", "setup-website.ts"), "--yes", "--no-check", ...args], {
 		cwd: root,
 		encoding: "utf-8",
 	});

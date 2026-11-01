@@ -17,6 +17,8 @@
  *      script reads.
  *
  * **Nothing remote happens**: no deploy, no domain attached, no secret synced.
+ * The one call it makes is a read — who already serves these hostnames — and
+ * it is skipped when there are no credentials (`--no-check` skips it anyway).
  * The hostnames are attached afterwards with `npm run setup:domain`, which is
  * also where a project already live on the apex has to be careful — see the
  * cutover procedure in docs/WEBSITE.md.
@@ -38,6 +40,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSyn
 import { dirname, join, relative, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
+import { accountId, apiToken, workerServing } from "./lib/cloudflare-api";
 import { withCustomDomainRoute, withoutRoute } from "./lib/custom-domain";
 import { fillEnv } from "./lib/setup-ci";
 import {
@@ -60,6 +63,7 @@ const USAGE = `Usage: npm run setup:website -- [options]
   --preview-host <host>      The website, in preview           (default: preview-<domain>)
   --preview-app-host <host>  The app, in preview               (default: <subdomain>.<preview host>)
   --defaults                 Take the default for every option not given; ask nothing
+  --no-check                 Do not ask Cloudflare who serves these hostnames
   --yes, -y                  Do not ask for confirmation
   --dry-run                  Show the plan; write nothing
   --help, -h
@@ -81,6 +85,7 @@ type Flags = {
 	previewHost?: string;
 	previewAppHost?: string;
 	defaults: boolean;
+	noCheck: boolean;
 	dryRun: boolean;
 	yes: boolean;
 	help: boolean;
@@ -89,6 +94,7 @@ type Flags = {
 function parseArgs(argv: string[]): Flags {
 	const flags: Flags = {
 		defaults: argv.includes("--defaults"),
+		noCheck: argv.includes("--no-check"),
 		dryRun: argv.includes("--dry-run"),
 		yes: argv.includes("--yes") || argv.includes("-y"),
 		help: argv.includes("--help") || argv.includes("-h"),
@@ -294,6 +300,51 @@ function record(root: string, options: WebsiteOptions, hosts: WebsiteHosts): voi
 	write(file, websiteConfigFile(options, hosts));
 }
 
+/**
+ * Who, if anyone, already serves these hostnames.
+ *
+ * The only thing this command asks Cloudflare, and it only **reads**: a
+ * hostname attached to some other Worker is worth knowing before a folder is
+ * written, not after the first deploy — and `wrangler deploy` will not tell
+ * you, because it reassigns a Custom Domain rather than refusing it.
+ *
+ * Never fatal, and silent when there are no credentials: the setup works
+ * offline, on a machine that has never seen this Cloudflare account.
+ */
+async function checkDomains(hosts: WebsiteHosts, workerName: string): Promise<void> {
+	const token = apiToken();
+	if (!token) return console.log("  · hostnames not checked (no Cloudflare credentials here); `setup:domain` checks before attaching one");
+	let account: string;
+	try {
+		account = await accountId(token);
+	} catch {
+		return console.log("  · hostnames not checked (could not tell which Cloudflare account to ask)");
+	}
+
+	const wanted = [
+		{ hostname: hosts.site.production, worker: `${workerName}-production` },
+		{ hostname: hosts.site.preview, worker: `${workerName}-preview` },
+		{ hostname: hosts.app.production, worker: null },
+		{ hostname: hosts.app.preview, worker: null },
+	];
+	for (const { hostname, worker } of wanted) {
+		let serving: string | null;
+		try {
+			serving = await workerServing(token, account, hostname);
+		} catch {
+			return console.log("  · hostnames not checked (the Cloudflare API refused these credentials)");
+		}
+		if (!serving) continue;
+		// The app keeping its own hostnames is the normal case, and the apex
+		// moving from the app to the website is the documented cutover.
+		if (worker && serving !== worker) {
+			warn(`${hostname} already serves the Worker ${serving}. Deploying the website takes it over — make sure that is what you want (docs/WEBSITE.md).`);
+		} else {
+			ok(`${hostname} is served by ${serving}`);
+		}
+	}
+}
+
 // --- Main -----------------------------------------------------------------
 
 function readValue(source: string, key: string): string {
@@ -383,6 +434,7 @@ async function main(): Promise<void> {
 	console.log(`  website    https://${hosts.site.production}   (preview: https://${hosts.site.preview})`);
 	console.log(`  app        https://${hosts.app.production}   (preview: https://${hosts.app.preview})`);
 	console.log(`  folder     ${options.dir}/   ·  Worker ${workerName}\n`);
+	if (!flags.noCheck) await checkDomains(hosts, workerName);
 	if (!dryRun && !(await confirm("This changes local files only — nothing is deployed. Go ahead?", flags.yes))) die("aborted");
 
 	scaffold(root, options.dir, appName);

@@ -36,7 +36,7 @@ describe.skipIf(!RUN)("a project with a website", () => {
 		cpSync(REPO, root, { recursive: true, filter: (source) => !SKIP.includes(source.slice(REPO.length + 1).split("/")[0]) });
 		// Shared rather than installed: this is about the project's own files.
 		symlinkSync(join(REPO, "node_modules"), join(root, "node_modules"));
-		run(join(REPO, "node_modules", ".bin", "tsx"), [join(root, "bin", "setup-website.ts"), "--yes", "--domain", "acme.io"]);
+		run(join(REPO, "node_modules", ".bin", "tsx"), [join(root, "bin", "setup-website.ts"), "--yes", "--no-check", "--domain", "acme.io"]);
 	}, 600_000);
 
 	afterAll(() => rmSync(root, { recursive: true, force: true }));

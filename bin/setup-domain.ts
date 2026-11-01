@@ -22,13 +22,11 @@
  *
  * Usage: npm run setup:domain -- <hostname> [--env production|preview] [--website] [--yes] [--dry-run]
  */
-import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { deployConfig } from "../deploy.config";
-import { cf } from "./lib/cloudflare-api";
+import { accountId as resolveAccountId, apiToken } from "./lib/cloudflare-api";
 import { attachCustomDomain, normalizeHostname } from "./lib/custom-domain";
-import { cloudflareCredentials } from "./lib/deploy-config";
 import { resolveWorkerName, workerExists } from "./lib/worker";
 import { requireWebsiteConfig } from "./lib/website-config";
 
@@ -44,26 +42,6 @@ const input = args.find((a, i) => !a.startsWith("-") && (envIndex === -1 || i !=
 function die(message: string): never {
 	console.error(`\nsetup:domain: ${message}`);
 	process.exit(1);
-}
-
-/** The API token to use: the one set up for the deploy scripts, or wrangler's login. */
-function apiToken(): string {
-	const { token } = cloudflareCredentials();
-	if (token) return token;
-	try {
-		const out = execFileSync("npx", ["wrangler", "auth", "token", "--json"], { encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"] });
-		return (JSON.parse(out) as { token?: string }).token ?? "";
-	} catch {
-		return "";
-	}
-}
-
-async function accountId(token: string): Promise<string> {
-	const { accountId: configured } = cloudflareCredentials();
-	if (configured) return configured;
-	const accounts = await cf<{ id: string; name: string }[]>(token, "GET", "/accounts");
-	if (accounts.length === 1) return accounts[0].id;
-	return die(`these credentials reach ${accounts.length} accounts; pick one with CLOUDFLARE_ACCOUNT_ID=<id> (or in .env.setup.local):\n${accounts.map((a) => `  ${a.id}  ${a.name}`).join("\n")}`);
 }
 
 async function confirm(question: string): Promise<boolean> {
@@ -82,7 +60,7 @@ async function main(): Promise<void> {
 	const hostname = normalizeHostname(input) ?? die(`"${input}" is not a hostname (example: app.example.com)`);
 
 	const token = apiToken() || die("no Cloudflare credentials: run `npx wrangler login`, or set CLOUDFLARE_API_TOKEN in .env.setup.local.");
-	const account = await accountId(token);
+	const account = await resolveAccountId(token).catch((error: unknown) => die(error instanceof Error ? error.message : String(error)));
 	// The website is a Worker of its own, with its own config and no app URL.
 	const configPath = website ? `${requireWebsiteConfig().dir}/wrangler.toml` : "wrangler.toml";
 	const workerName = resolveWorkerName(configPath, env);
