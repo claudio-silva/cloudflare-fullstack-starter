@@ -48,6 +48,28 @@ npm run test:e2e       # from 2.0.0 on, optional
 
 ---
 
+## 3.9.0 — 2026-11-01
+
+Google sign-in is off in a new project and set up by one command; the sign-in button now follows what the server can actually do.
+
+### Breaking changes
+
+1. **`config.auth.enableGoogleAuth` ships as `false`.** A project that had it on keeps it on — the value is yours (`src/config.ts` is project-owned). A *new* project no longer shows a Google button it cannot honour.
+2. **The button is decided by the server, not by the flag.** `GET /api/` gained `googleAuth` (the flag **and** both credentials in that Worker), read through the new `src/react-app/lib/auth-features.ts` (`useAuthFeatures()`). `LoginForm` and `SignUp` use it instead of `config.auth.enableGoogleAuth`. Anywhere your own UI gates on that flag should do the same, or it will keep offering a button that locks up where the secrets are not synced.
+
+### What it adds
+
+3. **`npm run setup:google`** (`bin/setup-google.ts`, decisions and probes in `bin/lib/google-oauth.ts`): prints every value the Google console needs — origins and `/api/auth/callback/google` per environment — then **verifies** without a browser (Google's authorization endpoint says whether the client exists and whether each redirect URI is registered; the token endpoint says whether the secret is right), writes the credentials into each `.env.<env>`, turns the flag on and offers to sync. `--check` only verifies and exits non-zero when something is wrong; `--client-id` / `--client-secret` / `--yes` / `--sync` / `--dry-run` for automation.
+4. **`docs/GOOGLE_AUTH.md`**, and `npm run setup:website` now asks Cloudflare (read-only, skipped without credentials) who already serves the hostnames it is about to use. The token and account helpers moved to `bin/lib/cloudflare-api.ts`.
+
+### Required actions
+
+- **Take** `bin/setup-google.ts`, `bin/lib/google-oauth.ts`, `src/react-app/lib/auth-features.ts`, `docs/GOOGLE_AUTH.md` and `test/scripts/google-oauth.test.ts`. **Merge** `src/worker/index.ts` (the `googleAuth` field), `LoginForm.tsx`, `SignUp.tsx`, `package.json` (`setup:google`), `bin/setup-domain.ts`, `bin/setup-website.ts`, `bin/lib/cloudflare-api.ts`, `env/*.template`, `AGENTS.md` and `README.md`.
+- A project **using** Google sign-in: nothing changes, but run `npm run setup:google -- --check` once — it is also the check to run after any change to an app URL.
+- A project **not** using it: no action. If you want the starter's default, set `enableGoogleAuth: false`.
+
+---
+
 ## 3.8.0 — 2026-10-31
 
 An **optional** product website: a marketing site on the apex domain, served by a Worker of its own, with the app moved to `app.<domain>`. Nothing changes for a project that does not turn it on.

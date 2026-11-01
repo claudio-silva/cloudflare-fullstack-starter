@@ -66,6 +66,8 @@ And **every new project** means **repeating the same setup steps**.
 
 This starter removes that overhead **entirely**. Create a project from the template — or have your coding agent set it up — and you begin with a fully working, production-ready foundation. You can focus on building the distinctive parts of your app **right away**.
 
+And it stays useful after day one. The parts that are easy to get subtly wrong — a migration that must not take the app down, a release that carries its version, secrets that differ per environment, a lost connection, a sign-in flow — are *mechanisms* here, with the reasoning written down ([docs/MECHANISMS.md](docs/MECHANISMS.md)) and a release log to upgrade against ([UPGRADING.md](UPGRADING.md)). Not scaffolding you inherit on day one and maintain alone from day two.
+
 ## Features
 
 | Feature | What it brings you |
@@ -78,6 +80,7 @@ This starter removes that overhead **entirely**. Create a project from the templ
 | **Multi-Environment** | Local, Preview, and Production environments with separate databases, configurations and secrets |
 | **Secrets Management** | Secrets are automatically synced from `.env.<env>` files to Cloudflare (optional), no need to manually set them in the dashboard (but you still can) |
 | **Complete Auth Flow** | Sign up, email verification, login, logout, profile management, powered by [Better Auth](https://www.better-auth.com/) |
+| **Google sign-in, set up for you** | `npm run setup:google` works out every value Google needs, then checks the client, the secret and each environment's redirect URI without a browser ([docs/GOOGLE_AUTH.md](docs/GOOGLE_AUTH.md)) |
 | **Transactional emails** | Email verification and password reset through a swappable adapter: Cloudflare Email Service by default, other providers easy to add |
 | **CLI Tools** | User management and full database tooling (migrate, backup, restore, time-travel, seed) across all environments, from your terminal |
 | **Versioned releases** | One command ships a tagged release; you always know which version is live |
@@ -91,6 +94,7 @@ This starter removes that overhead **entirely**. Create a project from the templ
 | **Client error reporting** | Browser errors land in your Worker logs, with abuse protection |
 | **Localisable** | Every built-in string can be translated, with or without an i18n library |
 | **Demo mode** | One secret turns a deployment into a public, read-only showcase that is safe to leave online |
+| **Product website (optional)** | `npm run setup:website` puts a marketing site on your apex domain as a Worker of its own, with the app on `app.<domain>` — no shared data, no shared secrets ([docs/WEBSITE.md](docs/WEBSITE.md)) |
 | **Built-in Observability** | Monitor your Worker logs, metrics, traces, performance and health |
 | **CI/CD Ready** | GitHub Actions workflow validates every push: lint, type-check, tests, build and an E2E smoke test must pass.<br>You can also display the CI status badge in your README.md |
 | **Testing** | Vitest integration tests running in the Workers runtime against D1 (migrations applied), plus a Playwright E2E smoke test |
@@ -102,7 +106,7 @@ This starter removes that overhead **entirely**. Create a project from the templ
 
 The starter uses a Cloudflare service wherever one fits — D1, Email Service, Durable Objects, … — because that is where the cost, simplicity and latency advantages are.
 
-It never forces you to:
+It never locks you into one, either:
 
 - **Services people commonly swap** sit behind small adapters (email, today).
 - **Database access** goes through one connection factory ([docs/DATABASES.md](docs/DATABASES.md)).
@@ -282,6 +286,7 @@ If wrangler is logged in, you can do it from the command line:
 
 ### Auth Features
 - Email/password authentication with email verification and password reset
+- Google sign-in, off until `npm run setup:google` sets it up and verifies it; the button then appears wherever the Worker really has the credentials, never where it would do nothing ([docs/GOOGLE_AUTH.md](docs/GOOGLE_AUTH.md))
 - Session management with secure cookies
 - Protected routes with seamless authentication overlay that prevents content flashing and needless page reloads
 - CLI user management (create, list, view, edit, delete, activate) for local and remote environments, with positional env shorthand (`npm run auth list-users production`)
@@ -823,6 +828,7 @@ npm run deploy:production    # Versioned release (patch; --minor/--major); --loc
 npm run deploy:preview       # Build, migrate and deploy preview
 npm run setup:ci             # Connect Workers Builds (both envs, idempotent; --dry-run)
 npm run setup:domain -- app.example.com   # Serve production on your domain (--env preview; --dry-run)
+npm run setup:google         # Set up and verify Google sign-in (--check to only verify)
 npm run sync-env -- preview  # Send what changed in .env.preview (secrets + build variables)
 npm run maintenance -- status --env production   # on | off | status
 npm run db -- logins --env production            # who has signed in, and how many

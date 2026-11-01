@@ -8,8 +8,8 @@ import { Label } from "../ui/label";
 import { Alert, AlertDescription } from "../ui/alert";
 import { Eye, EyeOff } from "lucide-react";
 import { GoogleSignInButton } from "./GoogleSignInButton";
-import { config } from "../../../config";
 import { useDemoAccounts } from "@/lib/demo";
+import { useAuthFeatures } from "@/lib/auth-features";
 
 /** "Admin" for an account with the admin role; its address when it has none. */
 const roleLabel = (account: { email: string; role: string | null }) =>
@@ -30,6 +30,8 @@ export function LoginForm({ onSuccess, showSignupLink = true }: LoginFormProps) 
 	const passwordRef = useRef<HTMLInputElement>(null);
 	// The public demo: offer its accounts, and hide what it would refuse anyway.
 	const demo = useDemoAccounts();
+	// Which methods this deployment really offers; see src/react-app/lib/auth-features.ts.
+	const features = useAuthFeatures();
 	const isDemo = !!demo;
 
 	useEffect(() => {
@@ -187,7 +189,7 @@ export function LoginForm({ onSuccess, showSignupLink = true }: LoginFormProps) 
 				</Button>
 			</div>
 
-			{config.auth.enableGoogleAuth && !isDemo && (
+			{features?.google && !isDemo && (
 				<>
 					<div className="relative my-4">
 						<div className="absolute inset-0 flex items-center">

@@ -4,6 +4,7 @@ import { app } from "../src/worker/index";
 import { createDb } from "../src/worker/db";
 import { createMigrations } from "../src/worker/db/migrations";
 import { pruneExpiredAuthRows } from "../src/worker/lib/expired-auth-rows";
+import { config } from "../src/config";
 
 const call = (path: string, init?: RequestInit) => app.request(path, init, env);
 
@@ -18,6 +19,22 @@ describe("worker API", () => {
 		const body = (await (await call("/api/")).json()) as { version?: string; commit?: string };
 		expect(body.version).toMatch(/^\d+\.\d+\.\d+/);
 		expect(typeof body.commit).toBe("string");
+	});
+
+	it("offers Google sign-in only where the Worker has its credentials", async () => {
+		// The browser asks the server rather than reading the config flag: both
+		// have to be true, and a button that cannot work must not be shown.
+		const body = (await (await call("/api/")).json()) as { googleAuth?: boolean };
+		expect(body.googleAuth).toBe(false);
+
+		const withCredentials = await app.request("/api/", undefined, {
+			...env,
+			GOOGLE_CLIENT_ID: "id",
+			GOOGLE_CLIENT_SECRET: "secret",
+		});
+		const enabled = (await withCredentials.json()) as { googleAuth?: boolean };
+		// `enableGoogleAuth` in src/config.ts decides the other half; the starter ships it off.
+		expect(enabled.googleAuth).toBe(config.auth.enableGoogleAuth);
 	});
 
 	it("rejects CLI calls without the API key", async () => {

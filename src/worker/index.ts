@@ -75,7 +75,11 @@ app.use("*", demoMiddleware);
 // Health check
 app.get("/api/", (c) => {
 	const environment = c.env.ENVIRONMENT || "local";
-	return c.json({ name: config.appName, environment, status: "healthy", version: APP_VERSION, commit: APP_COMMIT });
+	// What the sign-in form may offer. Google needs the flag *and* the
+	// credentials, and only the Worker knows whether it has them
+	// (src/react-app/lib/auth-features.ts).
+	const googleAuth = Boolean(config.auth.enableGoogleAuth && c.env.GOOGLE_CLIENT_ID && c.env.GOOGLE_CLIENT_SECRET);
+	return c.json({ name: config.appName, environment, status: "healthy", version: APP_VERSION, commit: APP_COMMIT, googleAuth });
 });
 
 // What an open tab polls to learn the app is back from maintenance. Unlike

@@ -12,6 +12,7 @@ import { Logo } from "@/components/Logo";
 import { RetrySendEmail } from "@/components/auth/RetrySendEmail";
 import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
 import { authClient } from "@/lib/auth/client";
+import { useAuthFeatures } from "@/lib/auth-features";
 import { CheckCircle2, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { config } from "../../../config";
 
@@ -35,6 +36,8 @@ export function SignUp() {
 	const [isLoading, setIsLoading] = useState(false);
 	const [showPassword, setShowPassword] = useState(false);
 	const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+	// Which methods this deployment really offers; see src/react-app/lib/auth-features.ts.
+	const features = useAuthFeatures();
 	const passwordRef = useRef<HTMLInputElement>(null);
 	const confirmPasswordRef = useRef<HTMLInputElement>(null);
 
@@ -274,7 +277,7 @@ export function SignUp() {
 							</Button>
 						</div>
 
-						{config.auth.enableGoogleAuth && (
+						{features?.google && (
 							<>
 								<div className="relative my-4">
 									<div className="absolute inset-0 flex items-center">

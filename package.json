@@ -45,6 +45,7 @@
 		"setup:ci": "tsx bin/setup-ci.ts",
 		"setup:domain": "tsx bin/setup-domain.ts",
 		"setup:website": "tsx bin/setup-website.ts",
+		"setup:google": "tsx bin/setup-google.ts",
 		"test:website:integration": "WEBSITE_INTEGRATION=1 vitest run --project scripts test/scripts/website-integration.test.ts",
 		"maintenance": "tsx bin/maintenance.ts",
 		"maintenance:status": "tsx bin/maintenance.ts status --env production",

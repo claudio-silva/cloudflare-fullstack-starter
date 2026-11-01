@@ -30,8 +30,12 @@ export const config = {
 	auth: {
 		// Toggle self-serve signups (hides link and route when false)
 		enableSignups: true,
-		// Enable Google OAuth sign-in (requires GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET env vars)
-		enableGoogleAuth: true,
+		// Google OAuth sign-in. Off until the credentials exist: `npm run setup:google`
+		// creates them, fills GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET in each
+		// .env.<env> and turns this on. The button only ever appears where the
+		// Worker has both credentials, so a half-done setup shows nothing rather
+		// than a button that does nothing. See docs/GOOGLE_AUTH.md.
+		enableGoogleAuth: false,
 	},
 
 	// Public base URLs per environment (fallbacks when APP_BASE_URL is not set).
