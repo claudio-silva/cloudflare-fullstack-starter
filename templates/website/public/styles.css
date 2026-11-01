@@ -398,6 +398,135 @@ a {
 	color: var(--text-muted);
 }
 
+/* --- Contact form ------------------------------------------------------- */
+
+.contact {
+	padding: clamp(3rem, 7vw, 5rem) 0;
+	border-top: 1px solid var(--border);
+}
+
+.contact-inner {
+	display: grid;
+	gap: 2rem;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+	align-items: start;
+}
+
+.contact-copy h2 {
+	font-size: clamp(1.5rem, 3.4vw, 2rem);
+}
+
+.contact-copy p {
+	color: var(--text-muted);
+}
+
+.contact-form {
+	display: grid;
+	gap: 1rem;
+	grid-template-columns: 1fr 1fr;
+	padding: 1.5rem;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	background: var(--surface);
+	box-shadow: var(--shadow);
+}
+
+.field {
+	display: grid;
+	gap: 0.35rem;
+	font-size: 0.92rem;
+	font-weight: 600;
+}
+
+.field-wide,
+.contact-notices,
+.contact-actions {
+	grid-column: 1 / -1;
+}
+
+.field input,
+.field textarea {
+	width: 100%;
+	padding: 0.6rem 0.75rem;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--bg);
+	color: var(--text);
+	font: inherit;
+	font-weight: 400;
+}
+
+.field textarea {
+	resize: vertical;
+}
+
+.field [aria-invalid] {
+	border-color: #dc2626;
+}
+
+.field small {
+	min-height: 1.2em;
+	color: #dc2626;
+	font-weight: 400;
+}
+
+.field small:empty {
+	min-height: 0;
+}
+
+/* Never shown to people: the bot trap. Off-screen rather than display:none, which some bots skip. */
+.contact-trap {
+	position: absolute;
+	left: -10000px;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+}
+
+.contact-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 1rem;
+	align-items: center;
+}
+
+.contact-status {
+	margin: 0;
+	color: var(--text-muted);
+	font-size: 0.95rem;
+}
+
+.contact-form[data-state="invalid"] .contact-status,
+.contact-form[data-state="limited"] .contact-status,
+.contact-form[data-state="unavailable"] .contact-status,
+.contact-form[data-state="failed"] .contact-status {
+	color: #dc2626;
+}
+
+/* After a plain (no-JavaScript) post, the Worker redirects to #contact-<outcome>. */
+.contact-notice {
+	display: none;
+	margin: 0;
+	padding: 0.75rem 1rem;
+	border-radius: 8px;
+	background: var(--accent-soft);
+}
+
+.contact-notice:target {
+	display: block;
+}
+
+.contact-notice-error {
+	background: color-mix(in srgb, #dc2626 12%, transparent);
+}
+
+@media (max-width: 760px) {
+	.contact-inner,
+	.contact-form {
+		grid-template-columns: 1fr;
+	}
+}
+
 /* --- Footer -------------------------------------------------------------- */
 
 .site-footer {

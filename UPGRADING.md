@@ -48,6 +48,28 @@ npm run test:e2e       # from 2.0.0 on, optional
 
 ---
 
+## 3.10.0 — 2026-11-01
+
+The product website no longer needs a domain, and it comes with a working contact form. Nothing changes for a project without a website.
+
+### Breaking changes
+
+None. A project that already has a website keeps its `website/` folder and its `website/wrangler.toml` untouched (both are project-owned); the new pieces are there to take if wanted.
+
+### What it adds
+
+1. **A website with no domain** (`npm run setup:website -- --workers-dev`, the default when `config.baseUrls.production` is still `example.com` or already on workers.dev, and what answering `none` to the domain question does): each Worker keeps its free `<worker>.<account>.workers.dev` address, no routes are written and nothing of the app's moves. `--workers-subdomain` names the account's subdomain; otherwise it is read from `APP_BASE_URL` in `.env.<env>` or asked of Cloudflare (a read), and failing that the website's Worker works the app's address out from its own at runtime (`templates/website/src/app-url.ts`). `npm run init` passes `--workers-dev` when it was given no domain. `bin/lib/website.ts` gained `WebsiteMode`, `isNoDomain()`, `workersDevHosts()`, `workersSubdomainOf()`.
+2. **A contact form on the website** (`templates/website/src/contact.ts`, `public/js/contact.js`, a section in `index.html`): `POST /api/contact` on the website's own Worker, sent to your inbox through Cloudflare Email Service with a `[[send_email]]` binding of the website's own (`CONTACT_EMAIL`; free to the account's verified destination addresses), the visitor as Reply-To; a hidden-field trap, a minimum fill time, a same-origin check and a per-IP rate limit (`CONTACT_RATE_LIMITER`). `DEMO_MODE` makes it check and send nothing; locally it writes messages to the terminal; deployed without `CONTACT_TO` it answers "not set up yet". Works without JavaScript (redirect to `#contact-<outcome>`, shown with `:target`). `setup:website` writes the bindings and `CONTACT_TO` / `CONTACT_FROM` into the website's `wrangler.toml` and asks where messages go (`--contact-to`).
+3. **Docs:** `docs/WEBSITE.md`, *The contact form* and *No domain yet*.
+
+### Required actions
+
+- **Take** `templates/website/` (new `src/contact.ts` and `public/js/contact.js`; changed `src/worker.ts`, `src/app-url.ts`, `index.html`, `styles.css`), `test/scripts/website-contact.test.ts`, and **merge** `bin/lib/website.ts`, `bin/setup-website.ts`, `bin/init.ts`, `test/scripts/website.test.ts`, `e2e/website.spec.ts` and `docs/WEBSITE.md`.
+- A project **with** a website that wants the form: copy `src/contact.ts`, `public/js/contact.js` and the route in `src/worker.ts` into its website folder, add the contact section to its page, and add to each environment of `website/wrangler.toml` the `CONTACT_TO` / `CONTACT_FROM` vars, the `[[env.<env>.send_email]]` binding named `CONTACT_EMAIL` and the `[[env.<env>.ratelimits]]` binding named `CONTACT_RATE_LIMITER` (docs/WEBSITE.md shows the block). Verify a destination address and onboard the sending domain in the Cloudflare dashboard.
+- Otherwise no action.
+
+---
+
 ## 3.9.0 — 2026-11-01
 
 Google sign-in is off in a new project and set up by one command; the sign-in button now follows what the server can actually do.

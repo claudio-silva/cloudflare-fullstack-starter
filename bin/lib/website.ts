@@ -14,7 +14,21 @@ export type WebsiteHosts = {
 	app: { production: string; preview: string };
 };
 
+/**
+ * Where the two Workers are served from:
+ *
+ * - `domain` — the website on a domain of yours (`acme.io`), the app moved to
+ *   a subdomain of it (`app.acme.io`). Custom Domains, attached afterwards.
+ * - `workers-dev` — no domain at all: each Worker keeps the address Cloudflare
+ *   gives it for free, `<worker>.<account>.workers.dev`. The app does not move
+ *   (it is not a subdomain of the website's address, and cannot be), so its
+ *   routes and URLs are left exactly as they are.
+ */
+export type WebsiteMode = "domain" | "workers-dev";
+
 export type WebsiteOptions = {
+	mode: WebsiteMode;
+	/** The website's domain; empty in `workers-dev` mode. */
 	domain: string;
 	/** Subdomain the app moves to. Default `app`. */
 	subdomain: string;
@@ -46,12 +60,55 @@ export function rootDomain(baseUrl: string): string {
 	return labels.join(".");
 }
 
+/**
+ * Is this the address of no real domain? The template's `example.com`
+ * placeholders, an empty value, and Cloudflare's own `workers.dev` — none of
+ * them is a domain a website could be put on.
+ */
+export function isNoDomain(value: string): boolean {
+	const host = hostOf(value);
+	return !host || /(^|\.)example\.com$/.test(host) || isWorkersDev(host);
+}
+
+export const isWorkersDev = (host: string) => /(^|\.)workers\.dev$/.test(hostOf(host));
+
+/** The account's workers.dev subdomain in an address on it: `https://x.acme-team.workers.dev` → `acme-team`. */
+export function workersSubdomainOf(url: string): string | null {
+	const labels = hostOf(url).split(".");
+	return labels.length === 4 && isWorkersDev(hostOf(url)) ? labels[1] : null;
+}
+
+/** The options of a website with no domain: see {@link WebsiteMode}. */
+export function workersDevOptions(dir?: string): WebsiteOptions {
+	return { mode: "workers-dev", domain: "", subdomain: "", dir: dir || "website", previewHost: "", previewAppHost: "" };
+}
+
+/**
+ * The hostnames of the two Workers on workers.dev. Each is `<worker>.<account
+ * subdomain>.workers.dev`; without the account's subdomain (offline, no
+ * credentials) they are not known, and stay empty — the site's Worker then
+ * works the app's address out from its own at runtime (src/app-url.ts).
+ */
+export function workersDevHosts(o: {
+	websiteWorker: string;
+	appWorkers: { production: string; preview: string };
+	accountSubdomain: string | null;
+}): WebsiteHosts {
+	const at = (worker: string) => (o.accountSubdomain ? `${worker}.${o.accountSubdomain}.workers.dev` : "");
+	return {
+		site: { production: at(`${o.websiteWorker}-production`), preview: at(`${o.websiteWorker}-preview`) },
+		app: { production: at(o.appWorkers.production), preview: at(o.appWorkers.preview) },
+	};
+}
+
 export function resolveOptions(overrides: Partial<WebsiteOptions> & { domain: string }): WebsiteOptions {
+	if (overrides.mode === "workers-dev") return workersDevOptions(overrides.dir);
 	const domain = hostOf(overrides.domain);
 	if (!domain || !domain.includes(".")) throw new Error(`"${overrides.domain}" is not a domain (example: acme.io)`);
 	const subdomain = overrides.subdomain || "app";
 	const previewHost = overrides.previewHost || `preview-${domain}`;
 	return {
+		mode: "domain",
 		domain,
 		subdomain,
 		dir: overrides.dir || "website",
@@ -77,16 +134,38 @@ export function websiteWranglerToml(o: {
 	workerName: string;
 	compatibilityDate: string;
 	hosts: WebsiteHosts;
+	mode?: WebsiteMode;
+	/** The contact form's addresses: see templates/website/src/contact.ts. */
+	contact?: { from: string; to?: string };
 }): string {
+	const contactFrom = o.contact?.from || "noreply@example.com";
+	const onWorkersDev = o.mode === "workers-dev";
+	// On workers.dev there is no route: the address comes with the Worker. And
+	// when the app's address is not known yet, the Worker derives it from its
+	// own (the app's Worker is this one's name without "-website").
+	const routes = (env: "preview" | "production") => (onWorkersDev ? "" : `routes = [{ pattern = "${o.hosts.site[env]}", custom_domain = true }]\n`);
+	const appUrl = (env: "preview" | "production") =>
+		o.hosts.app[env]
+			? `APP_URL = "https://${o.hosts.app[env]}"\n`
+			: "# No APP_URL: worked out from this Worker's workers.dev address (src/app-url.ts).\n";
 	const block = (env: "preview" | "production") => `
 [env.${env}]
 name = "${o.workerName}-${env}"
 workers_dev = true
-routes = [{ pattern = "${o.hosts.site[env]}", custom_domain = true }]
-
+${routes(env)}
 [env.${env}.vars]
-APP_URL = "https://${o.hosts.app[env]}"
-ENVIRONMENT = "${env}"
+${appUrl(env)}ENVIRONMENT = "${env}"
+CONTACT_TO = "${o.contact?.to ?? ""}"
+CONTACT_FROM = "${contactFrom}"
+
+[[env.${env}.send_email]]
+name = "CONTACT_EMAIL"
+allowed_sender_addresses = ["${contactFrom}"]
+
+[[env.${env}.ratelimits]]
+name = "CONTACT_RATE_LIMITER"
+namespace_id = "2001"
+simple = { limit = 5, period = 60 }
 `;
 
 	return `# The product website — a SEPARATE Cloudflare Worker from the app.
@@ -95,6 +174,16 @@ ENVIRONMENT = "${env}"
 # secrets, and it must stay that way: Cloudflare binds data and secrets to the
 # script name, so another script is the only real isolation there is. The app's
 # own config is ../wrangler.toml. See docs/WEBSITE.md.
+#
+# Its only bindings are its own, for the contact form (src/contact.ts):
+#   CONTACT_EMAIL         Cloudflare Email Service. Free to the account's verified
+#                         destination addresses (Email Routing → Destination
+#                         addresses), which is where CONTACT_TO must point;
+#                         CONTACT_FROM is on a domain onboarded in Email Service.
+#                         CONTACT_TO empty: the form answers "not set up yet".
+#   CONTACT_RATE_LIMITER  messages per visitor's IP per minute.
+# Locally there are neither: the form writes each message to the terminal.
+# DEMO_MODE = "1" (a var or a secret) checks messages and sends nothing.
 name = "${o.workerName}"
 main = "./src/worker.ts"
 compatibility_date = "${o.compatibilityDate}"
@@ -124,6 +213,7 @@ ${block("preview")}${block("production")}`;
 
 /** `website.config.ts`: the one place every other script learns the feature is on. */
 export function websiteConfigFile(options: WebsiteOptions, hosts: WebsiteHosts): string {
+	const url = (host: string) => (host ? `https://${host}` : "");
 	return `/**
  * The product website is **on** for this project.
  *
@@ -141,7 +231,15 @@ export const websiteConfig = {
 	/** Folder holding the website Worker and its static files. */
 	dir: "${options.dir}",
 
-	/** Hostnames it is served on. Attach them with \`npm run setup:domain\`. */
+${
+		options.mode === "workers-dev"
+			? `	/**
+	 * Hostnames it is served on: the Worker's own workers.dev address — no
+	 * domain. Empty when it was not known at setup. To move to a domain later,
+	 * see docs/WEBSITE.md, "No domain yet".
+	 */`
+			: "	/** Hostnames it is served on. Attach them with `npm run setup:domain`. */"
+	}
 	hosts: {
 		production: "${hosts.site.production}",
 		preview: "${hosts.site.preview}",
@@ -152,8 +250,8 @@ export const websiteConfig = {
 	 * \`${options.dir}/wrangler.toml\`, which is what the Worker actually reads.
 	 */
 	app: {
-		production: "https://${hosts.app.production}",
-		preview: "https://${hosts.app.preview}",
+		production: "${url(hosts.app.production)}",
+		preview: "${url(hosts.app.preview)}",
 	},
 } as const;
 

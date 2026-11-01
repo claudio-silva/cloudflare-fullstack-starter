@@ -1,17 +1,21 @@
 #!/usr/bin/env tsx
 /**
  * Add a product website to this project: a marketing site on the apex domain,
- * with the app moved to `app.<domain>`.
+ * with the app moved to `app.<domain>` — or, with no domain at all, the site
+ * and the app each on the free `*.workers.dev` address of its own Worker
+ * (`--workers-dev`; the default while the project has no domain).
  *
  * The site is a Cloudflare Worker of its own, with its own folder, its own
  * wrangler.toml and no binding, secret or route of the app's. What this script
  * does is entirely local:
  *
  *   1. scaffolds the site in the chosen folder (templates/website/);
- *   2. writes its wrangler.toml, with the apex and preview routes;
+ *   2. writes its wrangler.toml, with the apex and preview routes, and the
+ *      contact form's own email binding and rate limit;
  *   3. moves the app's routes to `app.*` in wrangler.toml;
  *   4. points APP_BASE_URL / CLI_API_URL_* and src/config.ts at the app's new
  *      hostnames, in .env.<env> and in the env/ templates;
+ *      (on workers.dev, 3 and 4 do not apply: the app stays where it is)
  *   5. adds the website scripts to package.json and the dev service to paseo.json;
  *   6. records the feature in website.config.ts, which is what every other
  *      script reads.
@@ -34,16 +38,19 @@
  *
  * Usage: npm run setup:website -- [--domain acme.io] [--subdomain app] [--dir website]
  *                                 [--preview-host preview-acme.io] [--preview-app-host app.preview-acme.io]
+ *                                 [--workers-dev [--workers-subdomain <account>]] [--contact-to you@acme.io]
  *                                 [--defaults] [--yes] [--dry-run]
  */
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
-import { accountId, apiToken, workerServing } from "./lib/cloudflare-api";
+import { accountId, apiToken, cf, workerServing } from "./lib/cloudflare-api";
 import { withCustomDomainRoute, withoutRoute } from "./lib/custom-domain";
 import { fillEnv } from "./lib/setup-ci";
+import { resolveWorkerName } from "./lib/worker";
 import {
+	isNoDomain,
 	resolveOptions,
 	rootDomain,
 	websiteConfigFile,
@@ -51,6 +58,8 @@ import {
 	websiteWranglerToml,
 	withPaseoWebsiteService,
 	withWebsiteScripts,
+	workersDevHosts,
+	workersSubdomainOf,
 	type WebsiteHosts,
 	type WebsiteOptions,
 } from "./lib/website";
@@ -62,6 +71,13 @@ const USAGE = `Usage: npm run setup:website -- [options]
   --dir <folder>             Folder holding the website        (default: website)
   --preview-host <host>      The website, in preview           (default: preview-<domain>)
   --preview-app-host <host>  The app, in preview               (default: <subdomain>.<preview host>)
+  --workers-dev              No domain: the site and the app each on its Worker's
+                             *.workers.dev address               (default when the project has no domain)
+  --workers-subdomain <name> The account's workers.dev subdomain (default: read from .env.<env>, or asked
+                             of Cloudflare; without it the site works the app's address out at runtime)
+  --contact-to <email>       Where the contact form sends messages: a verified destination
+                             address of the Cloudflare account   (default: none yet; the
+                             form answers "not set up" until CONTACT_TO is set)
   --defaults                 Take the default for every option not given; ask nothing
   --no-check                 Do not ask Cloudflare who serves these hostnames
   --yes, -y                  Do not ask for confirmation
@@ -84,6 +100,9 @@ type Flags = {
 	dir?: string;
 	previewHost?: string;
 	previewAppHost?: string;
+	workersDev: boolean;
+	workersSubdomain?: string;
+	contactTo?: string;
 	defaults: boolean;
 	noCheck: boolean;
 	dryRun: boolean;
@@ -93,6 +112,7 @@ type Flags = {
 
 function parseArgs(argv: string[]): Flags {
 	const flags: Flags = {
+		workersDev: argv.includes("--workers-dev"),
 		defaults: argv.includes("--defaults"),
 		noCheck: argv.includes("--no-check"),
 		dryRun: argv.includes("--dry-run"),
@@ -108,6 +128,8 @@ function parseArgs(argv: string[]): Flags {
 	flags.dir = read("--dir");
 	flags.previewHost = read("--preview-host");
 	flags.previewAppHost = read("--preview-app-host");
+	flags.workersSubdomain = read("--workers-subdomain");
+	flags.contactTo = read("--contact-to");
 	return flags;
 }
 
@@ -190,11 +212,22 @@ function scaffold(root: string, dir: string, appName: string): void {
 	}
 }
 
-function websiteWrangler(root: string, options: WebsiteOptions, hosts: WebsiteHosts, workerName: string, compatibilityDate: string): void {
+function websiteWrangler(
+	root: string,
+	options: WebsiteOptions,
+	hosts: WebsiteHosts,
+	workerName: string,
+	compatibilityDate: string,
+	contact: { from: string; to: string },
+): void {
 	const file = resolve(root, options.dir, "wrangler.toml");
 	if (existsSync(file)) return ok(`${options.dir}/wrangler.toml (kept: it is the project's now)`);
-	change(`write ${options.dir}/wrangler.toml — Worker ${workerName}, ${hosts.site.production} and ${hosts.site.preview}`);
-	write(file, websiteWranglerToml({ workerName, compatibilityDate, hosts }));
+	change(
+		options.mode === "workers-dev"
+			? `write ${options.dir}/wrangler.toml — Worker ${workerName}, on workers.dev`
+			: `write ${options.dir}/wrangler.toml — Worker ${workerName}, ${hosts.site.production} and ${hosts.site.preview}`,
+	);
+	write(file, websiteWranglerToml({ workerName, compatibilityDate, hosts, mode: options.mode, contact }));
 }
 
 /**
@@ -345,6 +378,32 @@ async function checkDomains(hosts: WebsiteHosts, workerName: string): Promise<vo
 	}
 }
 
+/**
+ * The account's workers.dev subdomain, for the two Workers' addresses. From
+ * `--workers-subdomain`, else from an app URL already on workers.dev in
+ * `.env.<env>` (what `setup:ci` writes), else asked of Cloudflare — a read,
+ * skipped by `--no-check` and without credentials. Null when nobody knows:
+ * the site's Worker then works the app's address out from its own.
+ */
+async function workersSubdomain(root: string, flags: Flags): Promise<string | null> {
+	if (flags.workersSubdomain) return flags.workersSubdomain.trim().toLowerCase();
+	for (const env of ["production", "preview"]) {
+		const file = resolve(root, `.env.${env}`);
+		const url = existsSync(file) ? (/^APP_BASE_URL=["']?([^\s"']+)/m.exec(readFileSync(file, "utf-8"))?.[1] ?? "") : "";
+		const found = workersSubdomainOf(url);
+		if (found) return found;
+	}
+	if (flags.noCheck) return null;
+	const token = apiToken();
+	if (!token) return null;
+	try {
+		const { subdomain } = await cf<{ subdomain: string }>(token, "GET", `/accounts/${await accountId(token)}/workers/subdomain`);
+		return subdomain || null;
+	} catch {
+		return null;
+	}
+}
+
 // --- Main -----------------------------------------------------------------
 
 function readValue(source: string, key: string): string {
@@ -357,6 +416,8 @@ function readValue(source: string, key: string): string {
  * preview hostname is built from the subdomain and the preview hostname just
  * chosen — which is why this is a sequence and not a form.
  */
+const NO_DOMAIN = "none";
+
 async function askOptions(flags: Flags, defaultDomain: string): Promise<Partial<WebsiteOptions> & { domain: string }> {
 	const rl = createInterface({ input: process.stdin, output: process.stdout });
 	const ask = async (question: string, fallback: string): Promise<string> => {
@@ -368,7 +429,12 @@ async function askOptions(flags: Flags, defaultDomain: string): Promise<Partial<
 		console.log("Answer or press Enter to take the default.\n");
 		let domain = flags.domain ?? "";
 		while (!domain) {
-			const answer = await ask("Domain the website is served on", defaultDomain);
+			const answer = await ask(`Domain the website is served on ("${NO_DOMAIN}": each Worker on its free *.workers.dev address)`, defaultDomain || NO_DOMAIN);
+			if (answer.toLowerCase() === NO_DOMAIN) {
+				const dir = flags.dir ?? (await ask("Folder holding the website", "website"));
+				console.log("");
+				return { mode: "workers-dev", domain: "", dir };
+			}
 			try {
 				resolveOptions({ domain: answer });
 				domain = answer;
@@ -382,6 +448,29 @@ async function askOptions(flags: Flags, defaultDomain: string): Promise<Partial<
 		const previewAppHost = flags.previewAppHost ?? (await ask("The app's preview hostname", `${subdomain}.${previewHost}`));
 		console.log("");
 		return { domain, subdomain, dir, previewHost, previewAppHost };
+	} finally {
+		rl.close();
+	}
+}
+
+const looksLikeEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+
+/**
+ * Where the contact form's messages go. Asked rather than guessed: it must be
+ * a verified destination address of the Cloudflare account, which only the
+ * person running this knows. Empty is a fine answer — the form then says it is
+ * not set up, until CONTACT_TO is filled in.
+ */
+async function askContactTo(): Promise<string> {
+	const rl = createInterface({ input: process.stdin, output: process.stdout });
+	try {
+		for (;;) {
+			const answer = await new Promise<string>((done) =>
+				rl.question("  Where the contact form sends messages (a verified destination address on Cloudflare; Enter: later) []: ", done),
+			);
+			if (!answer.trim() || looksLikeEmail(answer.trim())) return answer.trim();
+			console.log("  That is not an email address.");
+		}
 	} finally {
 		rl.close();
 	}
@@ -413,14 +502,25 @@ async function main(): Promise<void> {
 	// A domain given on the command line is used as it is; one derived from the
 	// app's own URL has its subdomain taken off first (`https://app.acme.io` →
 	// `acme.io`), which is a guess, and so only ever a default.
-	const defaultDomain = rootDomain(readValue(configSource.slice(configSource.indexOf("baseUrls")), "production"));
+	// A project still on the template's example.com, or on workers.dev, has no
+	// domain to offer: no domain is then the default.
+	const productionUrl = readValue(configSource.slice(configSource.indexOf("baseUrls")), "production");
+	const defaultDomain = isNoDomain(productionUrl) ? "" : rootDomain(productionUrl);
+	if (flags.workersDev && flags.domain) die("--workers-dev and --domain do not go together: a domain, or none");
 	// Nobody to ask: --defaults, or no terminal at all (CI, a subprocess).
-	const asking = !flags.defaults && Boolean(process.stdin.isTTY);
-	if (!flags.domain && !defaultDomain && !asking) die("no domain: pass --domain acme.io, or run `npm run init` first so the project has one");
+	const asking = !flags.workersDev && !flags.defaults && Boolean(process.stdin.isTTY);
 
-	const answers = asking
+	const answers: Partial<WebsiteOptions> & { domain: string } = asking
 		? await askOptions(flags, defaultDomain)
-		: { domain: flags.domain ?? defaultDomain, subdomain: flags.subdomain, dir: flags.dir, previewHost: flags.previewHost, previewAppHost: flags.previewAppHost };
+		: flags.workersDev || (!flags.domain && !defaultDomain)
+			? { mode: "workers-dev", domain: "", dir: flags.dir }
+			: { domain: flags.domain ?? defaultDomain, subdomain: flags.subdomain, dir: flags.dir, previewHost: flags.previewHost, previewAppHost: flags.previewAppHost };
+
+	if (flags.contactTo && !looksLikeEmail(flags.contactTo)) die(`--contact-to: "${flags.contactTo}" is not an email address`);
+	const contact = {
+		from: readValue(configSource, "fromAddress") || "noreply@example.com",
+		to: flags.contactTo ?? (asking && !existsSync(resolve(root, answers.dir || "website", "wrangler.toml")) ? await askContactTo() : ""),
+	};
 
 	let options: WebsiteOptions;
 	try {
@@ -428,19 +528,31 @@ async function main(): Promise<void> {
 	} catch (error) {
 		die(error instanceof Error ? error.message : String(error));
 	}
-	const hosts = websiteHosts(options);
+	const onWorkersDev = options.mode === "workers-dev";
+	const hosts = onWorkersDev
+		? workersDevHosts({
+				websiteWorker: workerName,
+				appWorkers: { production: resolveWorkerName(resolve(root, "wrangler.toml"), "production"), preview: resolveWorkerName(resolve(root, "wrangler.toml"), "preview") },
+				accountSubdomain: await workersSubdomain(root, flags),
+			})
+		: websiteHosts(options);
+	const shown = (host: string) => (host ? `https://${host}` : "(its workers.dev address)");
 
-	console.log(`${dryRun ? "Dry run: nothing is written.\n" : ""}A product website for ${appName}:`);
-	console.log(`  website    https://${hosts.site.production}   (preview: https://${hosts.site.preview})`);
-	console.log(`  app        https://${hosts.app.production}   (preview: https://${hosts.app.preview})`);
-	console.log(`  folder     ${options.dir}/   ·  Worker ${workerName}\n`);
-	if (!flags.noCheck) await checkDomains(hosts, workerName);
+	console.log(`${dryRun ? "Dry run: nothing is written.\n" : ""}A product website for ${appName}${onWorkersDev ? ", with no domain" : ""}:`);
+	console.log(`  website    ${shown(hosts.site.production)}   (preview: ${shown(hosts.site.preview)})`);
+	console.log(`  app        ${shown(hosts.app.production)}   (preview: ${shown(hosts.app.preview)})${onWorkersDev ? "  — unchanged" : ""}`);
+	console.log(`  folder     ${options.dir}/   ·  Worker ${workerName}`);
+	console.log(`  contact    ${contact.to ? `to ${contact.to}` : "not set up yet (CONTACT_TO)"}, from ${contact.from}\n`);
+	if (!flags.noCheck && !onWorkersDev) await checkDomains(hosts, workerName);
 	if (!dryRun && !(await confirm("This changes local files only — nothing is deployed. Go ahead?", flags.yes))) die("aborted");
 
 	scaffold(root, options.dir, appName);
-	websiteWrangler(root, options, hosts, workerName, compatibilityDate);
-	appRoutes(root, hosts);
-	appUrls(root, options, hosts);
+	websiteWrangler(root, options, hosts, workerName, compatibilityDate, contact);
+	// On workers.dev the app keeps its address: nothing of its own moves.
+	if (!onWorkersDev) {
+		appRoutes(root, hosts);
+		appUrls(root, options, hosts);
+	}
 	packageScripts(root, options.dir);
 	paseoService(root);
 	record(root, options, hosts);
@@ -449,13 +561,24 @@ async function main(): Promise<void> {
 	if (changes === 0) return console.log("\nNothing to do: this project already has its website.");
 
 	console.log(`\n✅ The website is set up in ${options.dir}/.\n`);
+	if (onWorkersDev) {
+		console.log("Next steps:");
+		console.log(`  1. See it, beside the app:   ${run("dev:all")}`);
+		console.log(`  2. Check it would deploy:     ${run("check:website")}`);
+		console.log(`  3. Deploy it:                 ${run("deploy:website:preview")}, then ${run("deploy:website:production")}`);
+		console.log(`\n  • No domain is needed: each Worker answers on its workers.dev address, and "Open app" links across.`);
+		console.log(`  • A domain later: docs/WEBSITE.md, "No domain yet".`);
+		console.log(`  • The contact form: docs/WEBSITE.md, "The contact form".`);
+		return;
+	}
 	console.log("Next steps:");
 	console.log(`  1. See it, beside the app:        ${run("dev:all")}`);
 	console.log(`  2. Check it would deploy:          ${run("check:website")}`);
 	console.log(`  3. Deploy the app on its new URL:  ${run("deploy:preview")}  (then ${run("setup:domain", `${hosts.app.preview} --env preview`)})`);
 	console.log(`  4. Deploy the website:             ${run("deploy:website:preview")}  (then ${run("setup:domain", `${hosts.site.preview} --env preview --website`)})`);
 	console.log(`  5. The same for production:        ${run("deploy:production")}, ${run("deploy:website:production")}`);
-	console.log(`\n  • An app already live on https://${hosts.site.production} needs the cutover procedure first: docs/WEBSITE.md.`);
+	console.log(`\n  • The contact form: docs/WEBSITE.md, "The contact form".`);
+	console.log(`  • An app already live on https://${hosts.site.production} needs the cutover procedure first: docs/WEBSITE.md.`);
 	console.log(`  • For the emergency maintenance page, set in deploy.config.ts:`);
 	console.log(`        maintenance.mechanism = "redirect"`);
 	console.log(`        maintenance.redirectTo = "https://${hosts.site.production}/maintenance"`);

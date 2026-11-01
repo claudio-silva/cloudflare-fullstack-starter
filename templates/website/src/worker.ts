@@ -6,8 +6,10 @@
  * so the only way the public apex cannot reach the app's database is for it to
  * be another script. See docs/WEBSITE.md.
  *
- * It does three things; everything else is a static file from `public/`:
+ * It does four things; everything else is a static file from `public/`:
  *   - redirects http:// to https:// (not locally);
+ *   - receives the contact form, `POST /api/contact`, and emails it to you
+ *     through its own `send_email` binding (src/contact.ts);
  *   - rewrites `<a data-app-link>` to the app's URL for this environment, so
  *     "Open app" is right in local, preview and production without a build;
  *   - serves `/maintenance.html`, the page the emergency redirect points at
@@ -15,8 +17,9 @@
  *     app being up.
  */
 import { resolveAppUrl, isLocalHost } from "./app-url";
+import { CONTACT_PATH, handleContact, type ContactEnv } from "./contact";
 
-type Env = {
+type Env = ContactEnv & {
 	ASSETS: Fetcher;
 	APP_URL?: string;
 	ENVIRONMENT?: string;
@@ -51,6 +54,7 @@ export default {
 	async fetch(request: Request, env: Env): Promise<Response> {
 		const redirect = httpsRedirect(request);
 		if (redirect) return redirect;
+		if (new URL(request.url).pathname === CONTACT_PATH) return handleContact(request, env);
 
 		const response = await env.ASSETS.fetch(request);
 		if (!isHtml(response)) return response;

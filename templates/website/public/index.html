@@ -27,6 +27,7 @@
 			})();
 		</script>
 		<script type="module" src="/js/site.js"></script>
+		<script type="module" src="/js/contact.js"></script>
 	</head>
 	<body>
 		<a class="skip-link" href="#main">Skip to content</a>
@@ -127,6 +128,59 @@
 					<a class="button button-primary button-lg" data-app-link="/" href="/">Open app</a>
 				</div>
 			</section>
+			<section id="contact" class="contact" aria-labelledby="contact-title">
+				<div class="container contact-inner">
+					<div class="contact-copy">
+						<h2 id="contact-title">Talk to us</h2>
+						<p>A question, a feature you would need, or a team you would like to bring? Write, and a person answers — usually within a working day.</p>
+					</div>
+
+					<!--
+						Posts to this site's own Worker (src/contact.ts), which emails it to
+						you through Cloudflare Email Service. Works without JavaScript: the
+						Worker redirects back to #contact-<outcome>, and the matching notice
+						below shows through :target. public/js/contact.js sends it in place.
+					-->
+					<form class="contact-form" data-contact method="post" action="/api/contact" novalidate>
+						<div class="contact-notices">
+							<p id="contact-sent" class="contact-notice">Thanks — your message is on its way. We'll answer by email.</p>
+							<p id="contact-demo" class="contact-notice">Looks good — but this is a demo, so nothing was sent.</p>
+							<p id="contact-logged" class="contact-notice">Received. In local development the message is written to the terminal, not sent.</p>
+							<p id="contact-invalid" class="contact-notice contact-notice-error">Please fill in your name, a valid email address and a message.</p>
+							<p id="contact-limited" class="contact-notice contact-notice-error">That's a lot of messages at once. Please wait a minute and try again.</p>
+							<p id="contact-unavailable" class="contact-notice contact-notice-error">The contact form isn't set up yet. Please try again later.</p>
+							<p id="contact-failed" class="contact-notice contact-notice-error">Your message could not be sent just now. Please try again in a little while.</p>
+						</div>
+
+						<label class="field">
+							<span>Name</span>
+							<input name="name" autocomplete="name" maxlength="100" required />
+							<small data-error-for="name"></small>
+						</label>
+						<label class="field">
+							<span>Email</span>
+							<input name="email" type="email" autocomplete="email" maxlength="254" required />
+							<small data-error-for="email"></small>
+						</label>
+						<label class="field field-wide">
+							<span>Message</span>
+							<textarea name="message" rows="5" maxlength="5000" required></textarea>
+							<small data-error-for="message"></small>
+						</label>
+
+						<!-- For bots: people never see it, so anything in it was not typed by one. -->
+						<div class="contact-trap" aria-hidden="true">
+							<label>Website <input name="website" tabindex="-1" autocomplete="off" /></label>
+						</div>
+						<input type="hidden" name="started" value="" />
+
+						<div class="contact-actions">
+							<button class="button button-primary button-lg" type="submit">Send message</button>
+							<p class="contact-status" data-contact-status role="status" aria-live="polite"></p>
+						</div>
+					</form>
+				</div>
+			</section>
 		</main>
 
 		<footer class="site-footer">
@@ -134,6 +188,7 @@
 				<p>&copy; <span id="year">2026</span> __APP_NAME__</p>
 				<nav aria-label="Footer">
 					<a href="#features">Features</a>
+					<a href="#contact">Contact</a>
 					<a data-app-link="/" href="/">Open app</a>
 				</nav>
 			</div>

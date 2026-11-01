@@ -8,7 +8,7 @@ Install and start building. Authentication, database, UI, CLI, and deployment ar
 
 A great starting point for your next **MVP** or **SaaS** app.
 
-**[Live demo](https://cloudflare-fullstack-starter-production.dev-c1b.workers.dev)** — the template as it is, deployed from this repository's latest release. It is read-only: the sign-in page gives you the account, and nothing you change is saved. The **[preview demo](https://cloudflare-fullstack-starter-preview.dev-c1b.workers.dev)** shows the work in progress on `main`, unreleased.
+**[Live demo](https://cloudflare-fullstack-starter-production.dev-c1b.workers.dev)** — the template as it is, deployed from this repository's latest release. It is read-only: the sign-in page gives you the account, and nothing you change is saved. The **[preview demo](https://cloudflare-fullstack-starter-preview.dev-c1b.workers.dev)** shows the work in progress on `main`, unreleased. The **[website](https://cloudflare-fullstack-starter-website-production.dev-c1b.workers.dev)** that introduces it is a [Worker of its own](https://github.com/claudio-silva/cloudflare-fullstack-starter-website), made with the starter's [product website](#product-website-optional) — contact form included.
 
 ## Contents
 
@@ -94,7 +94,7 @@ And it stays useful after day one. The parts that are easy to get subtly wrong �
 | **Client error reporting** | Browser errors land in your Worker logs, with abuse protection |
 | **Localisable** | Every built-in string can be translated, with or without an i18n library |
 | **Demo mode** | One secret turns a deployment into a public, read-only showcase that is safe to leave online |
-| **Product website (optional)** | `npm run setup:website` puts a marketing site on your apex domain as a Worker of its own, with the app on `app.<domain>` — no shared data, no shared secrets ([docs/WEBSITE.md](docs/WEBSITE.md)) |
+| **Product website (optional)** | `npm run setup:website` puts a marketing site on your apex domain as a Worker of its own, with the app on `app.<domain>` — or both on `*.workers.dev` while there is no domain. No shared data, no shared secrets; a contact form sent by Cloudflare Email ([docs/WEBSITE.md](docs/WEBSITE.md)) |
 | **Built-in Observability** | Monitor your Worker logs, metrics, traces, performance and health |
 | **CI/CD Ready** | GitHub Actions workflow validates every push: lint, type-check, tests, build and an E2E smoke test must pass.<br>You can also display the CI status badge in your README.md |
 | **Testing** | Vitest integration tests running in the Workers runtime against D1 (migrations applied), plus a Playwright E2E smoke test |
@@ -503,13 +503,13 @@ Everything that makes a deployment a demo lives on that deployment (Worker secre
 
 ## Product website (optional)
 
-One command gives the project a marketing site on its apex domain, with the app on `app.<domain>`:
+One command gives the project a marketing site on its apex domain, with the app on `app.<domain>` — or, with no domain yet, each on its free `*.workers.dev` address:
 
 ```bash
 npm run setup:website        # asks for each value; --defaults takes them all, --dry-run shows the plan
 ```
 
-The site is a **separate Cloudflare Worker**: static files and a few lines of code, with no D1, no secrets and no auth — the public apex cannot reach the app's data because nothing binds it to it, and the app's script name never changes, so moving it to a subdomain moves a route, not data. It carries the app's logo, a light/dark/system switch that opens the app in the same theme (`?theme=`), and an "Open app" button whose URL is right in local, preview and production without being hardcoded anywhere.
+The site is a **separate Cloudflare Worker**: static files and a few lines of code, with no D1, none of the app's secrets and no auth — the public apex cannot reach the app's data because nothing binds it to it, and the app's script name never changes, so moving it to a subdomain moves a route, not data. It carries the app's logo, a light/dark/system switch that opens the app in the same theme (`?theme=`), an "Open app" button whose URL is right in local, preview and production without being hardcoded anywhere, and a **contact form** that mails each message to your inbox through Cloudflare Email Service — free to your own verified addresses, with bot traps and a rate limit, and sending nothing in demo mode.
 
 `npm run dev`, `deploy:preview` and `deploy:production` are unchanged and still concern the app alone; the site has `dev:website` / `dev:all`, `deploy:website:*` and `deploy:all:*` of its own. A project that does not run the setup has none of this and behaves exactly as before.
 

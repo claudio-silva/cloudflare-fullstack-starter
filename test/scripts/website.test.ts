@@ -6,12 +6,15 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { appPortFrom } from "../../bin/dev-all";
 import { loadWebsiteConfig } from "../../bin/lib/website-config";
 import {
+	isNoDomain,
 	resolveOptions,
 	rootDomain,
 	websiteHosts,
 	websiteWranglerToml,
 	withPaseoWebsiteService,
 	withWebsiteScripts,
+	workersDevHosts,
+	workersSubdomainOf,
 } from "../../bin/lib/website";
 import { resolveAppUrl } from "../../templates/website/src/app-url";
 // The very file the browser loads, imported as it is: there is no second copy
@@ -91,7 +94,63 @@ describe("the website Worker's wrangler.toml", () => {
 	});
 
 	it("carries nothing of the app's", () => {
-		expect(toml).not.toMatch(/d1_databases|send_email|ratelimits|BETTER_AUTH|CLI_API_KEY/);
+		expect(toml).not.toMatch(/d1_databases|name = "EMAIL"|AUTH_RATE_LIMITER|BETTER_AUTH|CLI_API_KEY/);
+	});
+
+	it("has an email binding and a rate limit of its own, for the contact form", () => {
+		const own = websiteWranglerToml({
+			workerName: "acme-website",
+			compatibilityDate: "2025-04-01",
+			hosts: websiteHosts(resolveOptions({ domain: "acme.io" })),
+			contact: { from: "hello@acme.io", to: "team@acme.io" },
+		});
+		for (const env of ["preview", "production"]) {
+			expect(own).toContain(`[[env.${env}.send_email]]\nname = "CONTACT_EMAIL"\nallowed_sender_addresses = ["hello@acme.io"]`);
+			expect(own).toContain(`[[env.${env}.ratelimits]]\nname = "CONTACT_RATE_LIMITER"`);
+		}
+		expect(own).toContain('CONTACT_TO = "team@acme.io"');
+		expect(own).toContain('CONTACT_FROM = "hello@acme.io"');
+		// Locally neither: the form writes messages to the terminal.
+		expect(own.slice(0, own.indexOf("[env.preview]"))).not.toMatch(/^\[\[(send_email|ratelimits)\]\]/m);
+	});
+});
+
+describe("a website with no domain", () => {
+	const hosts = workersDevHosts({
+		websiteWorker: "acme-website",
+		appWorkers: { production: "acme-production", preview: "acme-preview" },
+		accountSubdomain: "team",
+	});
+
+	it("knows a domain from what is not one", () => {
+		expect(isNoDomain("https://app.example.com")).toBe(true);
+		expect(isNoDomain("https://acme-production.team.workers.dev")).toBe(true);
+		expect(isNoDomain("")).toBe(true);
+		expect(isNoDomain("https://app.acme.io")).toBe(false);
+		expect(workersSubdomainOf("https://acme-production.team.workers.dev/")).toBe("team");
+		expect(workersSubdomainOf("https://app.acme.io")).toBeNull();
+	});
+
+	it("puts each Worker on its own workers.dev address", () => {
+		expect(hosts).toEqual({
+			site: { production: "acme-website-production.team.workers.dev", preview: "acme-website-preview.team.workers.dev" },
+			app: { production: "acme-production.team.workers.dev", preview: "acme-preview.team.workers.dev" },
+		});
+	});
+
+	it("routes nothing, and points at the app's own address", () => {
+		const toml = websiteWranglerToml({ workerName: "acme-website", compatibilityDate: "2025-04-01", hosts, mode: "workers-dev" });
+		expect(toml).not.toContain("routes");
+		expect(toml).toContain("workers_dev = true");
+		expect(toml).toContain('APP_URL = "https://acme-production.team.workers.dev"');
+		expect(toml).toContain('APP_URL = "https://acme-preview.team.workers.dev"');
+	});
+
+	it("leaves the app's address to the Worker when the account's is not known", () => {
+		const unknown = workersDevHosts({ websiteWorker: "acme-website", appWorkers: { production: "acme-production", preview: "acme-preview" }, accountSubdomain: null });
+		const toml = websiteWranglerToml({ workerName: "acme-website", compatibilityDate: "2025-04-01", hosts: unknown, mode: "workers-dev" });
+		expect(toml).not.toMatch(/\[env\.(preview|production)\.vars\]\nAPP_URL/);
+		expect(toml).toContain("No APP_URL");
 	});
 });
 
@@ -113,6 +172,11 @@ describe("the app's URL, as the site's Worker sees it", () => {
 		// The loopback however it was typed: `localhost` resolves to ::1 first on macOS.
 		expect(resolveAppUrl(undefined, "http://[::1]:8788/")).toBe("http://localhost:5173");
 		expect(resolveAppUrl(undefined, "http://127.0.0.1:8788/")).toBe("http://localhost:5173");
+	});
+
+	it("on workers.dev, falls back to the Worker of the same name without -website", () => {
+		expect(resolveAppUrl(undefined, "https://acme-website-preview.team.workers.dev/")).toBe("https://acme-preview.team.workers.dev");
+		expect(resolveAppUrl(undefined, "https://my-website-website-production.team.workers.dev/x")).toBe("https://my-website-production.team.workers.dev");
 	});
 });
 
@@ -285,7 +349,7 @@ describe("setup:website, with its defaults", () => {
 		const toml = read(root, "website/wrangler.toml");
 		expect(toml).toContain('routes = [{ pattern = "acme.io", custom_domain = true }]');
 		expect(toml).toContain('APP_URL = "https://app.acme.io"');
-		expect(toml).not.toMatch(/d1_databases|send_email/);
+		expect(toml).not.toMatch(/d1_databases|name = "EMAIL"/);
 	});
 
 	it("moves the app to app.acme.io everywhere it is named", () => {
@@ -353,15 +417,26 @@ describe("setup:website, with every override", () => {
 describe("setup:website without being asked anything", () => {
 	it("takes the project's own domain and the defaults", () => {
 		const root = fixture();
-		// No --domain: the fixture's config.baseUrls.production is app.example.com.
+		writeFileSync(join(root, "src", "config.ts"), read(root, "src/config.ts").replace('"https://app.example.com"', '"https://app.acme.io"'));
 		const output = setup(root, ["--defaults"]);
 
 		expect(output).not.toContain("Domain the website is served on");
 		expect(loadWebsiteConfig(root)).toEqual({
 			dir: "website",
-			hosts: { production: "example.com", preview: "preview-example.com" },
-			app: { production: "https://app.example.com", preview: "https://app.preview-example.com" },
+			hosts: { production: "acme.io", preview: "preview-acme.io" },
+			app: { production: "https://app.acme.io", preview: "https://app.preview-acme.io" },
 		});
+		rmSync(root, { recursive: true, force: true });
+	});
+
+	it("puts a project with no domain yet on workers.dev", () => {
+		// The fixture's config.baseUrls.production is the template's app.example.com.
+		const root = fixture();
+		const output = setup(root, ["--defaults"]);
+
+		expect(output).toContain("with no domain");
+		expect(read(root, "website/wrangler.toml")).not.toContain("routes");
+		expect(loadWebsiteConfig(root)!.hosts).toEqual({ production: "", preview: "" });
 		rmSync(root, { recursive: true, force: true });
 	});
 
@@ -373,6 +448,51 @@ describe("setup:website without being asked anything", () => {
 		expect(output).not.toContain("[app]:");
 		expect(loadWebsiteConfig(root)!.hosts.production).toBe("acme.io");
 		rmSync(root, { recursive: true, force: true });
+	});
+});
+
+describe("setup:website --workers-dev", () => {
+	let root: string;
+	let before: Record<string, string>;
+
+	beforeAll(() => {
+		root = fixture();
+		before = Object.fromEntries(["wrangler.toml", ".env.production", ".env.preview", "src/config.ts", "env/production.env.template"].map((f) => [f, read(root, f)]));
+		setup(root, ["--workers-dev", "--workers-subdomain", "team"]);
+	});
+	afterAll(() => rmSync(root, { recursive: true, force: true }));
+
+	it("gives the site its own workers.dev address, pointing at the app's", () => {
+		const toml = read(root, "website/wrangler.toml");
+		expect(toml).not.toContain("routes");
+		expect(toml).toContain('APP_URL = "https://cloudflare-fullstack-starter-production.team.workers.dev"');
+		expect(loadWebsiteConfig(root)).toEqual({
+			dir: "website",
+			hosts: {
+				production: "cloudflare-fullstack-starter-website-production.team.workers.dev",
+				preview: "cloudflare-fullstack-starter-website-preview.team.workers.dev",
+			},
+			app: {
+				production: "https://cloudflare-fullstack-starter-production.team.workers.dev",
+				preview: "https://cloudflare-fullstack-starter-preview.team.workers.dev",
+			},
+		});
+	});
+
+	it("leaves the app exactly where it was", () => {
+		for (const [file, content] of Object.entries(before)) expect([file, read(root, file)]).toEqual([file, content]);
+	});
+
+	it("reads the account from an app already on workers.dev", () => {
+		const other = fixture();
+		writeFileSync(join(other, ".env.production"), read(other, ".env.production").replace(/^APP_BASE_URL=.*$/m, "APP_BASE_URL=https://x-production.crew.workers.dev"));
+		setup(other, ["--workers-dev"]);
+		expect(loadWebsiteConfig(other)!.app.preview).toBe("https://cloudflare-fullstack-starter-preview.crew.workers.dev");
+		rmSync(other, { recursive: true, force: true });
+	});
+
+	it("changes nothing when it is run again", () => {
+		expect(setup(root, ["--workers-dev", "--workers-subdomain", "team"])).toContain("Nothing to do");
 	});
 });
 

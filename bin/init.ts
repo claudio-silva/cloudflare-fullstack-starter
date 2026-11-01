@@ -59,7 +59,8 @@ Options:
   --app-domain <url>       Production app URL (e.g., https://app.myapp.com)
   --preview-domain <url>   Preview app URL (e.g., https://preview.myapp.com)
   --email-from <address>   Sender email address (defaults to noreply@<app-domain root>)
-  --website                Also add the product website (apex domain; app on app.<domain>)
+  --website                Also add the product website (apex domain, app on app.<domain>;
+                           with no domain, each on its workers.dev address)
   --keep-git               Keep the starter's origin remote and release tags (a clone inherits them)
   -h, --help               Show this help
 
@@ -210,10 +211,16 @@ function updatePackageJsonScripts(pkgPath: string, projectName: string) {
  * setup, which is where every decision about it lives.
  */
 async function maybeAddWebsite(asked: boolean | undefined, appDomain: string): Promise<void> {
-	const wanted = asked ?? (isInteractive && (await prompt("\nAdd a product website on the apex domain, with the app on app.<domain>? (y/N)", "N")).trim().toLowerCase().startsWith("y"));
+	// With no domain yet, the site and the app each keep their free workers.dev address.
+	const noDomain = /(^|[./])example\.com\b|workers\.dev\b/.test(appDomain);
+	const question = noDomain
+		? "\nAdd a product website, on its own workers.dev address beside the app's? (y/N)"
+		: "\nAdd a product website on the apex domain, with the app on app.<domain>? (y/N)";
+	const wanted = asked ?? (isInteractive && (await prompt(question, "N")).trim().toLowerCase().startsWith("y"));
 	if (!wanted) return;
 	console.log("");
-	execFileSync("npx", ["tsx", path.join(__dirname, "setup-website.ts"), "--yes", "--domain", appDomain], { stdio: "inherit" });
+	const where = noDomain ? ["--workers-dev"] : ["--domain", appDomain];
+	execFileSync("npx", ["tsx", path.join(__dirname, "setup-website.ts"), "--yes", ...where], { stdio: "inherit" });
 }
 
 /**

@@ -1,6 +1,6 @@
 # The product website
 
-> An **optional** marketing site on your apex domain (`acme.io`), with the app moved to a subdomain (`app.acme.io`).
+> An **optional** marketing site on your apex domain (`acme.io`), with the app moved to a subdomain (`app.acme.io`) — or, before you have a domain, the site and the app each on its free `*.workers.dev` address ([No domain yet](#no-domain-yet)).
 > A project that does not turn it on is exactly a project without one: nothing in this document applies to it, and no command changes behaviour.
 
 ---
@@ -11,13 +11,14 @@ Two Cloudflare Workers instead of one:
 
 | | Worker | Serves | Has |
 |---|---|---|---|
-| **Website** | `<project>-website[-preview\|-production]` | `acme.io`, `preview-acme.io` | static files and ~50 lines of Worker |
+| **Website** | `<project>-website[-preview\|-production]` | `acme.io`, `preview-acme.io` | static files, a small Worker, and the [contact form](#the-contact-form)'s own email binding |
 | **App** | `<project>[-preview\|-production]` — *unchanged* | `app.acme.io`, `app.preview-acme.io` | D1, email, rate limits, Better Auth, every secret |
 
 The website is a separate **script**, and that is the whole point. Cloudflare binds data and secrets to the script name, and a Custom Domain belongs to exactly one Worker. So:
 
 - the public, high-traffic apex cannot reach the app's database, because it has no binding to it — not as a matter of code review, but as a matter of what exists;
 - it ships no app JavaScript, no auth, no session cookie;
+- what it does have is its own: the contact form's email binding and rate limit are the website's, configured in its `wrangler.toml`, and share nothing with the app's;
 - it deploys on its own cadence, and stays up when the app's pipeline is the thing that is broken (which is why it is also the natural home for the [maintenance page](#the-maintenance-page));
 - the app's script name never changes, so moving it to `app.*` moves a *route*, not data: no migration, no re-synced secret.
 
@@ -42,6 +43,9 @@ It **asks** for every value it was not given on the command line, offering a def
 | `--dir <folder>` | `website` |
 | `--preview-host <host>` | `preview-<domain>` — the website's preview hostname |
 | `--preview-app-host <host>` | `<subdomain>.<preview host>` — the app's preview hostname |
+| `--workers-dev` | no domain: each Worker on its `*.workers.dev` address — the default when `config.baseUrls.production` is still the template's `example.com`, or already on workers.dev ([No domain yet](#no-domain-yet)). Answering `none` to the domain question is the same |
+| `--workers-subdomain <name>` | the account's workers.dev subdomain; read from `APP_BASE_URL` in `.env.<env>`, else asked of Cloudflare (a read), else left out — the site then works the app's address out at runtime |
+| `--contact-to <email>` | where the [contact form](#the-contact-form) sends messages; asked, Enter leaves it for later |
 | `--defaults` | take the default for everything not given, and ask nothing |
 | `--yes`, `--dry-run` | |
 
@@ -52,7 +56,7 @@ It **asks** for every value it was not given on the command line, offering a def
 It changes **local files only** — nothing is deployed, no domain is attached, no secret is synced:
 
 1. scaffolds the site in `<dir>/` from `templates/website/`, with the app's logos copied into `<dir>/public/assets/`;
-2. writes `<dir>/wrangler.toml` (local / preview / production, each with its routes and its `APP_URL`);
+2. writes `<dir>/wrangler.toml` (local / preview / production, each with its routes, its `APP_URL` and the contact form's binding, limit and addresses);
 3. adds the `app.*` custom-domain routes to `[env.preview]` and `[env.production]` of the app's `wrangler.toml`, and takes the website's own hostnames out of them — an app that still lists the apex takes it back from the website on its next deploy;
 4. points `APP_BASE_URL` and `CLI_API_URL_*` at the app's new hostnames in `.env.preview`, `.env.production` and the `env/*.template` files, and `config.baseUrls` in `src/config.ts` with them;
 5. adds the website scripts to `package.json` and the `website` dev service to `paseo.json`;
@@ -68,7 +72,7 @@ Its presence is what turns the feature on. `bin/lib/website-config.ts` reads it 
 
 ## What you get
 
-A single page — hero, three feature cards, a closing call, a quiet footer — plus the maintenance page. Responsive, accessible, no CDN, no build step, no framework: plain HTML, one stylesheet, two small ESM modules. It is meant to be rewritten; what matters is the two mechanisms underneath it.
+A single page — hero, three feature cards, a closing call, a contact form, a quiet footer — plus the maintenance page. Responsive, accessible, no CDN, no build step, no framework: plain HTML, one stylesheet, three small ESM modules. It is meant to be rewritten; what matters is the three mechanisms underneath it.
 
 ### The theme
 
@@ -86,7 +90,43 @@ The site and the app are **different origins**, so they do not share that storag
 | preview | `https://app.preview-acme.io` |
 | local | the dev server actually running — `bin/worktree-dev` picks a free port per worktree |
 
-The source of truth is the website Worker's `APP_URL` var, one value per environment in `<dir>/wrangler.toml`. The Worker injects it into the HTML with `HTMLRewriter` as the page is served (`<dir>/src/worker.ts`); no static file contains it. In development `dev:all` passes the real URL with `--var APP_URL:…`. If `APP_URL` were ever missing, the Worker falls back to the `app.` subdomain of the host it was reached on, so the link still lands somewhere sensible.
+The source of truth is the website Worker's `APP_URL` var, one value per environment in `<dir>/wrangler.toml`. The Worker injects it into the HTML with `HTMLRewriter` as the page is served (`<dir>/src/worker.ts`); no static file contains it. In development `dev:all` passes the real URL with `--var APP_URL:…`. If `APP_URL` were ever missing, the Worker falls back to the `app.` subdomain of the host it was reached on — on `*.workers.dev`, to its own Worker name without `-website` — so the link still lands somewhere sensible.
+
+### The contact form
+
+Landing pages nearly always have one, and the part that takes time is not the form: it is sending it safely. The site's Worker answers **`POST /api/contact`** (`<dir>/src/contact.ts`) and emails the message **to you** through Cloudflare Email Service, with a `[[send_email]]` binding of its own:
+
+```toml
+# <dir>/wrangler.toml, per environment (written by setup:website)
+[env.production.vars]
+CONTACT_TO = "team@acme.io"        # where messages go
+CONTACT_FROM = "noreply@acme.io"   # who sends them
+
+[[env.production.send_email]]
+name = "CONTACT_EMAIL"
+allowed_sender_addresses = ["noreply@acme.io"]
+
+[[env.production.ratelimits]]
+name = "CONTACT_RATE_LIMITER"
+namespace_id = "2001"
+simple = { limit = 5, period = 60 }
+```
+
+**It costs nothing.** On Workers Free, Email Service sends to the account's **verified destination addresses** (Email Routing → *Destination addresses*) at no cost; only mail to arbitrary recipients needs Workers Paid. A contact form only ever writes to you, so `CONTACT_TO` must be one of those verified addresses, and `CONTACT_FROM` an address on a domain onboarded in Email Service (docs/EMAIL.md, *Domain onboarding*). The visitor's address is only the **Reply-To**: answering is one click, and the form can never be used to mail someone else.
+
+**It keeps bots out**, cheapest first: a field people never see and bots fill in; a minimum time between loading the page and sending (set by `public/js/contact.js`); a same-origin check; the per-IP rate limit. A bot caught by the first two is told its message went through, and nothing is sent.
+
+**When it sends nothing**, on purpose:
+
+| | |
+|---|---|
+| `DEMO_MODE` = `1` or `true` (a var or a secret) | checks the message, answers "this is a demo, nothing was sent". For a public showcase: a form anyone can post to must not fill an inbox |
+| locally (`ENVIRONMENT = "local"`, no binding) | writes the message to the terminal, so the form can be built and tested without email set up |
+| deployed, `CONTACT_TO` empty | answers 503, "not set up yet" — and logs what is missing |
+
+**It works without JavaScript.** With the script, the form is sent in place and the fields the server rejected are marked. Without it, the form posts the ordinary way and the Worker redirects back to `#contact-<outcome>` (`sent`, `demo`, `invalid`, …), which the page shows through CSS `:target`. The endpoint answers JSON to a request that `Accept`s it, and the redirect otherwise.
+
+To take it out, delete the section from `index.html`, `public/js/contact.js`, the route in `src/worker.ts` and the `CONTACT_*` entries in `wrangler.toml`. To change the fields, `validate()` and `composeEmail()` in `src/contact.ts` are the two places that know them.
 
 ---
 
@@ -163,6 +203,27 @@ The planned-window mechanism is a different thing and is unaffected: a deploy th
 
 ---
 
+## No domain yet
+
+A project without a domain can have a website too: each Worker keeps the address Cloudflare gives it for free, `<worker>.<account>.workers.dev`.
+
+| | production | preview |
+|---|---|---|
+| website | `https://<project>-website-production.<account>.workers.dev` | `…-website-preview.<account>.workers.dev` |
+| app | `https://<project>-production.<account>.workers.dev` — *unchanged* | `…-preview.<account>.workers.dev` |
+
+```bash
+npm run setup:website -- --workers-dev
+```
+
+It is the default when the project has no domain (`config.baseUrls.production` still the template's `example.com`, or already on workers.dev), and what answering `none` to the domain question does. In this mode the setup writes **no routes**, moves **nothing** of the app's (routes, `APP_BASE_URL`, `config.baseUrls` stay exactly as they are), and skips the hostname check. The app is not a subdomain of the website's address and cannot be one; "Open app" simply links across.
+
+The website's `APP_URL` comes from the account's workers.dev subdomain, found in order: `--workers-subdomain`, an `APP_BASE_URL` on workers.dev in `.env.<env>` (what `setup:ci` writes), Cloudflare's API (a read; skipped by `--no-check` and without credentials). If none knows, `APP_URL` is left out and the Worker works the app's address out from its own at runtime: `acme-website-production.team.workers.dev` → `acme-production.team.workers.dev`.
+
+**Getting a domain later** is the normal setup, done by hand once: add `routes = [{ pattern = "acme.io", custom_domain = true }]` and the new `APP_URL` to each environment of `<dir>/wrangler.toml`, set the hostnames in `website.config.ts`, then follow [Attaching the hostnames](#attaching-the-hostnames) for both Workers. The workers.dev addresses keep working afterwards (`workers_dev = true`).
+
+---
+
 ## Moving a live project
 
 If the app is already in production **on the apex**, turning the website on is a cutover: a Custom Domain belongs to exactly one Worker, and the app is holding it.
@@ -197,9 +258,10 @@ Delete `website.config.ts` and the `<dir>/` folder, remove the website scripts f
 
 ```
 website/                     # the folder --dir named (default)
-├── wrangler.toml            # the website Worker: routes and APP_URL per environment
+├── wrangler.toml            # the website Worker: routes, APP_URL and the contact form's bindings per environment
 ├── src/
-│   ├── worker.ts            # https redirect, app links, static files
+│   ├── worker.ts            # https redirect, app links, the contact route, static files
+│   ├── contact.ts           # POST /api/contact → Email Service (unit-tested)
 │   ├── app-url.ts           # which URL "Open app" gets (unit-tested)
 │   └── worker-types.d.ts    # the few runtime types it uses; not the app's
 └── public/
@@ -209,6 +271,7 @@ website/                     # the folder --dir named (default)
     ├── assets/              # logo-light.svg, logo-dark.svg, copied from the app
     └── js/
         ├── site.js          # the theme control
+        ├── contact.js       # sends the contact form in place (optional)
         └── app-link.js      # the theme rules + ?theme= (imported by the tests)
 
 website.config.ts            # the switch; read by bin/lib/website-config.ts
@@ -224,5 +287,6 @@ bin/worktree-website         # the worktree dev service
 | | |
 |---|---|
 | `test/scripts/website.test.ts` | the decisions: hostnames, the generated wrangler.toml, `APP_URL` resolution, `?theme=`, the port rules, and a real `setup:website` on a temporary copy (defaults, every override, idempotency, `--dry-run` writing nothing) — part of `npm test` |
+| `test/scripts/website-contact.test.ts` | the contact form: what is sent and to whom, header injection, validation, the bot traps, the origin check, the rate limit, demo mode, local logging, not configured, a refused send, the no-JavaScript redirect — part of `npm test` |
 | `test/scripts/website-integration.test.ts` | a copy of the whole project with a website in it: typecheck, lint, build, and `wrangler deploy --dry-run` of both Workers. Slow and tool-dependent, so **not** in `npm test`: `npm run test:website:integration` |
-| `e2e/website.spec.ts` | dark on the site → dark in the app → still dark on the next page; the maintenance page stands alone. Skipped when the project has no website |
+| `e2e/website.spec.ts` | dark on the site → dark in the app → still dark on the next page; the maintenance page stands alone; the contact form answers. Skipped when the project has no website |

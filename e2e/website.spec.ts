@@ -38,4 +38,26 @@ test.describe("product website", () => {
 		expect(response?.status()).toBe(200);
 		await expect(page.getByRole("heading", { name: "We are back shortly" })).toBeVisible();
 	});
+
+	test("the contact form answers in place", async ({ page }) => {
+		await page.goto(`${websiteUrl}/#contact`);
+		const form = page.locator("form[data-contact]");
+
+		// The server says what is wrong, field by field.
+		await form.getByRole("button", { name: "Send message" }).click();
+		await expect(form.getByRole("status")).toHaveText("Please check the highlighted fields.");
+		await expect(form.getByLabel("Email")).toHaveAttribute("aria-invalid", "");
+
+		await form.getByLabel("Name").fill("Ada Lovelace");
+		await form.getByLabel("Email").fill("ada@example.org");
+		await form.getByLabel("Message").fill("Do you have a team plan?");
+		// A person takes longer than this test to fill a form; the server drops
+		// anything sent faster as automated, so say the page loaded a while ago.
+		await form.locator('input[name="started"]').evaluate((input: HTMLInputElement) => (input.value = String(Date.now() - 10_000)));
+		await form.getByRole("button", { name: "Send message" }).click();
+
+		// Locally there is no email binding: the Worker writes the message to the terminal.
+		await expect(form.getByRole("status")).toHaveText(/written to the terminal/);
+		await expect(form.getByLabel("Name")).toHaveValue("");
+	});
 });
