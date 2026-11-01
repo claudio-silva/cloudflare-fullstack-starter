@@ -7,6 +7,7 @@ The full [shadcn/ui](https://ui.shadcn.com/docs/components) catalogue (style `ne
 - [When to use a catalogue component](#when-to-use-a-catalogue-component)
 - [Changing a component](#changing-a-component)
 - [Catalogue](#catalogue)
+- [Custom components](#custom-components)
 - [Patterns built from components](#patterns-built-from-components)
 - [Setup notes](#setup-notes)
 
@@ -110,6 +111,55 @@ Rewriting an official component in place, so that it no longer behaves like the 
 | `tooltip` | yes | Hint shown on hover or focus |
 
 The catalogue grows. `https://ui.shadcn.com/r/styles/new-york-v4/registry.json` lists the current components (entries of type `registry:ui`).
+
+## Custom components
+
+Components this starter adds in `src/react-app/components/ui/`, built on the catalogue rather than replacing it. Each exists because shadcn has no equivalent; prefer a catalogue component whenever one fits.
+
+| Component | File | What it is |
+|---|---|---|
+| `ScrollableTabs` | `scrollable-tabs.tsx` | Tabs whose list scrolls sideways instead of wrapping, with per-tab arrows and a menu of the tabs currently out of view |
+
+### `ScrollableTabs`
+
+A tab list and its panels wired together. shadcn's `tabs` wraps onto a second line when the tabs outgrow their width, which changes the strip's height with the viewport and pushes the panel's content down. This keeps one line and adds the affordances to reach the rest.
+
+```tsx
+import { ScrollableTabs } from "@/components/ui/scrollable-tabs";
+
+<ScrollableTabs
+  aria-label="Languages"
+  items={[
+    { value: "en", label: "English", content: <p>…</p> },
+    { value: "pt", label: "Português", content: <p>…</p> },
+  ]}
+/>;
+```
+
+Uncontrolled by default (`defaultValue`, else the first tab). Pass `value` + `onValueChange` to control it. To render panels yourself — panels that must stay mounted, or that something else drives — pass `children` instead of `items[].content`, and the `items` still drive the list.
+
+Need only the strip, inside your own Radix `<Tabs>`? Use `ScrollableTabList`.
+
+**What it adds over `tabs`:**
+
+- The list scrolls horizontally; it never wraps.
+- Arrows at either end step **one tab per click** and land on a tab's edge, so no tab is left sliced and the last step stops exactly at the end (asking for an offset past the end makes the browser animate and then snap).
+- A menu lists exactly the tabs not fully visible; choosing one selects it and scrolls it in.
+- The selected tab is always scrolled into view, including when it changes from outside.
+- The active tab joins the panel: it drops one pixel onto the strip's bottom rule, takes that rule's colour, and paints its own bottom edge in the panel's background.
+
+**Naming** follows the [WAI-ARIA tabs pattern](https://www.w3.org/WAI/ARIA/apg/patterns/tabs/), which Radix and shadcn also use: the strip is the **tab list**, the control you click is a **tab** (`TabsTrigger` in Radix), and the content it reveals is a **tab panel**. The clickable thing is the tab, not the content.
+
+**Styling.** `listClassName` is the strip (its border and background), `tabClassName` every tab, `panelClassName` every panel. The active tab defaults to `bg-background`; a panel painted some other colour needs that passed through, or the tab will not read as part of it:
+
+```tsx
+tabClassName="data-[state=active]:bg-white data-[state=active]:border-b-white"
+```
+
+**Geometry** lives in `scrollable-tabs-geometry.ts` as pure functions (`tabScrollState`, `scrollLeftForStep`, `scrollLeftToReveal`), unit-tested in `test/scrollable-tabs-geometry.test.ts`. Two traps are worth knowing if you touch it:
+
+- Measure tabs from the **scroller's** rect, never `offsetLeft` — tabs are positioned for the active-state border, so `offsetLeft` reports their offset inside whatever ancestor is positioned, not inside the strip.
+- The scroll controls keep their slots **reserved** (disabled, not removed). Removing them widens the scroller, which changes what overflows, which brings them back — and any width the scroll maths used is then stale.
 
 ## Patterns built from components
 
