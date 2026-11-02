@@ -1,5 +1,6 @@
 import { format } from "date-fns";
 import { describeBrowser } from "../../shared/browser";
+import type { UserSession } from "../../shared/sessions";
 import type { CliActivityEvent, CliUserDetails, CliUserSummary } from "./db";
 
 type TableRow = Record<string, unknown>;
@@ -93,7 +94,12 @@ export function printUser(user: CliUserDetails): void {
 	console.log("\nSessions");
 	console.log("-".repeat(30));
 	row("Active sessions", user.activeSessions);
-	if (user.currentSession) {
+	if (user.sessions?.length) {
+		console.log("");
+		printTable(formatSessionsForTable(user.sessions), ["id", "device", "ip", "country", "signed in", "last seen", "status"]);
+		console.log("\nEnd one with: npm run auth sign-out-user -- -u <email> --session <id>");
+	} else if (user.currentSession) {
+		// A Worker that predates the per-device list.
 		row("Idle for", formatDuration(user.idleSeconds));
 		row("Last seen", formatTimestamp(user.currentSession.lastSeenAt));
 		row("IP", user.currentSession.ip || "-");
@@ -110,6 +116,19 @@ export function printUser(user: CliUserDetails): void {
 	}
 
 	console.log("");
+}
+
+/** One row per live session: the id is cut to what `sign-out-user --session` accepts, and the status says how long ago it was used. */
+export function formatSessionsForTable(sessions: UserSession[]): UserRow[] {
+	return sessions.map((s) => ({
+		id: s.id.slice(0, 8),
+		device: describeBrowser(s.userAgent).replace("—", "-"),
+		ip: s.ip || "-",
+		country: countryName(s.country),
+		"signed in": formatTimestamp(s.createdAt),
+		"last seen": formatTimestamp(s.lastSeenAt),
+		status: s.status === "active" ? "Active" : `Idle ${formatDuration(s.idleSeconds)}`,
+	}));
 }
 
 const EVENT_LABELS: Record<CliActivityEvent["kind"], string> = {

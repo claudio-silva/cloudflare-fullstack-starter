@@ -17,7 +17,7 @@ function stored() {
 	try {
 		return resolveTheme(localStorage.getItem(STORAGE_KEY));
 	} catch {
-		return "light";
+		return "system";
 	}
 }
 

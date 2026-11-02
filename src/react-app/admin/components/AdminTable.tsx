@@ -26,6 +26,7 @@ import { listParams, type ListRequest } from "../../../shared/admin-list";
 import { clientList } from "../client-list";
 import { adminConfig } from "../config";
 import { PageLoader, type LoadedRows, type PageCache } from "../page-loader";
+import { useRowMotion } from "../row-motion";
 import { nextSort } from "../sort";
 import { useAdminList, type AdminList } from "../use-admin-list";
 import { ACTION_BUTTON, ORDINAL } from "../styles";
@@ -323,6 +324,8 @@ export function AdminTable<T, D = ListResponse<T>>(props: AdminTableProps<T, D>)
 	const failed = external ? Boolean(props.failed) : snapshot.failed;
 	const shown = rows !== null;
 	const visible = rows ?? [];
+	const body = useRef<HTMLTableSectionElement>(null);
+	useRowMotion(body, visible.map(keyOf).join("\n"));
 	const pages = Math.max(1, Math.ceil((total ?? 0) / pageSize));
 	const firstOrdinal = (shownPage - 1) * pageSize + 1;
 
@@ -520,7 +523,7 @@ export function AdminTable<T, D = ListResponse<T>>(props: AdminTableProps<T, D>)
 								)}
 							</TableRow>
 						</TableHeader>
-						<TableBody aria-busy={loading} className={cn(shown && loading && "opacity-60 transition-opacity")}>
+						<TableBody ref={body} aria-busy={loading} className={cn(shown && loading && "opacity-60 transition-opacity")}>
 							{!shown
 								? panel(
 										failed && !loading ? (
@@ -545,6 +548,7 @@ export function AdminTable<T, D = ListResponse<T>>(props: AdminTableProps<T, D>)
 											return (
 												<TableRow
 													key={id}
+													data-row-key={id}
 													className={cn(ROW, striped && STRIPE, (clickable || selecting) && "cursor-pointer")}
 													data-state={selected.has(id) ? "selected" : undefined}
 													onClick={clickable || selecting ? () => onRow(row) : undefined}

@@ -6,6 +6,7 @@ type EnvironmentOption = "local" | "preview" | "production";
 
 type SignOutUserOptions = {
 	user: string;
+	session?: string;
 	env?: EnvironmentOption;
 };
 
@@ -13,14 +14,20 @@ export function createSignOutUserCommand(): Command {
 	const command = new Command("sign-out-user");
 
 	command
-		.description("End every session of a user, on every device (each is logged as revoked)")
+		.description("End every session of a user, on every device, or one with --session (each is logged as revoked)")
 		.requiredOption("-u, --user <email>", "User email address")
+		.option("-s, --session <id>", "End only this session: its id, or the start of it as show-user prints it (default: all of them)")
 		.argument("[environment]", "Target environment (local, preview, production)")
 		.option("--env <environment>", "Target environment (local, preview, production)")
 		.action(async (environment: string | undefined, options: SignOutUserOptions) => {
 			try {
 				const env = normalizeEnvironment(options.env, environment);
 				const db = await connectToDatabase(env);
+				if (options.session) {
+					const { device } = await db.signOutSession(options.user, options.session);
+					printSuccess(`Session '${options.session}' of '${options.user}' ended${device ? ` (${device})` : ""}`);
+					return;
+				}
 				const { sessions = 0 } = await db.signOutUser(options.user);
 				printSuccess(`User '${options.user}' signed out everywhere (${sessions} session${sessions === 1 ? "" : "s"} ended)`);
 			} catch (error: unknown) {

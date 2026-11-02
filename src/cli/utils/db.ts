@@ -1,6 +1,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import type { MigrationCompatibility, JournalEntry, SchemaSnapshot } from "../../shared/migration-types";
 import type { Role } from "../../shared/roles";
+import type { UserSession } from "../../shared/sessions";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -52,6 +53,8 @@ export type CliUserDetails = CliUserSummary & {
 	signInMethods: string[];
 	account: CliAccountDetails | null;
 	activeSessions: number;
+	/** Each live session, one per device, most recently used first. */
+	sessions: UserSession[];
 	/** The session used last: its IP, and the country of the latest sign-in. */
 	currentSession: { ip: string | null; country: string | null; lastSeenAt: string | null } | null;
 	lastSignOutAt: string | null;
@@ -86,6 +89,8 @@ export type CliDatabaseClient = {
 	activateUser: (email: string, activated: boolean) => Promise<BasicResponse>;
 	setEnabled: (email: string, enabled: boolean) => Promise<BasicResponse>;
 	signOutUser: (email: string) => Promise<BasicResponse & { sessions?: number }>;
+	/** Ends one session, named by its id or the start of it. */
+	signOutSession: (email: string, sessionId: string) => Promise<BasicResponse & { sessionId?: string; device?: string }>;
 	userActivity: (email: string, limit?: number) => Promise<CliActivityEvent[]>;
 	editUser: (email: string, updateData: EditUserPayload) => Promise<EditUserResponse>;
 	getUser: (email: string) => Promise<CliUserDetails>;
@@ -237,6 +242,13 @@ export async function connectToDatabase(environment: Environment): Promise<CliDa
 			makeApiRequest<BasicResponse>("PUT", `/api/cli/users/${encodeURIComponent(email)}/enabled`, { enabled }, environment),
 		signOutUser: (email) =>
 			makeApiRequest<BasicResponse & { sessions?: number }>("POST", `/api/cli/users/${encodeURIComponent(email)}/sign-out`, undefined, environment),
+		signOutSession: (email, sessionId) =>
+			makeApiRequest<BasicResponse & { sessionId?: string; device?: string }>(
+				"POST",
+				`/api/cli/users/${encodeURIComponent(email)}/sessions/${encodeURIComponent(sessionId)}/sign-out`,
+				undefined,
+				environment,
+			),
 		userActivity: async (email, limit = 20) =>
 			(
 				await makeApiRequest<{ events: CliActivityEvent[] }>(

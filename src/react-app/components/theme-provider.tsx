@@ -9,7 +9,7 @@ type ThemeProviderProps = {
 
 export function ThemeProvider({
 	children,
-	defaultTheme = "light",
+	defaultTheme = "system",
 	storageKey = "app-theme",
 }: ThemeProviderProps) {
 	// Check for theme in URL parameter (for cross-app navigation)

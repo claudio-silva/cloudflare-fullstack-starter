@@ -1,5 +1,4 @@
 import type { FocusEvent } from "react";
-import { getLocale } from "./i18n";
 
 /**
  * Browser helpers used only by the admin area (src/react-app/admin). They live
@@ -29,25 +28,5 @@ export const noFocusOnClick = {
 	},
 };
 
-const displayNames = new Map<string, Intl.DisplayNames>();
-
-/**
- * The name of a country from its ISO 3166-1 code ("PT" → "Portugal"), in the
- * app's language (`getLocale()` in `i18n.ts`). The browser's own data does the
- * translating, so a new language needs nothing here. Anything it does not
- * know comes back as the code.
- */
-export function countryName(code: string | null | undefined): string {
-	if (!code) return "—";
-	const locale = getLocale();
-	try {
-		let names = displayNames.get(locale);
-		if (!names) {
-			names = new Intl.DisplayNames([locale], { type: "region" });
-			displayNames.set(locale, names);
-		}
-		return names.of(code.toUpperCase()) ?? code;
-	} catch {
-		return code;
-	}
-}
+// `countryName()` is used by the profile page too, so it lives in its own file.
+export { countryName } from "./country";

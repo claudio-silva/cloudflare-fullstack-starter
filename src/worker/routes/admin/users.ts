@@ -7,9 +7,11 @@ import { createDb, databaseKind, dbBool, dbNow, dbSecondsBetween, toIso } from "
 import { AppError } from "../../lib/errors";
 import { requireRole } from "../../middleware/roles";
 import { demoIp } from "../../middleware/demo";
-import { createPasswordUser, deleteUser, liveSessionsFor, revokeSessions, setPassword, statsFor, wouldRemoveLastAdmin } from "../../lib/users";
+import { createPasswordUser, deleteUser, liveSessionsFor, revokeSession, revokeSessions, setPassword, statsFor, wouldRemoveLastAdmin } from "../../lib/users";
 import { requestOrigin } from "../../lib/login-log";
+import { listUserSessions } from "../../lib/user-sessions";
 import { hasRole, type Role } from "../../../shared/roles";
+import type { UserSession } from "../../../shared/sessions";
 import { parseListQuery } from "../../../shared/admin-list";
 import {
 	IDLE_AFTER_SECONDS,
@@ -204,6 +206,28 @@ adminUsers.get("/:id", async (c) => {
 adminUsers.post("/:id/sign-out", async (c) => {
 	const user = await findUser(c, c.req.param("id"));
 	await revokeSessions(createDb(c.env), user.id, c.get("user")?.id);
+	return c.body(null, 204);
+});
+
+/**
+ * `GET /:id/sessions?ofs=&c=`: the user's live sessions, one per device, most
+ * recently used first (the admin lists' protocol; `c=all` for the user page,
+ * which loads them whole). `current` marks the session of the admin asking.
+ */
+adminUsers.get("/:id/sessions", async (c) => {
+	const user = await findUser(c, c.req.param("id"));
+	const { offset, count } = parseListQuery((name) => c.req.query(name), { sortable: [] as const, allowAll: true });
+	const all = await listUserSessions(createDb(c.env), c.env, user.id, (c.get("session") as { id?: string } | null)?.id);
+	return c.json<{ items: UserSession[]; total: number }>({ items: all.slice(offset, offset + count), total: all.length });
+});
+
+/** `POST /:id/sessions/:sessionId/sign-out`: ends one session of the user (logged as revoked, by whoever asked). */
+adminUsers.post("/:id/sessions/:sessionId/sign-out", async (c) => {
+	const user = await findUser(c, c.req.param("id"));
+	const sessionId = c.req.param("sessionId");
+	if (!(await revokeSession(createDb(c.env), user.id, sessionId, c.get("user")?.id))) {
+		throw new AppError(404, "That session has already ended.", { code: "session_not_found", log: `session ${sessionId} is not one of user ${user.id}'s` });
+	}
 	return c.body(null, 204);
 });
 

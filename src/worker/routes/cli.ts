@@ -4,8 +4,9 @@ import { sql, type Selectable, type Updateable } from "kysely";
 import type { Database } from "../types/database";
 import type { AppBindings, AppContext } from "../types/context";
 import { createDb, databaseKind, dbBool, dbNow, toIso } from "../db";
-import { createPasswordUser, deleteUser, liveSessionsFor, revokeSessions, setPassword, statsFor, wouldRemoveLastAdmin } from "../lib/users";
+import { createPasswordUser, deleteUser, liveSessionsFor, revokeSession, revokeSessions, setPassword, statsFor, wouldRemoveLastAdmin } from "../lib/users";
 import { requestOrigin } from "../lib/login-log";
+import { listUserSessions } from "../lib/user-sessions";
 import { ROLES, hasRole, type Role } from "../../shared/roles";
 import { userStatus } from "../../shared/user-status";
 import { appliedMigrations, clearTable, describeSchema, exportRows, finishTable, importRows, restoreChunkRows, type EncodedRow } from "../db/backup";
@@ -115,7 +116,7 @@ cli.get("/users/:email", async (c) => {
 	}
 
 	const ofUser = db.selectFrom("login_events").where("user_id", "=", user.id);
-	const [accounts, sessions, [summary], lastSignOut, lastSignIn, events] = await Promise.all([
+	const [accounts, sessions, [summary], lastSignOut, lastSignIn, events, devices] = await Promise.all([
 		db.selectFrom("accounts").where("userId", "=", user.id).selectAll().execute(),
 		db.selectFrom("sessions").select(["ipAddress", "updatedAt"]).where("userId", "=", user.id).where("expiresAt", ">", dbNow()).orderBy("updatedAt", "desc").execute(),
 		summarise(db, [user]),
@@ -123,6 +124,7 @@ cli.get("/users/:email", async (c) => {
 		// `sessions` has no country: it is the one of the latest sign-in.
 		ofUser.select("country").where("success", "=", dbBool(true)).where((eb) => eb.or([eb("event", "is", null), eb("event", "=", "sign-in")])).orderBy("created_at", "desc").limit(1).executeTakeFirst(),
 		ofUser.select((eb) => eb.fn.countAll<number>().as("n")).where((eb) => eb.or([eb("event", "is", null), eb("event", "!=", "user-deleted")])).executeTakeFirst(),
+		listUserSessions(db, c.env, user.id),
 	]);
 	const account = accounts.find((a) => a.providerId === "credential");
 
@@ -139,6 +141,7 @@ cli.get("/users/:email", async (c) => {
 			  }
 			: null,
 		activeSessions: sessions.length,
+		sessions: devices,
 		currentSession: sessions[0] ? { ip: sessions[0].ipAddress || null, country: lastSignIn?.country ?? null, lastSeenAt: toIso(sessions[0].updatedAt) } : null,
 		lastSignOutAt: toIso(lastSignOut?.created_at ?? null) ?? null,
 		activityCount: Number(events?.n ?? 0),
@@ -200,6 +203,31 @@ cli.put("/users/:email/enabled", async (c) => {
 	await db.updateTable("users").set({ disabled: dbBool(!enabled), updatedAt: dbNow() }).where("id", "=", user.id).execute();
 	if (!enabled) await revokeSessions(db, user.id);
 	return c.json({ success: true, message: `User ${enabled ? "enabled" : "disabled"} successfully` });
+});
+
+/** The user's live sessions, one per device, most recently used first (never the token). */
+cli.get("/users/:email/sessions", async (c) => {
+	const user = await userByEmail(c);
+	if (!user) return c.json({ error: "User not found" }, 404);
+	return c.json({ sessions: await listUserSessions(createDb(c.env), c.env, user.id) });
+});
+
+/**
+ * Ends one session of the user, logged as revoked. The session is named by its
+ * id or by the start of it (what `show-user` prints), as long as that is
+ * enough to tell it from the user's others.
+ */
+cli.post("/users/:email/sessions/:sessionId/sign-out", async (c) => {
+	const db = createDb(c.env);
+	const user = await userByEmail(c);
+	if (!user) return c.json({ error: "User not found" }, 404);
+	const wanted = c.req.param("sessionId");
+	const matches = (await listUserSessions(db, c.env, user.id)).filter((s) => s.id === wanted || (wanted.length >= 4 && s.id.startsWith(wanted)));
+	const exact = matches.find((s) => s.id === wanted);
+	if (!exact && matches.length > 1) return c.json({ error: `'${wanted}' matches ${matches.length} sessions: give more of the id` }, 400);
+	const session = exact ?? matches[0];
+	if (!session || !(await revokeSession(db, user.id, session.id))) return c.json({ error: "Session not found for that user" }, 404);
+	return c.json({ success: true, sessionId: session.id, device: session.device, message: "Session ended" });
 });
 
 /** Signs the user out on every device (each session is logged as revoked). */

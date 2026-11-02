@@ -17,6 +17,7 @@ A great starting point for your next **MVP** or **SaaS** app.
 - [Cloudflare-first, not Cloudflare-only](#cloudflare-first-not-cloudflare-only)
 - [Why Cloudflare?](#why-cloudflare)
 - [AI-Assisted Development](#-ai-assisted-development)
+- [Ways to start a project](#ways-to-start-a-project)
 - [AI Agent Installation, Conversion and Upgrade](#-ai-agent-installation-conversion-and-upgrade)
 - [Manual Installation](#manual-installation)
 - [Preview Installation](#preview-installation)
@@ -138,6 +139,19 @@ This means you can build, launch, and validate your idea **without upfront infra
 It includes **[AGENTS.md](AGENTS.md)**, a concise but still comprehensive guide that **helps coding agents** understand the project architecture, key patterns, and common tasks.
 
 This is especially important when dealing with unfamiliar runtimes like Cloudflare Workers. Without such guidance, agents often struggle to understand the platform and its quirks, leading to frustration and slow progress.
+
+---
+
+## Ways to start a project
+
+Four ways in, best first:
+
+| | Way | Use it when | What you get |
+|---|---|---|---|
+| 1 | **[Ask your coding agent](#-ai-agent-installation-conversion-and-upgrade)** | Almost always: a new app, a folder that already has files, converting an existing project, or upgrading one later | The latest **release** (not unreleased work on `main`), initialised, with `CLI_API_KEY` set and the database migrated. The same agent can convert or upgrade a project later, following the procedures in this repository |
+| 2 | **["Use this template"](#1-create-from-template)** on GitHub | You'd rather do it by hand | A repository of your own with one commit and none of the starter's history or tags. It copies `main`, which can be ahead of the latest release. Then `npm install` and `npm run init` |
+| 3 | **Fork** | You mean to contribute back to the starter | A repository that stays linked to this one. GitHub keeps a fork of a public repository public, and its pull requests default to the starter |
+| 4 | **`git clone`** | Only if nothing above suits you | It works, but the clone carries the starter's `origin` and every release tag. `npm run init` removes both, and `npm run deploy:production` refuses to run until they are gone |
 
 ---
 
@@ -287,7 +301,7 @@ If wrangler is logged in, you can do it from the command line:
 ### Auth Features
 - Email/password authentication with email verification and password reset
 - Google sign-in, off until `npm run setup:google` sets it up and verifies it; the button then appears wherever the Worker really has the credentials, never where it would do nothing ([docs/GOOGLE_AUTH.md](docs/GOOGLE_AUTH.md))
-- Session management with secure cookies
+- Session management with secure cookies, and a per-device list: users see where they are signed in and end one session (or all the others) from their profile; admins and the CLI can do the same for any user
 - Protected routes with seamless authentication overlay that prevents content flashing and needless page reloads
 - CLI user management (create, list, view, edit, delete, activate) for local and remote environments, with positional env shorthand (`npm run auth list-users production`)
 
@@ -568,7 +582,7 @@ npm run auth create-user -- -u admin@example.com -p password123 -r admin   # cre
 npm run auth create-user -- -u someone@example.com -p password123 --disabled  # cannot sign in until enabled
 
 # View detailed user info: sign-in methods, totals (sign-ins, failed, time in session),
-# last sign-in and sign-out, live sessions with idle time, IP and country
+# last sign-in and sign-out, and each live session: device, IP, country, last seen, status, id
 npm run auth show-user -- -u admin@example.com
 
 # A user's sign-in history: sign-ins (and failed ones), sign-outs, expired and revoked sessions
@@ -593,8 +607,9 @@ npm run auth enable-user -- -u someone@example.com -s on
 npm run auth activate-user -- -u admin@example.com -s on
 npm run auth activate-user -- -u admin@example.com -s off
 
-# Sign a user out on every device
+# Sign a user out on every device, or only one (the id, or its first 4+ characters, is in show-user)
 npm run auth sign-out-user -- -u someone@example.com
+npm run auth sign-out-user -- -u someone@example.com --session 3fa9c1
 
 # Delete a user (removes user, accounts, and sessions)
 npm run auth delete-user -- -u admin@example.com

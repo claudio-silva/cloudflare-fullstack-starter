@@ -190,10 +190,10 @@ describe("carrying the theme to the app", () => {
 		expect(withTheme("https://app.acme.io/?theme=dark", "light")).toBe("https://app.acme.io/?theme=light");
 	});
 
-	it("treats anything else as the light theme", () => {
-		expect(resolveTheme("sepia")).toBe("light");
-		expect(resolveTheme(null)).toBe("light");
-		expect(withTheme("https://app.acme.io/", "sepia")).toBe("https://app.acme.io/?theme=light");
+	it("follows the system when no theme was chosen, or an unknown one was", () => {
+		expect(resolveTheme("sepia")).toBe("system");
+		expect(resolveTheme(null)).toBe("system");
+		expect(withTheme("https://app.acme.io/", "sepia")).toBe("https://app.acme.io/?theme=system");
 	});
 
 	it("resolves `system` against what the system says", () => {

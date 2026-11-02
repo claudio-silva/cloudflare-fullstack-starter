@@ -254,18 +254,44 @@ seconds), at the price of one small write per active session per minute.
 
 ### The user page
 
-Two tabs. **Profile** has the form (the password is typed twice) and a panel:
+Three tabs. **Profile** has the form (the password is typed twice) and a panel:
 a header with the avatar, name, role and status, then the dates, sign-in
 methods, last sign-in and sign-out, number of sign-ins (and failed ones), time
 in session and, while the user is in session, the idle time and the IP address
 and country of the session used last. **Sign out everywhere** ends every
 session at once (`POST /api/admin/users/:id/sign-out`; each is logged as
-revoked, by you). The IP comes from the session; `sessions` keeps no country,
-so that is the one of the latest sign-in. Countries are stored as ISO codes
-(Cloudflare's `cf.country`, empty locally) and shown by name through
-`countryName()` (`src/react-app/lib/admin-util.ts`), which uses the browser's
+revoked, by you). The IP in the panel comes from the session; `sessions` keeps
+no country, so that is the one of the latest sign-in. Countries are stored as
+ISO codes (Cloudflare's `cf.country`, empty locally) and shown by name through
+`countryName()` (`src/react-app/lib/country.ts`, also re-exported by
+`admin-util.ts`; it lives outside the admin files because the profile page's
+devices list uses it too), which uses the browser's
 `Intl.DisplayNames` in the app's language (`getLocale()` / `setLocale()` in
 `lib/i18n.ts`), so a translation needs nothing more.
+
+**Sessions** (with the number of live sessions beside its name) lists each
+device the user is signed in on as an `AdminTable` in `fullData` mode
+(`pages/users/UserSessions.tsx`): browser and device (`describeBrowser()`), IP,
+country, signed in, last seen and status (active or idle, from the same
+threshold as the users list). The row action **Sign out this device** asks for
+confirmation and ends that one session
+(`POST /api/admin/users/:id/sessions/:sessionId/sign-out`, 204; logged as
+`session-revoked` with you as the actor; a session that is not that user's is a
+404). `GET /api/admin/users/:id/sessions?ofs=&c=` returns `{ items, total }`
+and never a session token. The country of each session is the one of the
+sign-in that opened it (`login_events.session_id`), so it is empty for a
+session with no such row or where Cloudflare gave none. The session you are
+using is marked "Your session". **Sign out everywhere** is repeated above the
+table. In a demo the IPs are masked and the writes refused, like everything
+else; there is deliberately no `ALLOWED_WRITES` entry, because demo accounts
+are shared and ending a session would sign out other visitors.
+
+The same list for the signed-in user is `GET /api/profile/sessions`
+(`src/worker/routes/sessions.ts`, with `DELETE /:id` and
+`POST /sign-out-others`), shown on the profile page by `DevicesPanel`; it is
+not part of the admin area and stays when it is removed. The shape
+(`UserSession`) is in `src/shared/sessions.ts`, built by
+`src/worker/lib/user-sessions.ts`.
 
 **Activity** (with the number of entries beside its name, when not zero) pages
 through the user's history in `login_events`

@@ -193,9 +193,9 @@ npm run auth edit-user
 npm run auth delete-user
 npm run auth activate-user        # email verified on/off (alias verify-user)
 npm run auth enable-user          # sign-in allowed on/off; off signs out everywhere
-npm run auth sign-out-user
+npm run auth sign-out-user         # every session, or one with --session <id> (id from show-user)
 npm run auth set-role
-npm run auth show-user            # with sign-in totals, time in session, live sessions
+npm run auth show-user            # with sign-in totals, time in session, each live session (device, IP, country, last seen)
 npm run auth user-activity        # a user's sign-in history
 
 # Build & Deploy

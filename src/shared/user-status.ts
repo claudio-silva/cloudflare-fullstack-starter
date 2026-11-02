@@ -15,8 +15,13 @@ export const IDLE_AFTER_SECONDS = 5 * 60;
  */
 export type UserStatus = "active" | "idle" | "unverified" | "disabled" | "offline";
 
+/** The same threshold, for one session: `active` until it has gone unused for `IDLE_AFTER_SECONDS`. */
+export function sessionStatus(idleSeconds: number): "active" | "idle" {
+	return idleSeconds < IDLE_AFTER_SECONDS ? "active" : "idle";
+}
+
 export function userStatus(user: { enabled: boolean; emailVerified: boolean }, idleSeconds: number | null): UserStatus {
 	if (!user.enabled) return "disabled";
-	if (idleSeconds !== null) return idleSeconds < IDLE_AFTER_SECONDS ? "active" : "idle";
+	if (idleSeconds !== null) return sessionStatus(idleSeconds);
 	return user.emailVerified ? "offline" : "unverified";
 }

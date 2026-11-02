@@ -701,7 +701,7 @@ unmapped shows what the server actually said.
 | `sign-in` (`null` on rows before 0006) | a session is created by a sign-in (Better Auth's `session.create` hook), or a password sign-in fails (`success` false) | `method` (`password`, `google`, …), `session_id` |
 | `sign-out` | the user signs out | `duration_seconds`: sign-in to sign-out |
 | `session-expired` | Better Auth meets an expired session, or the cron deletes one (dated at the expiry) | `duration_seconds`: sign-in to the last use |
-| `session-revoked` | a password or role change, disabling, "sign out everywhere", an admin | the same, and `actor_id` when someone else did it |
+| `session-revoked` | a password or role change, disabling, "sign out everywhere", ending one device (profile, admin, CLI), an admin | the same, and `actor_id` when someone else did it |
 | `user-deleted` | an account is deleted | `actor_id`: the user, the admin, or none for the CLI |
 
 A session that ends without the user (expired, revoked) counts only to its last

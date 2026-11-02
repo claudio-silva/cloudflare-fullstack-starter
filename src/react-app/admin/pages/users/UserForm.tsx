@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import { ClipboardList, History, LogOut, UserX, X } from "lucide-react";
+import { ClipboardList, History, LogOut, MonitorSmartphone, UserX, X } from "lucide-react";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -36,6 +36,7 @@ import { AdminPage } from "../../components/AdminPage";
 import { ACTION_BUTTON, TAB_LIST, TAB_TRIGGER } from "../../styles";
 import { ROLE_LABELS, formatDateTime, formatDuration, formatIdle, methodLabel } from "./format";
 import { UserActivity } from "./UserActivity";
+import { UserSessions } from "./UserSessions";
 import { countryName, noFocusOnClick } from "@/lib/admin-util";
 import { RoleBadge, SignInMethods, StatusBadge, UserAvatar } from "./user-ui";
 import { Panel } from "@/components/Panel";
@@ -83,6 +84,8 @@ export function UserForm() {
 
 	const [user, setUser] = useState<AdminUserDetail | null | "missing">(null);
 	const [signingOut, setSigningOut] = useState(false);
+	// Changes whenever the sessions change outside the sessions table, so it loads again.
+	const [sessionsKey, setSessionsKey] = useState(0);
 	const schema = useMemo(() => formSchema(isNew), [isNew]);
 	const form = useForm<FormValues, unknown, z.output<typeof schema>>({ resolver: zodResolver(schema), defaultValues: EMPTY });
 
@@ -130,6 +133,13 @@ export function UserForm() {
 		},
 	});
 
+	/** The user as the server has them now (status, idle time, counts), after a session ended. The form is left as it is: it may hold unsaved edits. */
+	const refreshUser = () =>
+		http(`/api/admin/users/${id}`, { handles: [404] })
+			.then(async (res) => (res.status === 404 ? "missing" : ((await res.json()) as AdminUserDetail)))
+			.then(setUser)
+			.catch(() => undefined);
+
 	const onSignOutEverywhere = async () => {
 		if (!user || user === "missing") return;
 		setSigningOut(true);
@@ -144,6 +154,7 @@ export function UserForm() {
 				currentSession: null,
 				activityCount: user.activityCount + user.activeSessions,
 			});
+			setSessionsKey((n) => n + 1);
 		} catch (error) {
 			if (!isHandledHttpError(error)) toast.error("The sessions could not be ended.");
 		} finally {
@@ -192,6 +203,15 @@ export function UserForm() {
 					<TabsTrigger value="details" className={TAB_TRIGGER} {...noFocusOnClick}>
 						<ClipboardList />
 						Profile
+					</TabsTrigger>
+					<TabsTrigger value="sessions" className={TAB_TRIGGER} {...noFocusOnClick}>
+						<MonitorSmartphone />
+						Sessions
+						{user!.activeSessions > 0 && (
+							<Badge variant="secondary" className="ml-1 h-5 min-w-5 rounded-full bg-foreground/10 px-1.5 text-xs text-foreground">
+								{user!.activeSessions}
+							</Badge>
+						)}
 					</TabsTrigger>
 					<TabsTrigger value="activity" className={TAB_TRIGGER} {...noFocusOnClick}>
 						<History />
@@ -398,34 +418,7 @@ export function UserForm() {
 										</>
 									)}
 								</dl>
-									<AlertDialog>
-										<AlertDialogTrigger asChild>
-											<Button type="button" variant="outline" disabled={signingOut || user.activeSessions === 0} className="w-full">
-												{signingOut ? <Spinner /> : <LogOut />}
-												Sign out everywhere
-											</Button>
-										</AlertDialogTrigger>
-										<AlertDialogContent>
-											<AlertDialogHeader>
-												<AlertDialogTitle>Sign {isMe ? "yourself" : user.name || user.email} out everywhere?</AlertDialogTitle>
-												<AlertDialogDescription>
-													{isMe
-														? "Every session of yours ends, this one included, and you will have to sign in again."
-														: "Every session of this user ends. They can sign in again with their password."}
-												</AlertDialogDescription>
-											</AlertDialogHeader>
-											<AlertDialogFooter>
-												<AlertDialogCancel className={ACTION_BUTTON}>
-													<X />
-													Cancel
-												</AlertDialogCancel>
-												<AlertDialogAction onClick={onSignOutEverywhere} className={ACTION_BUTTON}>
-													<LogOut />
-													Sign out
-												</AlertDialogAction>
-											</AlertDialogFooter>
-										</AlertDialogContent>
-									</AlertDialog>
+									<SignOutEverywhere user={user} isMe={isMe} signingOut={signingOut} onConfirm={onSignOutEverywhere} className="w-full" />
 							</Panel>
 
 						</div>
@@ -444,12 +437,66 @@ export function UserForm() {
 			</ActionBar>
 			</TabsContent>
 			{!isNew && (
+				<TabsContent value="sessions" className="space-y-4">
+					<div className="flex justify-end">
+						<SignOutEverywhere user={user!} isMe={isMe} signingOut={signingOut} onConfirm={onSignOutEverywhere} className={ACTION_BUTTON} />
+					</div>
+					<UserSessions userId={user!.id} isMe={isMe} reloadKey={sessionsKey} onChange={refreshUser} />
+				</TabsContent>
+			)}
+			{!isNew && (
 				<TabsContent value="activity">
 					<UserActivity userId={user!.id} />
 				</TabsContent>
 			)}
 			</Tabs>
 		</AdminPage>
+	);
+}
+
+/** Ends every session of the user, after a confirmation. On the Profile tab's panel and above the sessions. */
+function SignOutEverywhere({
+	user,
+	isMe,
+	signingOut,
+	onConfirm,
+	className,
+}: {
+	user: AdminUserDetail;
+	isMe: boolean;
+	signingOut: boolean;
+	onConfirm: () => void;
+	className?: string;
+}) {
+	return (
+		<AlertDialog>
+			<AlertDialogTrigger asChild>
+				<Button type="button" variant="outline" disabled={signingOut || user.activeSessions === 0} className={className}>
+					{signingOut ? <Spinner /> : <LogOut />}
+					Sign out everywhere
+				</Button>
+			</AlertDialogTrigger>
+			<AlertDialogContent>
+				<AlertDialogHeader>
+					<AlertDialogTitle>Sign {isMe ? "yourself" : user.name || user.email} out everywhere?</AlertDialogTitle>
+					<AlertDialogDescription>
+						{isMe
+							? "Every session of yours ends, this one included, and you will have to sign in again."
+							: "Every session of this user ends. They can sign in again with their password."}
+					</AlertDialogDescription>
+				</AlertDialogHeader>
+				<AlertDialogFooter>
+					<AlertDialogCancel className={ACTION_BUTTON}>
+						<X />
+						Cancel
+					</AlertDialogCancel>
+					<AlertDialogAction onClick={onConfirm} className={ACTION_BUTTON}>
+						<LogOut />
+						Sign out
+					</AlertDialogAction>
+				</AlertDialogFooter>
+			</AlertDialogContent>
+		</AlertDialog>
 	);
 }
 

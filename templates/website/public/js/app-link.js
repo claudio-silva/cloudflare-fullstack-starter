@@ -10,14 +10,15 @@
 export const THEMES = ["light", "dark", "system"];
 export const STORAGE_KEY = "app-theme";
 
-/** A stored or typed value, as a theme; `light` when it is anything else. */
+/** A stored or typed value, as a theme; `system` when it is anything else. */
 export function resolveTheme(value) {
-	return THEMES.includes(value) ? value : "light";
+	return THEMES.includes(value) ? value : "system";
 }
 
 /** The theme to actually paint: `system` asks the operating system. */
 export function effectiveTheme(theme, prefersDark) {
-	return theme === "system" ? (prefersDark ? "dark" : "light") : resolveTheme(theme);
+	const resolved = resolveTheme(theme);
+	return resolved === "system" ? (prefersDark ? "dark" : "light") : resolved;
 }
 
 /**

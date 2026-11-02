@@ -25,10 +25,12 @@ test.describe("product website", () => {
 		await expect(page.getByRole("button", { name: "Sign In" })).toBeVisible();
 		await expect(page.locator("html")).toHaveClass(/dark/);
 
-		// … and stays dark on the next page, from its own storage: the theme
-		// parameter is consumed and taken out of the URL.
+		// … and stays dark when loaded again, from its own storage: the theme
+		// parameter is consumed and taken out of the URL. (A reload rather than
+		// a link to another page, which an app in demo mode may not show.)
 		expect(new URL(page.url()).searchParams.get("theme")).toBeNull();
-		await page.getByRole("button", { name: /sign up/i }).click();
+		await page.reload();
+		await expect(page.getByRole("button", { name: "Sign In" })).toBeVisible();
 		await expect(page.locator("html")).toHaveClass(/dark/);
 	});
 

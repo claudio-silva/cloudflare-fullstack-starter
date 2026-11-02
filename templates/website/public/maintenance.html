@@ -20,13 +20,14 @@
 		-->
 		<script>
 			(function () {
+				var theme = "system";
 				try {
-					var theme = localStorage.getItem("app-theme") || "light";
-					var dark = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-					document.documentElement.classList.toggle("dark", dark);
+					theme = localStorage.getItem("app-theme") || theme;
 				} catch (e) {
-					/* storage off: the light theme it is */
+					/* storage off: follow the system */
 				}
+				var dark = theme === "dark" || (theme !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+				document.documentElement.classList.toggle("dark", dark);
 			})();
 		</script>
 	</head>

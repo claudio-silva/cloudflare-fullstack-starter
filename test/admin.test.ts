@@ -270,6 +270,92 @@ describe("describeBrowser", () => {
 	});
 });
 
+const IPHONE = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
+
+/** A sign-in from a given device: its own session, user agent and address. */
+async function signInFrom(email: string, headers: Record<string, string>) {
+	const res = await app.request("/api/auth/sign-in/email", { method: "POST", headers: { ...json, ...headers }, body: JSON.stringify({ email, password: "password-123" }) }, local);
+	expect(res.status).toBe(200);
+}
+
+type SessionRow = { id: string; device: string; ip: string | null; country: string | null; status: string; current: boolean; token?: unknown };
+
+describe("sessions per device (admin)", () => {
+	it("lists a user's sessions without their tokens, and ends one, logged as revoked by the admin", async () => {
+		const admin = await userWithRole("superadmin");
+		const target = await userWithRole("user");
+		await signInFrom(target.email, { "user-agent": IPHONE, "CF-Connecting-IP": "203.0.113.9" });
+
+		const listed = (await (await admin.call(`/users/${target.id}/sessions?ofs=0&c=all`)).json()) as { items: SessionRow[]; total: number };
+		expect(listed.total).toBe(2);
+		const phone = listed.items.find((s) => s.device === "Safari · Mobile")!;
+		expect(phone).toMatchObject({ ip: "203.0.113.9", status: "active", current: false });
+		expect(listed.items.every((s) => !("token" in s))).toBe(true);
+		expect(JSON.stringify(listed)).not.toContain("token");
+
+		// The country is the one of the sign-in that opened the session (Cloudflare gives none under test).
+		await createDb(local).updateTable("login_events").set({ country: "PT" }).where("session_id", "=", phone.id).execute();
+		const again = (await (await admin.call(`/users/${target.id}/sessions`)).json()) as { items: SessionRow[] };
+		expect(again.items.find((s) => s.id === phone.id)?.country).toBe("PT");
+
+		expect((await admin.call(`/users/${target.id}/sessions/${phone.id}/sign-out`, { method: "POST" })).status).toBe(204);
+		const left = (await (await admin.call(`/users/${target.id}/sessions`)).json()) as { items: SessionRow[]; total: number };
+		expect(left.total).toBe(1);
+		expect(left.items.map((s) => s.id)).not.toContain(phone.id);
+
+		const event = await createDb(local)
+			.selectFrom("login_events")
+			.select(["actor_id", "user_agent", "ip"])
+			.where("session_id", "=", phone.id)
+			.where("event", "=", "session-revoked")
+			.executeTakeFirst();
+		expect(event).toMatchObject({ actor_id: admin.id, user_agent: IPHONE, ip: "203.0.113.9" });
+		// Ending it again, or ending one that never existed, is a 404.
+		expect((await admin.call(`/users/${target.id}/sessions/${phone.id}/sign-out`, { method: "POST" })).status).toBe(404);
+	});
+
+	it("marks the admin's own session as current", async () => {
+		const admin = await userWithRole("superadmin");
+		const list = (await (await admin.call(`/users/${admin.id}/sessions`)).json()) as { items: SessionRow[] };
+		expect(list.items.filter((s) => s.current)).toHaveLength(1);
+	});
+
+	it("does not end another user's session, and is for superadmins only", async () => {
+		const admin = await userWithRole("superadmin");
+		const plain = await userWithRole("admin");
+		const owner = await userWithRole("user");
+		const other = await userWithRole("user");
+		const [theirs] = ((await (await admin.call(`/users/${other.id}/sessions`)).json()) as { items: SessionRow[] }).items;
+
+		// Through the wrong user's URL the session is not found, and it survives.
+		expect((await admin.call(`/users/${owner.id}/sessions/${theirs.id}/sign-out`, { method: "POST" })).status).toBe(404);
+		expect(((await (await admin.call(`/users/${other.id}/sessions`)).json()) as { total: number }).total).toBe(1);
+		expect((await admin.call(`/users/nobody/sessions`)).status).toBe(404);
+
+		expect((await plain.call(`/users/${other.id}/sessions`)).status).toBe(403);
+		expect((await plain.call(`/users/${other.id}/sessions/${theirs.id}/sign-out`, { method: "POST" })).status).toBe(403);
+		expect((await app.request(`/api/admin/users/${other.id}/sessions`, {}, local)).status).toBe(401);
+	});
+
+	it("masks addresses in a demo and refuses to end a session there", async () => {
+		const admin = await userWithRole("superadmin");
+		const target = await userWithRole("user");
+		await signInFrom(target.email, { "CF-Connecting-IP": "203.0.113.9" });
+		const asDemo = (path: string, method = "GET") =>
+			app.request(`/api/admin/users/${target.id}${path}`, { method, headers: { cookie: "" } }, { ...local, DEMO_MODE: "1" });
+		expect((await asDemo("/sessions")).status).toBe(401);
+
+		// The admin's own cookie, in demo mode.
+		const cookie = await signInCookie(admin.email);
+		const call = (path: string, method = "GET") => app.request(`/api/admin/users/${target.id}${path}`, { method, headers: { cookie } }, { ...local, DEMO_MODE: "1" });
+		const items = ((await (await call("/sessions")).json()) as { items: SessionRow[] }).items;
+		expect(items.map((s) => s.ip)).toContain("203.0.113.x");
+		expect(JSON.stringify(items)).not.toContain("203.0.113.9");
+		expect((await call(`/sessions/${items[0].id}/sign-out`, "POST")).status).toBe(403);
+		expect(((await (await call("/sessions")).json()) as { total: number }).total).toBe(items.length);
+	});
+});
+
 async function signInCookie(email: string, password = "password-123") {
 	const res = await app.request("/api/auth/sign-in/email", { method: "POST", headers: json, body: JSON.stringify({ email, password }) }, local);
 	return res.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ");

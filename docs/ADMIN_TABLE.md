@@ -306,6 +306,11 @@ search) keep the rows on screen, dimmed, until the new ones are in. With no
 rows, the same panel holds the `empty` message; if the first load failed, it
 offers Try again (the HTTP layer has already said what went wrong).
 
+When the new rows arrive, a row that is still on screen slides from where it
+was to where it now is, so a sort or a deletion can be followed by eye
+(`src/react-app/admin/row-motion.ts`, keyed on `rowKey`). Nothing moves when
+the system asks for reduced motion.
+
 ## Changing how every list looks
 
 Colours are the area's variables in `src/react-app/admin/admin.css`:

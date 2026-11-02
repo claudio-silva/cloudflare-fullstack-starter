@@ -99,11 +99,32 @@ export async function deleteUser(db: Db, user: { id: string; email: string }, by
 	await recordUserDeleted(db, user, by?.actorId ?? null, by?.origin);
 }
 
-/** Signs the user out everywhere, recording each session as revoked (by `actorId`, when it is someone else). */
-export async function revokeSessions(db: Db, userId: string, actorId?: string | null): Promise<void> {
-	const sessions = await sessionsOf(db, userId);
-	await db.deleteFrom("sessions").where("userId", "=", userId).execute();
+/**
+ * Signs the user out everywhere, recording each session as revoked (by `actorId`,
+ * when it is someone else). `except` keeps one session: "sign out of every other device".
+ * Returns how many sessions ended.
+ */
+export async function revokeSessions(db: Db, userId: string, actorId?: string | null, except?: string | null): Promise<number> {
+	const sessions = (await sessionsOf(db, userId)).filter((s) => s.id !== except);
+	if (sessions.length === 0) return 0;
+	let ending = db.deleteFrom("sessions").where("userId", "=", userId);
+	if (except) ending = ending.where("id", "!=", except);
+	await ending.execute();
 	await recordSessionEnds(db, sessions, "session-revoked", actorId);
+	return sessions.length;
+}
+
+/**
+ * Ends one session of the user, recorded as revoked (by `actorId`, when it is
+ * someone else). False when the user has no such session: someone else's id
+ * must not delete anything.
+ */
+export async function revokeSession(db: Db, userId: string, sessionId: string, actorId?: string | null): Promise<boolean> {
+	const session = (await sessionsOf(db, userId)).find((s) => s.id === sessionId);
+	if (!session) return false;
+	await db.deleteFrom("sessions").where("userId", "=", userId).where("id", "=", sessionId).execute();
+	await recordSessionEnds(db, [session], "session-revoked", actorId);
+	return true;
 }
 
 const seconds = (from: Date | string, to: Date | string | number) => Math.max(0, Math.round((new Date(to).getTime() - new Date(from).getTime()) / 1000));

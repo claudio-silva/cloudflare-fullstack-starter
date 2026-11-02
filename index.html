@@ -9,7 +9,7 @@
       // Apply theme BEFORE React renders to prevent flash of unstyled content (FOUC)
       (function() {
         const storageKey = 'app-theme';
-        const theme = localStorage.getItem(storageKey) || 'light';
+        const theme = localStorage.getItem(storageKey) || 'system';
         
         let actualTheme = theme;
         if (theme === 'system') {

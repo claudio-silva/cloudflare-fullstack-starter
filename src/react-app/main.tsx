@@ -23,7 +23,7 @@ installHttpLayer({
 createRoot(document.getElementById("root")!).render(
 	<StrictMode>
 		<BrowserRouter>
-			<ThemeProvider defaultTheme="light" storageKey="app-theme">
+			<ThemeProvider defaultTheme="system" storageKey="app-theme">
 				{/* shadcn's Tooltip needs one provider above it. */}
 				<TooltipProvider>
 					<HttpLayerUi />
