@@ -58,7 +58,7 @@ import { resolveWorkerName } from "./lib/worker";
 
 const SETUP_ENV_FILE = ".env.setup.local";
 /** The template's own repository: a project that still points at it has not been given its own. */
-const STARTER_REPO = "claudio-silva/fullstack-starter-for-cloudflare";
+const STARTER_REPO = "claudio-silva/cloudflare-fullstack-starter";
 const GITHUB_APP_URL = "https://github.com/apps/cloudflare-workers-and-pages/installations/new";
 
 const args = process.argv.slice(2);

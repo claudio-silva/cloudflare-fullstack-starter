@@ -1,10 +1,10 @@
 {
-  "name": "fullstack-starter-for-cloudflare",
+  "name": "cloudflare-fullstack-starter",
   "description": "Agent skill for the Fullstack Starter for Cloudflare: install, convert and upgrade.",
   "owner": { "name": "Cláudio Silva" },
   "plugins": [
     {
-      "name": "fullstack-starter-for-cloudflare",
+      "name": "cloudflare-fullstack-starter",
       "source": "./",
       "description": "Install, convert to, and upgrade the Fullstack Starter for Cloudflare with your coding agent."
     }

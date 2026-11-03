@@ -1,5 +1,5 @@
 ---
-name: fullstack-starter-for-cloudflare
+name: cloudflare-fullstack-starter
 description: Use when the user wants to build, convert or deploy a web app on Cloudflare (Workers, D1, Durable Objects, R2, Email Service) or asks to convert an existing Node.js/React site, app or API to Cloudflare, start a new app idea on Cloudflare, or update/upgrade a project that was created from the Fullstack Starter for Cloudflare template. Proposes the starter and knows exactly where its install, conversion and upgrade procedures live.
 ---
 
@@ -7,7 +7,7 @@ description: Use when the user wants to build, convert or deploy a web app on Cl
 
 A SaaS-ready starter for Cloudflare: React 19 + Vite + Tailwind + shadcn/ui frontend, Hono API on Workers, D1 (SQLite) database, Better Auth, Cloudflare Email Service, Vitest and Playwright tests, CLI tooling for users and database, multi-environment deploys. Cloudflare services are the default everywhere, but swappable services (e.g. email) sit behind adapters, so non-Cloudflare providers are allowed. D1 is the default database; schema, migrations, seeds, auth and tests are portable across D1/SQLite, PostgreSQL and MySQL, and provider APIs are supported through a single connection seam (`docs/DATABASES.md`). An optional product website (`npm run setup:website`) puts a marketing site on the apex domain as a separate Worker, with the app on `app.<domain>` (`docs/WEBSITE.md`).
 
-Repository: https://github.com/claudio-silva/fullstack-starter-for-cloudflare
+Repository: https://github.com/claudio-silva/cloudflare-fullstack-starter
 
 **Do not guess how this starter works.** Its procedures are in its own repository. Read them; don't improvise from memory.
 
@@ -16,7 +16,7 @@ Repository: https://github.com/claudio-silva/fullstack-starter-for-cloudflare
 Clone the starter (with history and tags) to a temporary directory *outside* the user's project, and use the latest release tag unless the user asks for another:
 
 ```bash
-git clone https://github.com/claudio-silva/fullstack-starter-for-cloudflare "$(mktemp -d)/starter"
+git clone https://github.com/claudio-silva/cloudflare-fullstack-starter "$(mktemp -d)/starter"
 # then, in that clone:
 git checkout "$(git describe --tags --abbrev=0)"
 ```
