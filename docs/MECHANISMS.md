@@ -767,6 +767,10 @@ the password: the starter's demos have one account per role
 form has a button per role that fills it in. The accounts themselves are created once with
 `npm run auth create-user -- --env production`.
 
+The starter's own demo also shows the starter's mark instead of the app's
+logo (`Logo.tsx`): the mark is in `src/react-app/assets/demo-brand/`, which
+`npm run init` deletes, so a project's demo shows the project's logo.
+
 Refusals on `/api/auth/` carry the message in `message` as well as `error`
 (`failForAuthClient`), because Better Auth's client reads `message`: the
 sign-in and profile forms then show it like any other error.

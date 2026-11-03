@@ -3,6 +3,17 @@ import { useTheme } from "./theme-context";
 import LogoLight from "@/assets/logo-light.svg";
 import LogoDark from "@/assets/logo-dark.svg";
 import { config } from "../../config";
+import { useDemoAccounts } from "@/lib/demo";
+
+/**
+ * The starter's own mark, shown only by the starter's public demo: the files
+ * in assets/demo-brand/ exist in the starter's repository alone (`npm run init`
+ * deletes them), and only a deployment in demo mode uses them. A glob, so the
+ * build does not break once they are gone.
+ */
+const demoBrand = Object.values(
+	import.meta.glob<string>("../assets/demo-brand/logo.svg", { eager: true, import: "default", query: "?url" }),
+)[0];
 
 interface LogoProps {
 	className?: string;
@@ -22,20 +33,24 @@ export function Logo({ className = "h-8 w-auto", alt = "Logo", showTitle = false
 	const { theme } = useTheme();
 	const systemDark = useSystemDark();
 
+	const demo = useDemoAccounts();
+
 	// Determine which logo to show based on theme
 	const isDark = theme === "dark" || (theme === "system" && systemDark);
-	const logoSrc = isDark ? LogoDark : LogoLight;
+	const logoSrc = demoBrand && demo ? demoBrand : isDark ? LogoDark : LogoLight;
+	// Where the demo's mark may replace it, nothing shows until the server has said.
+	const hidden = demoBrand !== undefined && demo === undefined;
 
 	if (showTitle) {
 		return (
 			<div className="flex items-center gap-3">
-				<img src={logoSrc} alt={alt} className={className} />
+				<img src={logoSrc} alt={alt} className={className} style={hidden ? { visibility: "hidden" } : undefined} />
 				<span className="text-xl font-semibold">{config.appName}</span>
 			</div>
 		);
 	}
 
-	return <img src={logoSrc} alt={alt} className={className} />;
+	return <img src={logoSrc} alt={alt} className={className} style={hidden ? { visibility: "hidden" } : undefined} />;
 }
 
 const darkQuery = "(prefers-color-scheme: dark)";

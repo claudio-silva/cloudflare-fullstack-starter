@@ -20,7 +20,7 @@ Use **Node.js 24.22.1 or later** (see `.nvmrc` at the repo root). `package.json`
 Install the **latest release tag**, not an arbitrary `main` commit, unless the user asks otherwise. `package.json` ships a `starter.version` field; keep it (the upgrade procedure in `UPGRADING.md` depends on it).
 
 ```bash
-git ls-remote --tags --sort=-v:refname https://github.com/claudio-silva/cloudflare-fullstack-starter | head -3
+git ls-remote --tags --sort=-v:refname https://github.com/claudio-silva/fullstack-starter-for-cloudflare | head -3
 ```
 
 ## Scenario A: empty folder
@@ -28,13 +28,13 @@ git ls-remote --tags --sort=-v:refname https://github.com/claudio-silva/cloudfla
 The directory is empty or has only IDE/VCS files (`.git/`, `.cursor/`, `.claude/`). Extract the latest tag into it:
 
 ```bash
-TAG=$(git ls-remote --tags --sort=-v:refname https://github.com/claudio-silva/cloudflare-fullstack-starter | head -1 | sed 's#.*refs/tags/##;s#\^{}##')
-curl -L "https://github.com/claudio-silva/cloudflare-fullstack-starter/archive/refs/tags/$TAG.tar.gz" | tar xz --strip-components=1
+TAG=$(git ls-remote --tags --sort=-v:refname https://github.com/claudio-silva/fullstack-starter-for-cloudflare | head -1 | sed 's#.*refs/tags/##;s#\^{}##')
+curl -L "https://github.com/claudio-silva/fullstack-starter-for-cloudflare/archive/refs/tags/$TAG.tar.gz" | tar xz --strip-components=1
 ```
 
 If there is no `.git`, run `git init`. Then continue with [Non-Interactive Initialization](#non-interactive-initialization).
 
-Alternatives: `gh repo create my-app --template claudio-silva/cloudflare-fullstack-starter --clone`, or clone into a new directory and `rm -rf .git && git init`.
+Alternatives: `gh repo create my-app --template claudio-silva/fullstack-starter-for-cloudflare --clone`, or clone into a new directory and `rm -rf .git && git init`.
 
 ## Scenario B: folder with existing files
 
@@ -44,7 +44,7 @@ The user already has content (a plan, specs, docs, design assets, maybe a README
 2. Download the starter into a temporary directory, outside the project:
    ```bash
    STARTER=$(mktemp -d)
-   git clone --depth 1 --branch "$TAG" https://github.com/claudio-silva/cloudflare-fullstack-starter "$STARTER"
+   git clone --depth 1 --branch "$TAG" https://github.com/claudio-silva/fullstack-starter-for-cloudflare "$STARTER"
    rm -rf "$STARTER/.git"
    ```
 3. Copy only what does not exist yet: `rsync -a --ignore-existing "$STARTER"/ ./` (or equivalent). Files that already existed are untouched.
@@ -84,7 +84,7 @@ npm install
 1. Sets `package.json` `name` to the new slug
 2. Updates `wrangler.toml` top-level worker `name`, all D1 `database_name` values (convention above), optional `[env.production] name = "<slug>-production"`, and email sender allow-lists
 3. Creates `.env.local`, `.env.preview`, `.env.production` from templates (fills in your choices; does **not** overwrite existing files)
-4. Removes starter-distribution files that a project does not need (`skills/`, `.claude-plugin/`)
+4. Removes starter-distribution files that a project does not need (`skills/`, `.claude-plugin/`, and `src/react-app/assets/demo-brand/`, the mark the starter's own demo shows)
 5. **Cuts the ties to the starter's repository**, when there are any: a project created with `git clone` (rather than "Use this template") inherits the starter's `origin` remote and all of its release tags. Left in place, `deploy:production` would push the release commit and its tag to the starter's repository, and would number the project's first release from the starter's latest tag (v3.7.1 rather than v0.0.2). `init` removes both and says so; `--keep-git` keeps them and prints what they will do. `deploy:production` refuses to run while either is still there.
 
 > Running the starter's own `bin/init.ts` from another directory is refused: it edits the project its file belongs to, which would be the starter.

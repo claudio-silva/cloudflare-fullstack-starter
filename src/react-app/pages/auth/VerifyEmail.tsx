@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Logo } from "@/components/Logo";
 import { CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { http } from "@/lib/http";
+import { AuthBackdrop } from "@/components/auth/AuthBackdrop";
 
 export function VerifyEmail() {
 	const [searchParams] = useSearchParams();
@@ -76,7 +77,7 @@ export function VerifyEmail() {
 
 	return (
 		<div className="min-h-screen flex flex-col items-center py-4 px-4">
-			<div className="fixed inset-0 bg-linear-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 -z-10" />
+			<AuthBackdrop />
 
 			<Card className="relative w-full max-w-md shadow-2xl my-auto">
 				<CardHeader className="space-y-6">

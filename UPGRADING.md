@@ -6,15 +6,15 @@
 ## How to upgrade (agent procedure)
 
 1. **Find the current version.** Read `starter.version` in the project's `package.json`. If it is missing, the project is *unversioned*: use [Unversioned installs](#unversioned-installs-before-100) to find its baseline.
-2. **Find the target.** Latest release tag of the starter (`git ls-remote --tags https://github.com/claudio-silva/cloudflare-fullstack-starter` or the GitHub releases page). Do not upgrade to an arbitrary `main` commit unless asked.
-3. **Clone the starter with history and tags** into a temporary directory *outside* the project (`git clone https://github.com/claudio-silva/cloudflare-fullstack-starter /tmp/starter-upstream`). Treat it as read-only reference material.
+2. **Find the target.** Latest release tag of the starter (`git ls-remote --tags https://github.com/claudio-silva/fullstack-starter-for-cloudflare` or the GitHub releases page). Do not upgrade to an arbitrary `main` commit unless asked.
+3. **Clone the starter with history and tags** into a temporary directory *outside* the project (`git clone https://github.com/claudio-silva/fullstack-starter-for-cloudflare /tmp/starter-upstream`). Treat it as read-only reference material.
 4. **Read every entry below** between the current (exclusive) and target (inclusive) versions. Plan the stages first; tell the user the plan.
 5. **Work on a new git branch** with a clean tree. Never upgrade on top of uncommitted work.
 6. **Upgrade in stages**, one log entry at a time (and, within an entry, in the order of its *Required actions*). After each stage run the verification commands and commit. Stop and report if a stage cannot be made green; do not skip ahead.
 7. **Apply the starter's own change, not a copy of its files.** For each stage, take the diff between the two starter tags and apply it with a three-way merge so project changes are preserved:
    ```bash
    cd /tmp/starter-upstream
-   git diff v<from> v<to> -- . ':!package-lock.json' ':!skills' ':!.claude-plugin' > /tmp/starter-<from>-<to>.patch
+   git diff v<from> v<to> -- . ':!package-lock.json' ':!skills' ':!.claude-plugin' ':!src/react-app/assets/demo-brand' > /tmp/starter-<from>-<to>.patch
    cd <project> && git apply --3way /tmp/starter-<from>-<to>.patch   # resolve conflicts by hand
    ```
    Then regenerate the lockfile with the project's package manager.

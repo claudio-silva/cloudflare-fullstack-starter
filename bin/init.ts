@@ -304,8 +304,9 @@ async function main() {
 	// the starter's tags. "Use this template" leaves none of this.
 	detachStarterGit(pkgPath, Boolean(cliArgs.keepGit));
 
-	// Starter-distribution files (agent skill + plugin manifests) are not part of a project.
-	for (const dir of ["skills", ".claude-plugin"]) {
+	// Starter-distribution files (agent skill + plugin manifests, and the mark
+	// the starter's own demo shows instead of the app's logo) are not part of a project.
+	for (const dir of ["skills", ".claude-plugin", "src/react-app/assets/demo-brand"]) {
 		const target = path.join(root, dir);
 		if (fs.existsSync(target)) {
 			fs.rmSync(target, { recursive: true, force: true });

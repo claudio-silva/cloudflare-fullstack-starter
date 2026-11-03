@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Logo } from "@/components/Logo";
 import { authClient } from "@/lib/auth/client";
 import { CheckCircle2, AlertCircle, Eye, EyeOff } from "lucide-react";
+import { AuthBackdrop } from "@/components/auth/AuthBackdrop";
 
 const resetPasswordSchema = z.object({
 	password: z.string().min(8, "Password must be at least 8 characters"),
@@ -103,7 +104,7 @@ export function ResetPassword() {
 	if (!token) {
 		return (
 			<div className="min-h-screen flex flex-col items-center py-4 px-4">
-				<div className="fixed inset-0 bg-linear-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 -z-10" />
+				<AuthBackdrop />
 
 				<Card className="relative w-full max-w-md shadow-2xl my-auto">
 					<CardHeader className="space-y-6">
@@ -133,7 +134,7 @@ export function ResetPassword() {
 	if (success) {
 		return (
 			<div className="min-h-screen flex flex-col items-center py-4 px-4">
-				<div className="fixed inset-0 bg-linear-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 -z-10" />
+				<AuthBackdrop />
 
 				<Card className="relative w-full max-w-md shadow-2xl my-auto">
 					<CardHeader className="space-y-6">
@@ -157,7 +158,7 @@ export function ResetPassword() {
 
 	return (
 		<div className="min-h-screen flex flex-col items-center py-4 px-4">
-			<div className="fixed inset-0 bg-linear-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 -z-10" />
+			<AuthBackdrop />
 
 			<Card className="relative w-full max-w-md shadow-2xl my-auto">
 				<CardHeader className="space-y-6">
