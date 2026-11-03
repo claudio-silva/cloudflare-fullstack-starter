@@ -1,6 +1,10 @@
 # Fullstack Starter for Cloudflare
 
-[![CI](https://github.com/claudio-silva/fullstack-starter-for-cloudflare/actions/workflows/ci.yml/badge.svg)](https://github.com/claudio-silva/fullstack-starter-for-cloudflare/actions/workflows/ci.yml)
+> **Good news!** Development of this starter is moving to a broader open-source project with its own GitHub organization, rather than remaining a personal project.
+>
+> This repository is on hold for now. More details will follow as the new project takes shape. Stay tuned!
+
+[![CI](https://github.com/claudio-silva/cloudflare-fullstack-starter/actions/workflows/ci.yml/badge.svg)](https://github.com/claudio-silva/cloudflare-fullstack-starter/actions/workflows/ci.yml)
 
 **A full-stack project starter that gets you building real features immediately** — production-ready, set up for AI agentic coding, and built to scale on Cloudflare’s global edge network.
 
@@ -8,7 +12,7 @@ Install and start building. Authentication, database, UI, CLI, and deployment ar
 
 A great starting point for your next **MVP** or **SaaS** app.
 
-**[Live demo](https://cloudflare-fullstack-starter-production.dev-c1b.workers.dev)** — the template as it is, deployed from this repository's latest release. It is read-only: the sign-in page gives you the account, and nothing you change is saved. The **[preview demo](https://cloudflare-fullstack-starter-preview.dev-c1b.workers.dev)** shows the work in progress on `main`, unreleased. The **[website](https://cloudflare-fullstack-starter-website-production.dev-c1b.workers.dev)** that introduces it is a [Worker of its own](https://github.com/claudio-silva/fullstack-starter-for-cloudflare-website), made with the starter's [product website](#product-website-optional) — contact form included.
+**[Live demo](https://cloudflare-fullstack-starter-production.dev-c1b.workers.dev)** — the template as it is, deployed from this repository's latest release. It is read-only: the sign-in page gives you the account, and nothing you change is saved. The **[preview demo](https://cloudflare-fullstack-starter-preview.dev-c1b.workers.dev)** shows the work in progress on `main`, unreleased.
 
 ## Contents
 
@@ -161,18 +165,18 @@ You can ask your coding agent to **install** the starter, **convert** an existin
 
 ```bash
 # Any agent supported by the skills CLI (Claude Code, Cursor, Codex, ...)
-npx skills add claudio-silva/fullstack-starter-for-cloudflare
+npx skills add claudio-silva/cloudflare-fullstack-starter
 
 # Claude Code plugin marketplace
-/plugin marketplace add claudio-silva/fullstack-starter-for-cloudflare
-/plugin install fullstack-starter-for-cloudflare@fullstack-starter-for-cloudflare
+/plugin marketplace add claudio-silva/cloudflare-fullstack-starter
+/plugin install cloudflare-fullstack-starter@cloudflare-fullstack-starter
 ```
 
 Then just ask, for example: *"Create this app on Cloudflare"*, *"Convert this site to Cloudflare"*, or *"Update this project to the latest starter version"*.
 
 Without the skill, give the agent this prompt (it works for all four scenarios):
 
-> **Prompt:** Use the Fullstack Starter for Cloudflare for this project. Read https://raw.githubusercontent.com/claudio-silva/fullstack-starter-for-cloudflare/main/docs/AGENTS_SETUP.md and follow the scenario that matches (new app in an empty folder, new app in a folder with existing files, convert an existing project, or upgrade an existing starter-based project).
+> **Prompt:** Use the Fullstack Starter for Cloudflare for this project. Read https://raw.githubusercontent.com/claudio-silva/cloudflare-fullstack-starter/main/docs/AGENTS_SETUP.md and follow the scenario that matches (new app in an empty folder, new app in a folder with existing files, convert an existing project, or upgrade an existing starter-based project).
 
 The procedures live in the repository, so they are always current:
 
@@ -192,7 +196,7 @@ The procedures live in the repository, so they are always current:
 
 Click **"Use this template"** on GitHub, or use the CLI:
 ```bash
-gh repo create my-app --template claudio-silva/fullstack-starter-for-cloudflare --clone
+gh repo create my-app --template claudio-silva/cloudflare-fullstack-starter --clone
 cd my-app
 ```
 
@@ -256,7 +260,7 @@ Open http://localhost:5173 — you'll see the login page. Sign up to create your
 
 Click to deploy a temporary preview to Cloudflare:
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/claudio-silva/fullstack-starter-for-cloudflare)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/claudio-silva/cloudflare-fullstack-starter)
 
 Fast path (no email confirmation needed):
 
