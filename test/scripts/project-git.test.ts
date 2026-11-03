@@ -6,16 +6,16 @@ import { describe, expect, it } from "vitest";
 import { detachAdvice, inheritedTags, isStarterRemote, remoteIdentity } from "../../bin/lib/project-git";
 
 const REPO = resolve(import.meta.dirname, "..", "..");
-const STARTER = { repo: "https://github.com/claudio-silva/cloudflare-fullstack-starter", version: "3.7.0" };
+const STARTER = { repo: "https://github.com/claudio-silva/fullstack-starter-for-cloudflare", version: "3.7.0" };
 
 describe("is this still the starter's repository?", () => {
 	it("recognises the same remote however it was written", () => {
 		for (const url of [
-			"https://github.com/claudio-silva/cloudflare-fullstack-starter",
-			"https://github.com/claudio-silva/cloudflare-fullstack-starter.git",
-			"git@github.com:claudio-silva/cloudflare-fullstack-starter.git",
-			"ssh://git@github.com/claudio-silva/cloudflare-fullstack-starter/",
-			"https://token@github.com/Claudio-Silva/Cloudflare-Fullstack-Starter",
+			"https://github.com/claudio-silva/fullstack-starter-for-cloudflare",
+			"https://github.com/claudio-silva/fullstack-starter-for-cloudflare.git",
+			"git@github.com:claudio-silva/fullstack-starter-for-cloudflare.git",
+			"ssh://git@github.com/claudio-silva/fullstack-starter-for-cloudflare/",
+			"https://token@github.com/Claudio-Silva/Fullstack-Starter-For-Cloudflare",
 		]) {
 			expect(isStarterRemote(url, STARTER.repo)).toBe(true);
 		}
@@ -23,7 +23,7 @@ describe("is this still the starter's repository?", () => {
 
 	it("leaves the project's own remote alone", () => {
 		expect(isStarterRemote("git@github.com:me/my-app.git", STARTER.repo)).toBe(false);
-		expect(isStarterRemote("https://gitlab.com/claudio-silva/cloudflare-fullstack-starter", STARTER.repo)).toBe(false);
+		expect(isStarterRemote("https://gitlab.com/claudio-silva/fullstack-starter-for-cloudflare", STARTER.repo)).toBe(false);
 		expect(isStarterRemote("", STARTER.repo)).toBe(false);
 		expect(remoteIdentity("git@github.com:me/app.git")).toBe("github.com/me/app");
 	});
@@ -51,7 +51,7 @@ describe("the tags a clone inherits", () => {
 	});
 
 	it("say what to do about them", () => {
-		const advice = detachAdvice({ origin: "https://github.com/claudio-silva/cloudflare-fullstack-starter", tags }).join("\n");
+		const advice = detachAdvice({ origin: "https://github.com/claudio-silva/fullstack-starter-for-cloudflare", tags }).join("\n");
 		expect(advice).toContain("git remote set-url origin");
 		expect(advice).toContain("git tag -d");
 	});
@@ -130,7 +130,7 @@ describe("npm run init, in a repository cloned from the starter", () => {
 
 		expect(output).toContain("--keep-git");
 		expect(output).toContain("git remote set-url origin");
-		expect(gitOut(root, ["remote", "get-url", "origin"])).toContain("cloudflare-fullstack-starter");
+		expect(gitOut(root, ["remote", "get-url", "origin"])).toContain("fullstack-starter-for-cloudflare");
 		expect(gitOut(root, ["tag", "--list"]).split("\n")).toEqual(["v1.0.0", "v3.7.0"]);
 		rmSync(root, { recursive: true, force: true });
 	});

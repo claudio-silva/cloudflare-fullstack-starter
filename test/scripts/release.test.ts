@@ -122,7 +122,7 @@ describe("CI checks", () => {
 	});
 
 	it("recognises GitHub remotes only", () => {
-		expect(githubRepo("git@github.com:claudio-silva/cloudflare-fullstack-starter.git\n")).toBe("claudio-silva/cloudflare-fullstack-starter");
+		expect(githubRepo("git@github.com:claudio-silva/fullstack-starter-for-cloudflare.git\n")).toBe("claudio-silva/fullstack-starter-for-cloudflare");
 		expect(githubRepo("https://github.com/o/r.git")).toBe("o/r");
 		expect(githubRepo("https://x-access-token:t@github.com/o/r")).toBe("o/r");
 		expect(githubRepo("ssh://git@github.com/o/r.git")).toBe("o/r");
