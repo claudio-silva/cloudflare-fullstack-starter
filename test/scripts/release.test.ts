@@ -121,6 +121,12 @@ describe("CI checks", () => {
 		expect(summarizeChecks([]).state).toBe("none");
 	});
 
+	it("ignores Dependabot's own update jobs, which run on whatever commit main is at", () => {
+		expect(summarizeChecks([run("build-and-lint", "completed", "success"), run("Dependabot", "completed", "failure")])).toEqual({
+			state: "success",
+		});
+	});
+
 	it("recognises GitHub remotes only", () => {
 		expect(githubRepo("git@github.com:claudio-silva/cloudflare-fullstack-starter.git\n")).toBe("claudio-silva/cloudflare-fullstack-starter");
 		expect(githubRepo("https://github.com/o/r.git")).toBe("o/r");

@@ -7,6 +7,9 @@ import { detachAdvice, inheritedTags, isStarterRemote, remoteIdentity } from "..
 
 const REPO = resolve(import.meta.dirname, "..", "..");
 const STARTER = { repo: "https://github.com/claudio-silva/cloudflare-fullstack-starter", version: "3.7.0" };
+// The clone below copies the real package.json, whose starter version moves
+// with every release: its tags must follow it, or init stops recognising them.
+const CLONE_TAGS = ["v1.0.0", `v${(JSON.parse(readFileSync(resolve(REPO, "package.json"), "utf-8")) as { starter: { version: string } }).starter.version}`];
 
 describe("is this still the starter's repository?", () => {
 	it("recognises the same remote however it was written", () => {
@@ -78,7 +81,7 @@ function clonedProject(): string {
 	git("add", "-A");
 	git("commit", "-qm", "clone");
 	// What a `git clone` of the template brings with it.
-	for (const tag of ["v1.0.0", "v3.7.0"]) git("tag", tag);
+	for (const tag of CLONE_TAGS) git("tag", tag);
 	return root;
 }
 
@@ -131,14 +134,14 @@ describe("npm run init, in a repository cloned from the starter", () => {
 		expect(output).toContain("--keep-git");
 		expect(output).toContain("git remote set-url origin");
 		expect(gitOut(root, ["remote", "get-url", "origin"])).toContain("cloudflare-fullstack-starter");
-		expect(gitOut(root, ["tag", "--list"]).split("\n")).toEqual(["v1.0.0", "v3.7.0"]);
+		expect(gitOut(root, ["tag", "--list"]).split("\n")).toEqual(CLONE_TAGS);
 		rmSync(root, { recursive: true, force: true });
 	});
 
 	it("has nothing to do in a repository that is already the project's own", () => {
 		const root = clonedProject();
 		execFileSync("git", ["remote", "set-url", "origin", "git@github.com:me/my-app.git"], { cwd: root, stdio: "ignore" });
-		execFileSync("git", ["tag", "-d", "v1.0.0", "v3.7.0"], { cwd: root, stdio: "ignore" });
+		execFileSync("git", ["tag", "-d", ...CLONE_TAGS], { cwd: root, stdio: "ignore" });
 
 		expect(run(root, ARGS)).not.toContain("removed the starter's");
 		expect(gitOut(root, ["remote", "get-url", "origin"])).toBe("git@github.com:me/my-app.git");

@@ -5,7 +5,10 @@
  * Only GitHub is supported, through the `gh` CLI (no token to configure: it
  * reuses `gh auth login`). Only GitHub Actions check runs count: other apps
  * reporting on the same commit — a Workers Builds preview build, say — are a
- * deployment of their own, not a verdict on the code.
+ * deployment of their own, not a verdict on the code. Nor do Dependabot's own
+ * update jobs: GitHub runs them as Actions on the default branch's head, so
+ * they land on whatever commit is there (a release commit, say), and one that
+ * fails to update a dependency says nothing about that commit.
  *
  * Anywhere else (GitLab, no `gh`, not logged in) the answer is "unknown", and
  * the caller says so and goes on: the gate a host enforces itself (a protected
@@ -28,8 +31,11 @@ export type ChecksSummary =
 /** Conclusions that do not block a release. */
 const PASSING = new Set(["success", "skipped", "neutral"]);
 
+/** Check runs GitHub Actions reports that are not the project's CI. */
+const NOT_CI = new Set(["Dependabot"]);
+
 export function summarizeChecks(runs: CheckRun[]): ChecksSummary {
-	const ours = runs.filter((r) => r.app?.slug === "github-actions");
+	const ours = runs.filter((r) => r.app?.slug === "github-actions" && !NOT_CI.has(r.name));
 	if (ours.length === 0) return { state: "none" };
 	const failed = ours.filter((r) => r.status === "completed" && !PASSING.has(r.conclusion ?? "")).map((r) => r.name);
 	if (failed.length > 0) return { state: "failure", failed };
