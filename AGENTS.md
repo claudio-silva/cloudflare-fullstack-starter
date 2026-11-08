@@ -84,6 +84,9 @@ Wrap routes with `<ProtectedRoute>` to require authentication:
 } />
 ```
 
+### Background routes
+A route the client hits without the user having done anything (polling, heartbeats, periodic checks) lists `background` from `src/worker/lib/route-kind.ts`, so it does not keep the session alive (12 h idle expiry, `config.auth.session`): `app.get(path, background, authMiddleware, handler)`. Give a background flow its own route rather than a flag from the client. See `docs/MECHANISMS.md` "Sessions".
+
 ### Roles
 Roles are in `src/shared/roles.ts` (`user` < `admin` < `superadmin`); `session.user.role` carries the role. Check with `hasRole(role, "admin")` (admin or higher) and protect API routes with `requireRole("admin")` (`src/worker/middleware/roles.ts`) after `authMiddleware`. A role check in the browser only decides what is shown; the Worker must check it too.
 
@@ -374,6 +377,8 @@ Projects built on this starter should edit few starter files so later upstream p
 - Don't put internal details (SQL, ids of other users, stack traces) in an error's user message: they go in `log`
 - Don't narrow local auth to a host allow-list: in `local`, `createAuth` trusts any origin and derives `baseURL` from the request, because dev is reached under arbitrary hostnames (other ports, LAN IPs, container and dev-workspace proxies). Preview and production keep the strict check (`docs/MECHANISMS.md`, "Which hosts may sign in")
 - Don't show a sign-in method because `src/config.ts` says it is enabled: ask the server (`useAuthFeatures()`), which knows whether the credentials are there
+- Don't create the Better Auth client without `fetchOptions.customFetchImpl: createAuthFetch(...)` (`src/react-app/lib/auth/client.ts`): Better Auth captures `fetch` when the client is created, before `main.tsx` installs the HTTP layer, so every guard (session ended, account disabled, maintenance) would miss its requests
+- Don't send `/api/` requests that bypass the guard chain installed in `main.tsx`: a raw `XMLHttpRequest`, a `fetch` captured before `main.tsx` runs, or `handles: "all"` for an authenticated write. They carry no `X-Session-Id`, so a stale tab's write would land under whichever session the cookie holds now
 - Don't branch on a Better Auth error's English `message` in the UI: match `error.code` through `signInErrorMessage` (`src/shared/sign-in-error-message.ts`). A test for `"Invalid"` also catches `Invalid origin` and tells users their password is wrong
 
 ## Project-Specific Notes

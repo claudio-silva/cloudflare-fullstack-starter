@@ -297,12 +297,26 @@ if (res.status === 404) return showEmptyState();
 `null` meaning the same as no key makes the layer easy to switch off on a
 condition: `http(url, { handles: quiet ? null : [] })`.
 
-Better Auth's client needs no wiring: its forms show its own errors, and its
-requests are held through a lost connection or a maintenance window like
-anyone else's. A library with an offline strategy of its own — a sync engine,
+Better Auth's client needs one piece of wiring, and has it: its forms show its
+own errors, and its requests are held through a lost connection or a maintenance
+window like anyone else's. Better Auth captures `fetch` when the client is
+created, which is before `main.tsx` installs the layer, so
+`src/react-app/lib/auth/client.ts` passes `fetchOptions.customFetchImpl:
+createAuthFetch(...)`, which looks `fetch` up per request. Without it every
+Better Auth request would bypass the whole chain. A library with an offline strategy of its own — a sync engine,
 an offline-first cache — would only be slowed down by having its requests
 held; list its paths in `installHttpLayer({ exclude: ["/api/sync/"] })` (or
 pass a test, `(url) => boolean`), and the layer leaves them alone.
+
+**Guards.** `installHttpLayer({ guards: [...] })` takes wrappers around the
+inner fetch, for behaviour that must see a request's raw response before the
+layer reacts to it. The chain is layer, then `guards[0]`, and so on, then
+maintenance, then the network, the first guard outermost. `main.tsx` installs
+`[sessionEndedGuard, accountDisabledGuard]`: a 403 `account_disabled` is
+handled inside the session-ended guard, so a disabled account is never shown the
+expired-session dialog (see [Sessions](#sessions)). Guards see only the requests
+the layer handles; those it leaves alone (`handles: "all"`, `exclude`,
+cross-origin) go straight to the network, unguarded.
 
 **Why the line falls there:** a global patch that changed the statuses every
 request sees would break code written without knowing about it — a library
@@ -729,6 +743,256 @@ The same cron deletes expired `sessions` and `verifications`. Better Auth
 removes an expired session only when that session is used again, which a
 visitor who never returns never does: without the job both tables grow with
 every sign-in for the life of the app.
+
+## Sessions
+
+A signed-in person's session can end while a page is open: it idles out, an
+administrator disables the account, another tab signs in as someone else. The
+starter handles each case in one place instead of leaving every page to cope.
+Server and browser share two small contracts: `src/shared/account-status.ts`
+(403 `account_disabled`) and `src/shared/session-binding.ts` (409
+`session_changed`, the `X-Session-Id` header).
+
+### Idle expiry and route kinds
+
+A session dies after `config.auth.session.idleTimeoutSeconds` (12 hours) without
+a request. A request pushes the expiry forward at most once per
+`refreshAfterSeconds` (a minute), and that push is also the "last seen" the
+admin area shows. Both values feed Better Auth's `expiresIn` and `updateAge` in
+`src/worker/middleware/auth.ts`.
+
+Not every request is the user doing something. Polling, heartbeats and periodic
+checks would keep a forgotten tab signed in for ever. A route says which kind it
+is by listing the `background` marker from `src/worker/lib/route-kind.ts`
+among its handlers, in any position relative to `authMiddleware`:
+
+```ts
+import { background } from "../lib/route-kind";
+
+app.get("/api/status", background, authMiddleware, handler);
+```
+
+A `background` route still needs a live session, but reads it with
+`disableRefresh`, so it never extends it. Give a background flow its own route
+rather than a flag from the client: the server must know the kind without
+trusting the caller. A sub-app with its own `onError` hides the marker from
+Hono's matched handlers; there it works only when listed before the auth
+middleware.
+
+`authMiddleware` sends Better Auth's `Set-Cookie` (the refreshed session) only
+after the request has passed every gate: live session, account enabled, tab
+binding. A refused request therefore never renews anything for its caller.
+
+The starter marks no route. Its only background traffic (the version check and
+the maintenance probe) goes to `/api/ping`, which is public. A project with
+its own authenticated polling route marks it.
+
+### Disabled accounts
+
+Every path that acts for a signed-in user answers a disabled account with HTTP
+**403** `{ error, code: "account_disabled", level: "info" }` (built by
+`accountDisabledBody()`): every `authMiddleware` route, `GET /api/auth/get-session`
+(otherwise a 200 with `null`), and the 401 of any other Better Auth route. 401
+keeps meaning "no session, or an expired one", so a client can tell *expired*
+from *refused*.
+
+Disabling deletes the user's sessions, after which the server could not tell
+"disabled" from "expired". So each session's token is first copied to
+`session_revocations` (migration 0008, `src/worker/lib/session-revocations.ts`)
+until it would have expired. Markers are:
+
+- written when a user is disabled (admin area, `npm run auth enable-user -- -s off`);
+- cleared when the user is enabled again and when the user is deleted;
+- pruned by the cron that removes expired sessions;
+- read only when a request has **no** session (a live session costs no extra
+  read), and only honoured while the user is still disabled.
+
+Ending sessions by other means (sign out everywhere, a role downgrade, a
+password change) writes no markers: those are plain 401s.
+
+In the browser, `withAccountDisabledGuard` (`src/react-app/lib/auth/account-disabled.ts`)
+sends the tab to the public `/account-disabled` page when any same-origin
+`/api/` response is a 403 with that body. The request's promise never
+settles, so no caller shows an error on the way out, and the session-ended
+dialog is never shown to a disabled account. A tab that makes no request is
+expelled on its next request or when it regains focus (the focus refetch
+reads get-session); there is no polling for it.
+
+**Sign-in.** The password is checked first (`src/worker/lib/sign-in-guard.ts`).
+Better Auth's session hook (`databaseHooks.session.create.before`) refuses a
+disabled user, and Better Auth then answers 401 `FAILED_TO_CREATE_SESSION`,
+which only happens after the credentials were accepted. That one answer, and
+only that one, becomes 403 `account_disabled`, without a session or a cookie.
+A wrong password gets the ordinary invalid-credentials answer whether or not the
+account is disabled, so a disabled account is never revealed to someone who
+does not know its password. Google and email-link sign-ins reach the same hook
+and get no session.
+
+Known limit: a browser that still carries the cookie of a session a disable
+ended gets 403 `account_disabled` for any failed sign-in, whatever email is
+typed (`disabledAwareCatchAll` looks at the cookie, not the email). It depends
+on the cookie, not on the email, so it reveals nothing about other accounts.
+
+### Session ended
+
+When the session ends under an open page (idle expiry, "sign out everywhere"
+from another device) the page is kept and a dialog asks for a new sign-in
+(`src/react-app/lib/auth/session-ended.ts`, `components/auth/SessionEndedDialog.tsx`).
+What the user was doing survives, and the requests that failed run after they
+sign in.
+
+- **Armed.** The tab is armed once get-session has returned a user. Only then
+  does a 401 mean "ended"; a visitor who was never signed in sees the sign-in
+  page as usual.
+- **Held.** `withSessionEndedGuard` holds a same-origin `/api/` request answered
+  401, and every request made while the dialog is open, and replays it after the
+  sign-in, so its caller gets the replay's response and never the 401. Replay is
+  safe because `authMiddleware` refuses before any handler runs. Not held:
+  `/api/auth/*` (the sign-in and the session refetch are what end the wait),
+  the client-error reports, requests with a stream body, and a `keepalive`
+  request sent after `pagehide` (nothing can await across an unload). Those get
+  their 401 as before.
+- **Replay order.** Identical reads merge into one call (the maintenance
+  interceptor's `sendReplay`); writes never merge and go one after another in
+  arrival order; reads go in parallel. At most two rounds, then the last
+  response is returned.
+- **The page is kept.** While a write is held, `held-requests.ts` adds a
+  `beforeunload` prompt. `standDownUnloadGuards()` switches every such guard off
+  for a forced expulsion (another account, the disabled page) so the browser does
+  not ask a second time.
+- **Use another account** confirms (if a write is held), signs out, and
+  navigates. The sign-out is bounded by a 4 s timeout so a stalled connection
+  never traps the user (`components/auth/leave-session.ts`). The same confirm
+  guards the forgot-password link. Leaving is sticky (`leave()`): nothing the page
+  held is ever replayed under another login; the navigation drops it.
+- **Privacy.** The dialog shows the email remembered in `localStorage`
+  (`auth.lastEmail`, removed by a sign-out). If the session ended with no
+  remembered email (an explicit sign-out in this or another tab, or storage
+  unavailable) the page reloads to `/` instead of showing the dialog over a
+  previous user's page. The cold-load sign-in page always starts empty.
+- **Same account** carries on; a different account reloads to `/`.
+
+### Re-login by sign-in method
+
+The dialog asks for what the account actually signs in with, never a password
+for a Google-only account. The methods are learned while the page is healthy
+(once the session has ended nothing can be asked of the server): after the first
+session seen, `rememberSignInMethods` reads `listAccounts()` and stores the
+provider ids and the email under `auth.lastMethods`
+(`src/react-app/lib/auth/reauth-methods.ts`). `resolveReauthMethods` turns that
+into what the dialog shows: a password field (the account has `credential`, or
+its methods are unknown), a "Continue with" button per social provider the
+deployment offers, and the components of the app's own methods. Unknown offers
+everything the deployment has except app-registered methods.
+
+**Social.** The popup is opened in the click's own turn (after an `await` a
+browser blocks it), at `about:blank`, then pointed at the provider URL from
+`signIn.social({ disableRedirect: true })`. The popup lands on
+`/auth/reauth-complete`, which tells the page over
+`BroadcastChannel("auth-reauth")` and closes itself. A channel, not
+`window.opener`: Google's cross-origin-opener policy severs the handle. The page
+refetches the session and the usual machinery restores or leaves. If the popup is
+blocked the only way left is a full redirect, which drops the page, so it is
+confirmed first (the discard confirm) and the provider returns to the page; a
+refusal shows once as a message (`takeReauthError`).
+
+**An app's own method.** `registerReauthMethod({ providerId, Component })`
+adds a method whose Better Auth account `providerId` is `providerId`; the
+component is rendered for accounts that have it. It must finish the sign-in in a
+way that ends in a new session for the same page (a popup, or a link opened
+elsewhere) and must not navigate this page away without
+`confirmAndDiscardForNavigation`. The starter registers none.
+`registerReauthMethod` throws on a reserved id (`credential`, or a social
+provider the dialog offers itself) and on a duplicate, in every environment, so
+a duplicate registration fails at module load, not in front of a user.
+
+**Adding magic-link sign-in later.** The starter has none; the slot is ready.
+Checklist:
+
+1. Add Better Auth's `magicLink` plugin in `createAuth` (`src/worker/middleware/auth.ts`)
+   with a `sendMagicLink` that uses the email sender, and `magicLinkClient()` in
+   `src/react-app/lib/auth/client.ts`. Add the email template.
+2. The tab-binding allow-list already exempts `magic-link`
+   (`BINDING_EXEMPT_AUTH_SEGMENTS` in `src/worker/lib/auth-requests.ts`): the
+   verify call arrives from a link, in a tab that has no session id.
+3. **Disabled accounts.** The session-create hook already refuses a disabled
+   user, so no session is made. But the verify call is a `GET /api/auth/magic-link/verify`,
+   and the password guard (`signInWithDisabledGuard`) wraps only
+   `POST .../sign-in/email`. So a disabled account's verify gets Better Auth's
+   generic failure, not 403 `account_disabled`: a redirect to the
+   `errorCallbackURL` with `?error=failed_to_create_session`, and the link is
+   spent. Someone holding the link has proved they own the mailbox, so telling
+   them the account is disabled reveals nothing. To say it, make the app's
+   `errorCallbackURL` page treat `error=failed_to_create_session` as "account
+   disabled" and go to `/account-disabled` (that code can only come from the
+   session hook, which refuses nobody else). The step that *sends* the link
+   answers `{ status: true }` for every address, so it reveals nothing either.
+4. Register the re-login: a component that asks for the link without leaving the page.
+   ```tsx
+   import { registerReauthMethod } from "@/lib/auth/reauth-methods";
+   import { authClient } from "@/lib/auth/client";
+
+   registerReauthMethod({
+     providerId: "magic-link", // the account's providerId
+     Component: ({ email }) => (
+       <Button onClick={() => authClient.signIn.magicLink({ email, callbackURL: "/auth/reauth-complete", errorCallbackURL: "/auth/reauth-complete?error=1" })}>
+         Email me a link
+       </Button>
+     ),
+   });
+   ```
+   The link opens in another tab or the mail app, lands on `/auth/reauth-complete`,
+   and the open page refetches the session on focus. Magic-link users have an
+   account whose `providerId` Better Auth records as the one the plugin creates;
+   check what `listAccounts()` returns for a magic-link-only user and use that id.
+5. Map its error codes (`INVALID_TOKEN`, `EXPIRED_TOKEN`, `failed_to_create_session`)
+   in `signInErrorMessage` (`src/shared/sign-in-error-message.ts`), matching the
+   code, never the English message.
+6. Test: a disabled account's verify gets no session and no cookie; a magic-link-only
+   account's dialog shows the button and no password field; the dialog restores the same
+   page after the link; a Google-only account is unaffected.
+
+### Tab session binding
+
+Cookies are shared by every tab of a browser profile, so a tab left open under
+one account would act under whichever account the cookie holds now. Each tab
+binds itself to the Better Auth `session.id` it learned from get-session (in
+memory only: a reload adopts the cookie's session, a sign-out clears it).
+
+- **Sent.** The session-ended guard adds `X-Session-Id` to every same-origin
+  `/api/` request, replays included, reading the id when the request is sent.
+- **Checked.** `authMiddleware` compares it with the session the cookie resolves
+  to, after the session is loaded and after the disabled gate: a different id is
+  409 `{ code: "session_changed" }`, before any handler, with no `Set-Cookie`.
+  Precedence: 401, then 403, then 409. No id means no check (CLI with an API key,
+  curl, old clients). Better Auth's own `/api/auth/*` routes pass the same check
+  (`refuseStaleAuthRequest`), except an allow-list of the sign-in and recovery
+  flows where a missing or old session is normal (`BINDING_EXEMPT_AUTH_SEGMENTS`
+  in `src/worker/lib/auth-requests.ts`). Anything not listed (update-user,
+  change-password, delete-user, ...) is checked, so a stale tab cannot change the
+  account the cookie holds now.
+- **Reaction.** The guard holds the 409 like a 401 and settles it with one
+  get-session, shared by every request refused at the same time. Same account:
+  the tab adopts the new id and replays the request once (a second refusal is
+  returned as it is, never a loop). Different account: the page leaves, a flag
+  is set in `sessionStorage`, it reloads `/`, and `SessionReplacedToast` shows
+  "The previous session in this tab was ended." once. Nothing is ever replayed
+  under another account.
+
+Known limits:
+
+- A request with `handles: "all"`, or one the layer `exclude`s, skips the guards,
+  and still carries no header, so it gets no check. `navigator.sendBeacon`
+  carries nothing.
+- Another tab's sign-in is noticed on the next request or when this tab regains
+  focus, not at once.
+- A same-account stale tab calling a Better Auth account route (update-user, for
+  example) gets the 409 back and must retry: those calls are not replayed.
+- The session is loaded, and refreshed, before the comparison, so a stale tab's
+  refused request on a normal route still pushes the other session's expiry
+  forward (no cookie goes to the stale tab).
+- A keepalive request sent at unload by a same-account tab that has not adopted
+  the new id yet is refused and lost.
 
 ---
 
