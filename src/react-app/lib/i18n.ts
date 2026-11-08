@@ -67,9 +67,13 @@ export const defaultMessages = {
 
 	// A session that ended under an open page (lib/auth/session-ended.ts)
 	"session.endedTitle": "Session ended",
-	"session.endedBody": "Your session ended. Enter your password to carry on where you left off.",
+	"session.endedBody": "Your session ended. Sign in again to carry on where you left off.",
 	"session.useAnotherAccount": "Use another account",
 	"session.discardHeld": "Changes that have not been sent yet will be lost. Continue?",
+	"session.continueWith": "Continue with {provider}",
+	"session.noMethod": "This account signs in with a method that is not available here.",
+	"session.socialFailed": "Signing in with {provider} did not complete. Try again.",
+	"session.reauthDone": "You are signed in. You can close this window.",
 	"session.replaced": "The previous session in this tab was ended.",
 
 	// A disabled account (lib/auth/account-disabled.ts, pages/auth/AccountDisabled.tsx)

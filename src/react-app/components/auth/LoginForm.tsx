@@ -28,9 +28,11 @@ interface LoginFormProps {
 	lockedEmail?: string;
 	/** Shown beside the forgot-password link in locked mode ("Use another account"). */
 	lockedFooter?: ReactNode;
+	/** Shown under the password button in locked mode: the account's other ways in (social, app-registered). */
+	lockedExtra?: ReactNode;
 }
 
-export function LoginForm({ onSuccess, showSignupLink = true, lockedEmail, lockedFooter }: LoginFormProps) {
+export function LoginForm({ onSuccess, showSignupLink = true, lockedEmail, lockedFooter, lockedExtra }: LoginFormProps) {
 	const locked = lockedEmail !== undefined;
 	const navigate = useNavigate();
 	const [email, setEmail] = useState("");
@@ -215,6 +217,8 @@ export function LoginForm({ onSuccess, showSignupLink = true, lockedEmail, locke
 					{isLoading ? "Signing in..." : "Sign In"}
 				</Button>
 			</div>
+
+			{locked && lockedExtra}
 
 			{features?.google && !isDemo && !locked && (
 				<>

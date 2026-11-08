@@ -1,22 +1,35 @@
 import { AlertDialog as AlertDialogPrimitive } from "radix-ui";
 import { authClient } from "@/lib/auth/client";
 import { getSessionEnded } from "@/lib/auth/session-ended";
+import { useAuthFeatures } from "@/lib/auth-features";
+import { type ReauthChoice, offeredSocialProviders, readStoredMethods, registeredReauthIds, registeredReauthMethod, resolveReauthMethods } from "@/lib/auth/reauth-methods";
 import { t } from "@/lib/i18n";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { AlertDialog, AlertDialogDescription, AlertDialogOverlay, AlertDialogPortal, AlertDialogTitle } from "../ui/alert-dialog";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { LoginForm } from "./LoginForm";
 import { switchAccount } from "./leave-session";
+import { ReauthSocialButton } from "./ReauthSocialButton";
+
+function storedMethods() {
+	try {
+		return readStoredMethods(window.localStorage);
+	} catch {
+		return null;
+	}
+}
 
 /**
  * A session ended under an open page: the sign-in over the kept, dimmed page.
  * Not dismissible: sign in again, or "Use another account". The account is shown as
- * text and only the password is asked. It calls no navigation after a successful
+ * text and it is offered what it signs in with (lib/auth/reauth-methods.ts): the password
+ * field, a social popup, an app-registered method. Never a password for an account without one. It calls no navigation after a successful
  * sign-in: Better Auth's session refetch restores the session and this unmounts.
  */
 export function SessionEndedDialog() {
 	const [leaving, setLeaving] = useState(false);
 	const email = getSessionEnded().rememberedEmail() ?? "";
+	const features = useAuthFeatures();
 
 	const onSwitchAccount = () =>
 		switchAccount({
@@ -25,6 +38,20 @@ export function SessionEndedDialog() {
 			navigate: () => window.location.replace("/"),
 			onLeaving: () => setLeaving(true),
 		});
+
+	const choice = features
+		? resolveReauthMethods(storedMethods(), email, offeredSocialProviders(features), registeredReauthIds())
+		: undefined;
+	const footer = (
+		<button
+			type="button"
+			onClick={() => void onSwitchAccount()}
+			disabled={leaving}
+			className="whitespace-nowrap text-primary hover:underline bg-transparent border-none p-0 cursor-pointer disabled:opacity-50"
+		>
+			{t("session.useAnotherAccount")}
+		</button>
+	);
 
 	return (
 		<AlertDialog open>
@@ -42,23 +69,58 @@ export function SessionEndedDialog() {
 							<CardDescription className="text-center text-xs">{t("session.endedBody")}</CardDescription>
 						</CardHeader>
 						<CardContent className="px-5 pb-6">
-							<LoginForm
-								lockedEmail={email}
-								lockedFooter={
-									<button
-										type="button"
-										onClick={() => void onSwitchAccount()}
-										disabled={leaving}
-										className="whitespace-nowrap text-primary hover:underline bg-transparent border-none p-0 cursor-pointer disabled:opacity-50"
-									>
-										{t("session.useAnotherAccount")}
-									</button>
-								}
-							/>
+							{choice === undefined ? null : (
+								<ReauthBody email={email} choice={choice} footer={footer} />
+							)}
 						</CardContent>
 					</Card>
 				</AlertDialogPrimitive.Content>
 			</AlertDialogPortal>
 		</AlertDialog>
+	);
+}
+
+/** The methods the account has. The password form carries the email and the footer itself; without it they are shown here. */
+function ReauthBody({ email, choice, footer }: { email: string; choice: ReauthChoice; footer: ReactNode }) {
+	const others = (
+		<div className="space-y-3">
+			{choice.social.map((id) => (
+				<ReauthSocialButton key={id} provider={id} />
+			))}
+			{choice.registered.map((id) => {
+				const Method = registeredReauthMethod(id)?.Component;
+				return Method ? <Method key={id} email={email} /> : null;
+			})}
+		</div>
+	);
+	if (choice.password) {
+		return (
+			<LoginForm
+				lockedEmail={email}
+				lockedFooter={footer}
+				lockedExtra={
+					choice.social.length + choice.registered.length > 0 ? (
+						<>
+							<div className="relative my-4">
+								<div className="absolute inset-0 flex items-center">
+									<span className="w-full border-t" />
+								</div>
+							</div>
+							{others}
+						</>
+					) : null
+				}
+			/>
+		);
+	}
+	const none = choice.social.length + choice.registered.length === 0;
+	return (
+		<div className="space-y-4">
+			<p className="text-center text-sm font-medium break-all" data-testid="locked-email">
+				{email}
+			</p>
+			{none ? <p className="text-center text-sm text-muted-foreground" data-testid="no-method">{t("session.noMethod")}</p> : others}
+			<div className="flex justify-center text-sm">{footer}</div>
+		</div>
 	);
 }

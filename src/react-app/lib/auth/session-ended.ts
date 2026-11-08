@@ -4,6 +4,7 @@ import { browser } from "../http/browser";
 import { sendReplay } from "../http/maintenance";
 import { SESSION_CHANGED_STATUS, SESSION_ID_HEADER, isSessionChangedBody } from "../../../shared/session-binding";
 import { standDownUnloadGuards, type HeldSummary } from "./held-requests";
+import { REAUTH_METHODS_KEY, learnSignInMethods, resetLearning } from "./reauth-methods";
 
 /** localStorage key of the last signed-in email: what the re-login dialog shows as the account. */
 export const REMEMBERED_EMAIL_KEY = "auth.lastEmail";
@@ -45,6 +46,8 @@ export type SessionEndedDeps = {
 	/** Per-tab storage for the toast flag (`sessionStorage`); null or absent: no toast. */
 	flagStorage?: Pick<Storage, "setItem"> | null;
 	replaceLocation: (url: string) => void;
+	/** A session was seen for this (same) user: the place to learn how the account signs in. */
+	onUserSeen?: (user: { id: string; email: string }) => void;
 };
 
 export type SessionEnded = {
@@ -116,6 +119,7 @@ export function createSessionEnded(deps: SessionEndedDeps): SessionEnded {
 	const remove = (): void => {
 		try {
 			deps.storage?.removeItem(REMEMBERED_EMAIL_KEY);
+			deps.storage?.removeItem(REAUTH_METHODS_KEY);
 		} catch {
 			// Storage unavailable.
 		}
@@ -170,10 +174,12 @@ export function createSessionEnded(deps: SessionEndedDeps): SessionEnded {
 				notify();
 			}
 			armedUserId = user.id;
+			deps.onUserSeen?.(user);
 		},
 		signingOut() {
 			armedUserId = null;
 			tabSessionId = null;
+			resetLearning();
 			remove();
 		},
 		markEnded() {
@@ -208,6 +214,7 @@ const defaultInstance = createSessionEnded({
 	storage: defaultStorage(),
 	flagStorage: defaultFlagStorage(),
 	replaceLocation: (url) => browser.location?.replace(url),
+	onUserSeen: (user) => learnSignInMethods(user.email, defaultStorage()),
 });
 
 export function getSessionEnded(): SessionEnded {
