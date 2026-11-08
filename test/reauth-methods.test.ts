@@ -4,12 +4,15 @@ import {
 	REAUTH_METHODS_KEY,
 	offeredSocialProviders,
 	readStoredMethods,
+	registerReauthMethod,
+	registeredReauthIds,
 	rememberSignInMethods,
+	resetReauthMethods,
 	resetLearning,
 	resolveReauthMethods,
 	socialProviderName,
 } from "../src/react-app/lib/auth/reauth-methods";
-import { REAUTH_COMPLETE_PATH, pageNavigationDeps, startSocialReauth, type SocialReauthDeps, type SocialReauthState } from "../src/react-app/lib/auth/social-reauth";
+import { REAUTH_COMPLETE_PATH, pageNavigationDeps, startSocialReauth, takeReauthError, type SocialReauthDeps, type SocialReauthState } from "../src/react-app/lib/auth/social-reauth";
 import { createSessionEnded, REMEMBERED_EMAIL_KEY } from "../src/react-app/lib/auth/session-ended";
 
 /**
@@ -152,6 +155,14 @@ function harness(opts: { popup?: boolean; signIn?: SocialReauthDeps["signInSocia
 }
 
 describe("startSocialReauth, popup open", () => {
+	it("a popup that comes back already closed (blocker extension) is treated as blocked: redirect fallback, URL never assigned", async () => {
+		const h = harness();
+		(h.popup as { closed?: boolean }).closed = true;
+		expect(await startSocialReauth("google", h.deps)).toBe("redirecting");
+		expect(h.log).toContain("confirm");
+		expect(h.log.some((l) => l.startsWith("signInSocial:") && !l.includes("disableRedirect"))).toBe(true);
+		expect(h.popup.location.href).toBe("about:blank");
+	});
 	it("opens the popup before signInSocial is awaited (browsers block a popup opened after an await)", async () => {
 		const h = harness();
 		const run = startSocialReauth("google", h.deps);
@@ -294,5 +305,37 @@ describe("the real confirm and resume the dialog uses (the discard-for-navigatio
 			throw new Error("must not ask");
 		});
 		expect(pageNavigationDeps.confirm()).toBe(true);
+	});
+});
+
+describe("registerReauthMethod", () => {
+	afterEach(() => resetReauthMethods());
+	const method = (providerId: string) => ({ providerId, Component: () => null });
+
+	it("a registered method is offered to an account that has it, and only to that one", () => {
+		registerReauthMethod(method("magic-link"));
+		const ids = registeredReauthIds();
+		expect(resolveReauthMethods({ email: "a@x", providers: ["magic-link"] }, "a@x", [], ids).registered).toEqual(["magic-link"]);
+		expect(resolveReauthMethods({ email: "a@x", providers: ["credential"] }, "a@x", [], ids).registered).toEqual([]);
+	});
+	it("refuses a reserved id (the dialog already renders it)", () => {
+		expect(() => registerReauthMethod(method("credential"))).toThrow(/already handled/);
+		expect(() => registerReauthMethod(method("google"))).toThrow(/already handled/);
+		expect(registeredReauthIds()).toEqual([]);
+	});
+	it("refuses a duplicate id and keeps the first", () => {
+		const first = method("magic-link");
+		registerReauthMethod(first);
+		expect(() => registerReauthMethod(method("magic-link"))).toThrow(/already registered/);
+		expect(registeredReauthIds()).toEqual(["magic-link"]);
+	});
+});
+
+describe("takeReauthError", () => {
+	it("no error parameter: nothing to say", () => {
+		expect(takeReauthError("http://app.test/page?x=1")).toEqual({ failed: false, cleanHref: "http://app.test/page?x=1" });
+	});
+	it("an error return: failed, with the parameters stripped and the rest kept", () => {
+		expect(takeReauthError("http://app.test/page?x=1&error=access_denied&error_description=no#h")).toEqual({ failed: true, cleanHref: "/page?x=1#h" });
 	});
 });

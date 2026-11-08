@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { authClient } from "@/lib/auth/client";
 import { socialProviderName } from "@/lib/auth/reauth-methods";
-import { REAUTH_CHANNEL, pageNavigationDeps, startSocialReauth, type SocialReauthState } from "@/lib/auth/social-reauth";
+import { REAUTH_CHANNEL, pageNavigationDeps, startSocialReauth, takeReauthError, type SocialReauthState } from "@/lib/auth/social-reauth";
 import { t } from "@/lib/i18n";
 import { Button } from "../ui/button";
 import { GoogleLogo } from "./GoogleSignInButton";
@@ -14,10 +14,13 @@ import { GoogleLogo } from "./GoogleSignInButton";
  * with the button usable again and a message.
  */
 export function ReauthSocialButton({ provider }: { provider: string }) {
-	const [state, setState] = useState<SocialReauthState>("idle");
+	// Back from a redirect the provider refused: say so once (the URL is cleaned in the effect below).
+	const [state, setState] = useState<SocialReauthState>(() => (takeReauthError(window.location.href).failed ? "failed" : "idle"));
 	const mounted = useRef(true);
 	useEffect(() => {
 		mounted.current = true;
+		const { failed, cleanHref } = takeReauthError(window.location.href);
+		if (failed) window.history.replaceState(window.history.state, "", cleanHref);
 		return () => {
 			mounted.current = false;
 		};

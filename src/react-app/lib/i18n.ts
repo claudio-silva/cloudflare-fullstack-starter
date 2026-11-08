@@ -73,6 +73,7 @@ export const defaultMessages = {
 	"session.continueWith": "Continue with {provider}",
 	"session.noMethod": "This account signs in with a method that is not available here.",
 	"session.socialFailed": "Signing in with {provider} did not complete. Try again.",
+	"session.reauthFailed": "Signing in did not complete. Close this window and try again.",
 	"session.reauthDone": "You are signed in. You can close this window.",
 	"session.replaced": "The previous session in this tab was ended.",
 

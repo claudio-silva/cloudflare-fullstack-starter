@@ -15,7 +15,7 @@ export type ReauthMessage = { type: "reauth-complete"; ok: boolean };
 
 export type SocialReauthState = "busy" | "idle" | "failed";
 
-type PopupLike = { location: { href: string }; close(): void };
+type PopupLike = { location: { href: string }; closed?: boolean; close(): void };
 type ChannelLike = { onmessage: ((event: MessageEvent) => unknown) | null; close(): void };
 
 export type SocialReauthDeps = {
@@ -59,7 +59,10 @@ export type SocialReauthOutcome = "redirecting" | "declined" | "popup" | "failed
  * completion that does not restore the session all return it to idle (or failed).
  */
 export async function startSocialReauth(provider: string, deps: SocialReauthDeps): Promise<SocialReauthOutcome> {
-	const popup = deps.openWindow("about:blank", REAUTH_CHANNEL, REAUTH_POPUP_FEATURES);
+	const opened = deps.openWindow("about:blank", REAUTH_CHANNEL, REAUTH_POPUP_FEATURES);
+	// A blocker extension can hand back a window that is already closed. Checked now, before the URL
+	// is assigned (COOP only severs the handle once the provider's page loads), it counts as blocked.
+	const popup = opened !== null && opened.closed !== true ? opened : null;
 
 	if (popup === null) {
 		if (!deps.confirm()) return "declined";
@@ -77,6 +80,8 @@ export async function startSocialReauth(provider: string, deps: SocialReauthDeps
 	}
 
 	const channel = deps.channel();
+	// Armed first so `finish` can read it; the callback only runs later, after `finish` exists.
+	const timer = deps.setTimeout(() => finish("idle"), REAUTH_TIMEOUT_MS);
 	let settle: unknown;
 	let stopFocus: () => void = () => undefined;
 	let done = false;
@@ -107,7 +112,6 @@ export async function startSocialReauth(provider: string, deps: SocialReauthDeps
 	// The user may have closed the popup: they come back to this window. The channel stays open, so a
 	// completion that is still on its way is not lost.
 	stopFocus = deps.onFocus(() => deps.onState("idle"));
-	const timer = deps.setTimeout(() => finish("idle"), REAUTH_TIMEOUT_MS);
 
 	let url: string | undefined;
 	try {
@@ -128,4 +132,17 @@ export async function startSocialReauth(provider: string, deps: SocialReauthDeps
 	}
 	popup.location.href = url;
 	return "popup";
+}
+
+/**
+ * The redirect fallback returns to the page with `?error=<code>` when the provider refused. Pure:
+ * says whether that happened and what the URL is without the parameters Better Auth added, so the
+ * message shows once and a reload does not repeat it.
+ */
+export function takeReauthError(href: string): { failed: boolean; cleanHref: string } {
+	const url = new URL(href);
+	if (!url.searchParams.has("error")) return { failed: false, cleanHref: href };
+	url.searchParams.delete("error");
+	url.searchParams.delete("error_description");
+	return { failed: true, cleanHref: `${url.pathname}${url.search}${url.hash}` };
 }

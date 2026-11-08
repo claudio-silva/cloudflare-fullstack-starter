@@ -7,6 +7,7 @@ import { t } from "@/lib/i18n";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { AlertDialog, AlertDialogDescription, AlertDialogOverlay, AlertDialogPortal, AlertDialogTitle } from "../ui/alert-dialog";
 import { useState, type ReactNode } from "react";
+import { Button } from "../ui/button";
 import { LoginForm } from "./LoginForm";
 import { switchAccount } from "./leave-session";
 import { ReauthSocialButton } from "./ReauthSocialButton";
@@ -42,7 +43,8 @@ export function SessionEndedDialog() {
 	const choice = features
 		? resolveReauthMethods(storedMethods(), email, offeredSocialProviders(features), registeredReauthIds())
 		: undefined;
-	const footer = (
+	// With a password field the exit is a quiet link beside it; without one it is the only exit, so a real button.
+	const footer = choice?.password ? (
 		<button
 			type="button"
 			onClick={() => void onSwitchAccount()}
@@ -51,6 +53,10 @@ export function SessionEndedDialog() {
 		>
 			{t("session.useAnotherAccount")}
 		</button>
+	) : (
+		<Button type="button" variant="outline" className="w-full" onClick={() => void onSwitchAccount()} disabled={leaving}>
+			{t("session.useAnotherAccount")}
+		</Button>
 	);
 
 	return (
@@ -120,7 +126,7 @@ function ReauthBody({ email, choice, footer }: { email: string; choice: ReauthCh
 				{email}
 			</p>
 			{none ? <p className="text-center text-sm text-muted-foreground" data-testid="no-method">{t("session.noMethod")}</p> : others}
-			<div className="flex justify-center text-sm">{footer}</div>
+			<div className="text-sm">{footer}</div>
 		</div>
 	);
 }

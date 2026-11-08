@@ -19,7 +19,7 @@ export function ReauthComplete() {
 	}, [ok]);
 	return (
 		<div className="min-h-screen flex items-center justify-center px-4">
-			<p className="text-center text-sm text-muted-foreground">{ok ? t("session.reauthDone") : t("session.socialFailed", { provider: "the provider" })}</p>
+			<p className="text-center text-sm text-muted-foreground">{ok ? t("session.reauthDone") : t("session.reauthFailed")}</p>
 		</div>
 	);
 }

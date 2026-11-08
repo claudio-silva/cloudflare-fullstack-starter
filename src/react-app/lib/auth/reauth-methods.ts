@@ -79,14 +79,30 @@ export type ReauthMethod = {
 
 const registry = new Map<string, ReauthMethod>();
 
+/** Ids the dialog already renders itself: the password and every social provider this deployment can offer. */
+function reservedIds(): string[] {
+	return ["credential", ...Object.keys(PROVIDER_NAMES)];
+}
+
 /**
  * An app that adds a sign-in method (a magic link, say) registers how to re-authenticate with it.
  * The starter registers none. The component must complete the sign-in in a way that ends in a new
  * session for the same page (a popup, or a link opened elsewhere) and never navigates this page
  * away without `confirmAndDiscardForNavigation` (components/auth/leave-session.ts).
+ *
+ * Throws on a reserved id (`credential`, or a social provider the dialog offers itself) and on an id
+ * already registered: either would render the method twice, or silently replace another one. It is a
+ * programming error, so it fails at registration (module load), not in front of a user.
  */
 export function registerReauthMethod(method: ReauthMethod): void {
+	if (reservedIds().includes(method.providerId)) throw new Error(`registerReauthMethod: "${method.providerId}" is already handled by the re-login dialog`);
+	if (registry.has(method.providerId)) throw new Error(`registerReauthMethod: "${method.providerId}" is already registered`);
 	registry.set(method.providerId, method);
+}
+
+/** Test only: empties the registry. */
+export function resetReauthMethods(): void {
+	registry.clear();
 }
 
 export function registeredReauthMethod(providerId: string): ReauthMethod | undefined {
