@@ -13,9 +13,6 @@ import { authClient } from "./lib/auth/client";
 import { setHeldRequests } from "./lib/auth/held-requests";
 import { getSessionEnded, trackPageLeaving, withSessionEndedGuard } from "./lib/auth/session-ended";
 
-// Before anything renders, so a call made during the first paint is covered
-// too. It patches global fetch, which is the only way to also catch requests
-// issued by libraries such as Better Auth. See lib/http/interceptor.ts.
 trackPageLeaving(window);
 
 // A request answered 401 changed nothing (authMiddleware refuses before any
@@ -23,9 +20,13 @@ trackPageLeaving(window);
 const sessionEndedGuard = (next: typeof fetch) =>
 	withSessionEndedGuard(next, getSessionEnded(), location.origin, { onHeldChange: (_count, summary) => setHeldRequests(summary) });
 
+// Before anything renders, so a call made during the first paint is covered
+// too. It patches global fetch, which is the only way to also catch requests
+// issued by libraries such as Better Auth. See lib/http/interceptor.ts.
 installHttpLayer({
 	// A 401 means the session is gone: have Better Auth re-check it, which
-	// brings up the sign-in overlay on protected pages.
+	// ends the session under the open page (the re-login dialog) or, with no
+	// session known, shows the sign-in page.
 	onUnauthorized: () => authClient.$store.notify("$sessionSignal"),
 	guards: [sessionEndedGuard],
 });

@@ -17,7 +17,7 @@ export const SIGN_OUT_TIMEOUT_MS = 4000;
  */
 export function confirmAndDiscardForNavigation(
 	confirmFn?: (message: string) => boolean,
-	target: Pick<Required<typeof browser>, "addEventListener"> | null = browser.addEventListener ? (browser as Required<typeof browser>) : null,
+	target: { addEventListener: (type: string, listener: (event: Event) => void, options?: { once?: boolean }) => void } | null = browser.addEventListener ? (browser as Required<typeof browser>) : null,
 ): boolean {
 	if (!confirmDiscardHeldRequests(confirmFn)) return false;
 	standDownUnloadGuards();
@@ -26,7 +26,7 @@ export function confirmAndDiscardForNavigation(
 		if (!(event as unknown as { persisted?: boolean }).persisted) return;
 		resumeUnloadGuards();
 		getSessionEnded().resume();
-	});
+	}, { once: true });
 	return true;
 }
 
@@ -39,7 +39,7 @@ export async function switchAccount(deps: {
 	navigate: () => void;
 	onLeaving?: () => void;
 	confirmFn?: (message: string) => boolean;
-	target?: Pick<Required<typeof browser>, "addEventListener"> | null;
+	target?: { addEventListener: (type: string, listener: (event: Event) => void, options?: { once?: boolean }) => void } | null;
 	timeoutMs?: number;
 }): Promise<boolean> {
 	if (!confirmAndDiscardForNavigation(deps.confirmFn, deps.target)) return false;

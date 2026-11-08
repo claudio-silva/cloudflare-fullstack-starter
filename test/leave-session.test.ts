@@ -1,5 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getSessionEnded } from "../src/react-app/lib/auth/session-ended";
+
+// The page's default session state reads localStorage once, at import.
+vi.hoisted(() => {
+	const map = new Map<string, string>();
+	(globalThis as { localStorage?: unknown }).localStorage = {
+		getItem: (k: string) => map.get(k) ?? null,
+		setItem: (k: string, v: string) => void map.set(k, v),
+		removeItem: (k: string) => void map.delete(k),
+	};
+});
+import { withSessionEndedGuard, getSessionEnded } from "../src/react-app/lib/auth/session-ended";
 import { resumeUnloadGuards, setHeldRequests } from "../src/react-app/lib/auth/held-requests";
 import { confirmAndDiscardForNavigation, switchAccount } from "../src/react-app/components/auth/leave-session";
 import { defaultMessages } from "../src/react-app/lib/i18n";
@@ -91,5 +101,38 @@ describe("switchAccount", () => {
 		expect(navigated).toBe(1);
 		await switchAccount({ confirmFn: () => true, target: null, signOut: () => Promise.reject(new Error("network")), navigate: () => void navigated++ });
 		expect(navigated).toBe(2);
+	});
+});
+
+describe("forgot-password from the dialog, then Back from the bfcache", () => {
+	it("a persisted pageshow restores the session logic, so the dialog sign-in replays the held write", async () => {
+		const listeners: ((e: Event) => void)[] = [];
+		const target = { addEventListener: (_t: string, l: (e: Event) => void) => void listeners.push(l) };
+		const state = getSessionEnded();
+		state.sessionSeen({ id: "u1", email: "a@x" });
+		let authed = false;
+		const calls: string[] = [];
+		const f = withSessionEndedGuard(
+			(async (input: RequestInfo | URL) => {
+				calls.push(String(input));
+				await Promise.resolve();
+				return new Response("{}", { status: authed ? 200 : 401 });
+			}) as typeof fetch,
+			state,
+			"http://app.test",
+			{ onHeldChange: (_n, summary) => setHeldRequests(summary) },
+		);
+		const pending = f("/api/profile", { method: "POST", body: "{}" });
+		for (let i = 0; i < 20; i++) await Promise.resolve();
+		expect(state.isEnded()).toBe(true);
+		// The link: what LoginForm calls, then the page goes away and comes back from the bfcache.
+		expect(confirmAndDiscardForNavigation(() => true, target)).toBe(true);
+		listeners[0]({ persisted: true } as unknown as Event);
+		expect(unloadPrompts()).toBe(true);
+		authed = true;
+		state.sessionSeen({ id: "u1", email: "a@x" });
+		expect((await pending).status).toBe(200);
+		expect(state.isEnded()).toBe(false);
+		expect(calls).toEqual(["/api/profile", "/api/profile"]);
 	});
 });

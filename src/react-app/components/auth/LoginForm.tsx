@@ -10,8 +10,7 @@ import { Eye, EyeOff } from "lucide-react";
 import { GoogleSignInButton } from "./GoogleSignInButton";
 import { useDemoAccounts } from "@/lib/demo";
 import { useAuthFeatures } from "@/lib/auth-features";
-import { confirmDiscardHeldRequests, standDownUnloadGuards } from "@/lib/auth/held-requests";
-import { getSessionEnded } from "@/lib/auth/session-ended";
+import { confirmAndDiscardForNavigation } from "./leave-session";
 
 /** "Admin" for an account with the admin role; its address when it has none. */
 const roleLabel = (account: { email: string; role: string | null }) =>
@@ -41,7 +40,7 @@ export function LoginForm({ onSuccess, showSignupLink = true, lockedEmail, locke
 	const passwordRef = useRef<HTMLInputElement>(null);
 	// The public demo: offer its accounts, and hide what it would refuse anyway.
 	const demoAccounts = useDemoAccounts();
-	const demo = locked ? null : demoAccounts;
+	const demo = demoAccounts;
 	// Which methods this deployment really offers; see src/react-app/lib/auth-features.ts.
 	const features = useAuthFeatures();
 	const isDemo = !!demo;
@@ -89,7 +88,7 @@ export function LoginForm({ onSuccess, showSignupLink = true, lockedEmail, locke
 				</Alert>
 			)}
 
-			{demo && (
+			{demo && !locked && (
 				<Alert>
 					<AlertDescription className="flex flex-col gap-2">
 						<span>
@@ -180,22 +179,20 @@ export function LoginForm({ onSuccess, showSignupLink = true, lockedEmail, locke
 				</div>
 			</div>
 
-			{!isDemo && <div className="flex justify-between items-center text-sm">
-				<button
+			{(!isDemo || locked) && <div className="flex justify-between items-center text-sm">
+				{!isDemo ? <button
 					type="button"
 					onClick={() => {
 						if (!locked) return navigate(`/forgot-password${email ? `?email=${encodeURIComponent(email)}` : ""}`);
 						// A full navigation: held requests die with the page, so ask first, and
 						// the browser's own prompt must not ask again.
-						if (!confirmDiscardHeldRequests()) return;
-						standDownUnloadGuards();
-						getSessionEnded().leave();
+						if (!confirmAndDiscardForNavigation()) return;
 						window.location.assign(`/forgot-password?email=${encodeURIComponent(lockedEmail)}`);
 					}}
 					className="text-primary hover:underline bg-transparent border-none p-0 cursor-pointer"
 				>
 					Forgot password?
-				</button>
+				</button> : <span />}
 				{locked ? lockedFooter : showSignupLink && (
 					<div className="text-muted-foreground">
 						Don't have an account?{"  "}

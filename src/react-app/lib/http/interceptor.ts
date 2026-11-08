@@ -86,8 +86,9 @@ export type HttpErrorReport = {
 
 export type HttpLayerOptions = {
 	/**
-	 * Called on a 401 from a managed path. The starter re-checks the Better
-	 * Auth session, which shows the sign-in overlay if it has really expired.
+	 * Called on a 401 from a managed path that no guard held. The starter
+	 * re-checks the Better Auth session, which ends it under the open page
+	 * (the re-login dialog) or, with no session known, shows the sign-in page.
 	 */
 	onUnauthorized?: () => void;
 	/** Called for every error the layer reports; with `ui: { errors: false }`, instead of the toast. */
