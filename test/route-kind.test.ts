@@ -45,4 +45,17 @@ describe("route kinds", () => {
 		await read(app, "/b");
 		expect(await read(app, "/n")).toBe("false");
 	});
+
+	it("is still background for a sub-app with its own onError, when the marker is listed before the reader", async () => {
+		// Hono wraps the handlers of a sub-app that has its own onError, which hides the marker from
+		// matchedRoutes (so listing it after the reader would not work there), but the flag it sets still does.
+		const sub = new Hono();
+		sub.onError((err, c) => c.text(err.message, 500));
+		sub.get("/b", background, reader);
+		sub.get("/n", reader);
+		const app = new Hono();
+		app.route("/sub", sub);
+		expect(await read(app, "/sub/b")).toBe("true");
+		expect(await read(app, "/sub/n")).toBe("false");
+	});
 });

@@ -18,6 +18,11 @@ const cliKey = { "x-api-key": env.CLI_API_KEY as string };
 const probe = new Hono<AppBindings>();
 probe.get("/api/__normal", authMiddleware, (c) => c.json({ ok: true }));
 probe.get("/api/__bg", background, authMiddleware, (c) => c.json({ ok: true }));
+// The same background route inside a sub-app with its own onError, where Hono hides the marker from matchedRoutes.
+const sub = new Hono<AppBindings>();
+sub.onError((err, c) => c.text(err.message, 500));
+sub.get("/__bg", background, authMiddleware, (c) => c.json({ ok: true }));
+probe.route("/api/__sub", sub);
 const hit = (path: string, cookie: string | null) => probe.request(path, { headers: cookie ? { cookie } : {} }, local);
 
 let n = 0;
@@ -68,8 +73,24 @@ describe("session refresh", () => {
 		expect(res.headers.getSetCookie().some((c) => c.startsWith("better-auth.session_token="))).toBe(false);
 	});
 
+	it("a background route in a sub-app with its own onError is still background (the marker listed before authMiddleware)", async () => {
+		const { cookie, token } = await signedIn();
+		const before = await rewind(token);
+		const res = await hit("/api/__sub/__bg", cookie);
+		expect(res.status).toBe(200);
+		expect(ms((await row(token)).expiresAt)).toBe(ms(before.expiresAt));
+		expect(res.headers.getSetCookie().some((c) => c.startsWith("better-auth.session_token="))).toBe(false);
+	});
+
 	it("a denied request carries no Set-Cookie", async () => {
-		const res = await hit("/api/__normal", null);
+		// The cookie of a session whose row is gone: Better Auth answers by clearing it. A request with no
+		// cookie at all would never have a Set-Cookie to forward, so it could not tell the gate from its absence.
+		const { cookie, token } = await signedIn();
+		await db.deleteFrom("sessions").where("token", "=", token).execute();
+		const underlying = await app.request("/api/auth/get-session", { headers: { cookie } }, local);
+		expect(underlying.headers.getSetCookie().length, "Better Auth does write a clearing cookie here").toBeGreaterThan(0);
+
+		const res = await hit("/api/__normal", cookie);
 		expect(res.status).toBe(401);
 		expect(res.headers.get("set-cookie")).toBeNull();
 	});
