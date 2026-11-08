@@ -7,6 +7,7 @@ import { createEmailSender, type EmailSender } from "../adapters/email";
 import { getVerificationEmailTemplate, getPasswordResetEmailTemplate } from "../utils/email-templates";
 import { config } from "../../config";
 import { failForAuthClient } from "../lib/errors";
+import { isBackgroundRoute } from "../lib/route-kind";
 import { denyUnlessLiveSession } from "../lib/account-disabled-gate";
 
 type Environment = "local" | "preview" | "production" | "test";
@@ -159,13 +160,9 @@ export function createAuth(c: AppContext) {
 		},
 		session: {
 			modelName: "sessions",
-			// Sessions expire after 24 hours without use: every touch (see updateAge)
-			// pushes the expiry a day ahead, so an active user stays signed in.
-			expiresIn: 60 * 60 * 24,
-			// A session is touched at most this often, and that touch is the user's
-			// "last seen" (the admin area shows Active / Idle from it). A day would
-			// leave it a day stale; a minute costs one small write per active session.
-			updateAge: 60,
+			// Idle lifetime and refresh rate come from config.auth.session.
+			expiresIn: config.auth.session.idleTimeoutSeconds,
+			updateAge: config.auth.session.refreshAfterSeconds,
 		},
 		// The sign-in log follows the sessions (lib/login-log.ts): a disabled
 		// account gets none; a session created by a sign-in is recorded with how it
@@ -268,10 +265,18 @@ export async function authMiddleware(c: AppContext, next: () => Promise<void>) {
 	}
 
 	const auth = createAuth(c);
-	const session = await auth.api.getSession({ headers: c.req.raw.headers });
+	// A background route reads the session without pushing its expiry forward.
+	const { headers, response: session } = await auth.api.getSession({
+		headers: c.req.raw.headers,
+		query: isBackgroundRoute(c) ? { disableRefresh: true } : undefined,
+		returnHeaders: true,
+	});
 
 	const decision = await denyUnlessLiveSession(c, session, createDb(c.env));
 	if (decision.denied) return decision.denied;
+
+	// Only a request that passed every gate carries Better Auth's cookies (the refreshed session).
+	for (const cookie of headers.getSetCookie()) c.header("set-cookie", cookie, { append: true });
 
 	c.set("user", decision.session.user);
 	c.set("session", decision.session.session);

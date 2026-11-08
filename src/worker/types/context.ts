@@ -16,6 +16,8 @@ export type AppBindings = {
 		session: unknown;
 		/** Set by versionMiddleware: the Cloudflare ray id, or a generated one where there is none. */
 		requestId: string;
+		/** Set by the `background` route marker (lib/route-kind.ts). */
+		routeKindBackground?: boolean;
 	};
 };
 
