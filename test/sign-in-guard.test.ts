@@ -35,9 +35,10 @@ describe("sign-in on a disabled account (the password is checked first)", () => 
 		const b = await signIn(disabled.email, "wrong-password");
 		expect(b.status).not.toBe(403);
 		expect(b.status).toBe(a.status);
-		const bodyA = (await a.json()) as { code?: string };
-		const bodyB = (await b.json()) as { code?: string };
+		const bodyA = (await a.json()) as { code?: string; message?: string };
+		const bodyB = (await b.json()) as { code?: string; message?: string };
 		expect(bodyB.code).toBe(bodyA.code);
+		expect(bodyB.message).toBe(bodyA.message);
 		expect(isAccountDisabledBody(bodyB)).toBe(false);
 		expect(await sessionCount(disabled.id)).toBe(0);
 	});
