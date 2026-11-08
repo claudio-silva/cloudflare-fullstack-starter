@@ -109,7 +109,7 @@ describe("a disabled account that signs in with Google is told so, not 'did not 
 			expect(popup.headers.get("location")).toBe("/auth/reauth-complete?error=account_disabled");
 			expect(cookiesOf(popup)).not.toContain("session_token=");
 
-			const fallback = await startWith("http://localhost:5181/some/page?reauth_error=google");
+			const fallback = await startWith(`${origin}/some/page?reauth_error=google`);
 			expect(fallback.status).toBe(302);
 			expect(fallback.headers.get("location")).toBe("/account-disabled");
 		} finally {

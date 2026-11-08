@@ -13,7 +13,7 @@ import {
 	resolveReauthMethods,
 	socialProviderName,
 } from "../src/react-app/lib/auth/reauth-methods";
-import { REAUTH_COMPLETE_PATH, pageNavigationDeps, reauthErrorCallbackURL, startSocialReauth, takeReauthError, type SocialReauthDeps, type SocialReauthState } from "../src/react-app/lib/auth/social-reauth";
+import { REAUTH_COMPLETE_PATH, pageNavigationDeps, reauthErrorCallbackURL, startSocialReauth, reauthUrlNeedsCleanup, takeReauthError, type SocialReauthDeps, type SocialReauthState } from "../src/react-app/lib/auth/social-reauth";
 import { createSessionEnded, REMEMBERED_EMAIL_KEY } from "../src/react-app/lib/auth/session-ended";
 
 /**
@@ -393,5 +393,16 @@ describe("takeReauthError", () => {
 		const url = reauthErrorCallbackURL("http://app.test/page?x=1", "google");
 		expect(url).toBe("http://app.test/page?x=1&reauth_error=google");
 		expect(takeReauthError(`${url}&error=failed`)).toEqual({ failed: true, provider: "google", cleanHref: "/page?x=1" });
+	});
+});
+
+describe("reauthUrlNeedsCleanup", () => {
+	it("is true for a hostile marker that takeReauthError strips without failing, false for an untouched URL", () => {
+		const hostile = "http://app.test/page?x=1&reauth_error=Call%20555-0100";
+		const r = takeReauthError(hostile);
+		expect(r.failed).toBe(false);
+		expect(reauthUrlNeedsCleanup(hostile, r.cleanHref)).toBe(true);
+		const plain = "http://app.test/page?x=1#h";
+		expect(reauthUrlNeedsCleanup(plain, takeReauthError(plain).cleanHref)).toBe(false);
 	});
 });

@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { toast } from "sonner";
 import { t } from "@/lib/i18n";
 import { socialProviderName } from "@/lib/auth/reauth-methods";
-import { takeReauthError } from "@/lib/auth/social-reauth";
+import { reauthUrlNeedsCleanup, takeReauthError } from "@/lib/auth/social-reauth";
 
 /**
  * Back from the social re-login redirect the provider refused: the browser did a cold load, where
@@ -13,8 +13,9 @@ import { takeReauthError } from "@/lib/auth/social-reauth";
 export function ReauthErrorToast() {
 	useEffect(() => {
 		const { failed, provider, cleanHref } = takeReauthError(window.location.href);
+		// A hostile marker is not a failure to announce, but it still must not linger in the address bar.
+		if (reauthUrlNeedsCleanup(window.location.href, cleanHref)) window.history.replaceState(window.history.state, "", cleanHref);
 		if (!failed) return;
-		window.history.replaceState(window.history.state, "", cleanHref);
 		toast.error(t("session.socialFailed", { provider: socialProviderName(provider ?? "") }));
 	}, []);
 	return null;

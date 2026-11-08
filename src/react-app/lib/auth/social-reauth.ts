@@ -170,3 +170,9 @@ export function takeReauthError(href: string): { failed: boolean; provider: stri
 	url.searchParams.delete("error_description");
 	return { failed, provider: failed ? marker : null, cleanHref: `${url.pathname}${url.search}${url.hash}` };
 }
+
+/** True when `cleanHref` (from `takeReauthError`) differs from where the page is now, so the address bar must be rewritten. */
+export function reauthUrlNeedsCleanup(currentHref: string, cleanHref: string): boolean {
+	const url = new URL(currentHref);
+	return cleanHref !== currentHref && cleanHref !== `${url.pathname}${url.search}${url.hash}`;
+}
