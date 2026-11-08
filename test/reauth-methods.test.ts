@@ -150,6 +150,7 @@ function harness(opts: { popup?: boolean; signIn?: SocialReauthDeps["signInSocia
 		},
 		clearTimeout: (h) => void ((h as { live: boolean } | undefined) && ((h as { live: boolean }).live = false)),
 		onState: (s) => void states.push(s),
+		onDisabled: () => void log.push("disabled"),
 	};
 	const message = (data: unknown) => channel.onmessage?.({ data } as MessageEvent);
 	return { deps, log, states, popup, channel, focus, timers, message };
@@ -194,6 +195,26 @@ describe("startSocialReauth, popup open", () => {
 		expect(h.log.filter((l) => l === "refetch")).toHaveLength(1);
 		expect(h.log).toContain("channel.close");
 		expect(h.focus.size).toBe(0);
+	});
+
+	it("a failure that says the account is disabled leaves for the account-disabled page, once, and releases everything", async () => {
+		const h = harness();
+		await startSocialReauth("google", h.deps);
+		h.message({ type: "reauth-complete", ok: false, reason: "account_disabled" });
+		h.message({ type: "reauth-complete", ok: false, reason: "account_disabled" });
+		expect(h.log.filter((l) => l === "disabled")).toHaveLength(1);
+		expect(h.log).toContain("channel.close");
+		expect(h.log).not.toContain("refetch");
+		expect(h.focus.size).toBe(0);
+		expect(h.states).toEqual(["busy"]);
+	});
+
+	it("an ordinary failure is not the disabled one", async () => {
+		const h = harness();
+		await startSocialReauth("google", h.deps);
+		h.message({ type: "reauth-complete", ok: false });
+		expect(h.log).not.toContain("disabled");
+		expect(h.states).toEqual(["busy", "failed"]);
 	});
 
 	it("an unrelated message is ignored", async () => {
@@ -359,6 +380,14 @@ describe("takeReauthError", () => {
 	});
 	it("our marker with Better Auth's error: failed for that provider, everything added stripped, the rest kept", () => {
 		expect(takeReauthError("http://app.test/page?x=1&reauth_error=google&error=access_denied&error_description=no#h")).toEqual({ failed: true, provider: "google", cleanHref: "/page?x=1#h" });
+	});
+	it("the marker alone is not a failure: it is stripped and nothing is shown", () => {
+		expect(takeReauthError("http://app.test/page?x=1&reauth_error=google#h")).toEqual({ failed: false, provider: null, cleanHref: "/page?x=1#h" });
+	});
+	it("a provider id the app does not know is never shown: parameters stripped, no failure", () => {
+		for (const id of ["Call%20555-0100", "unknown", "", "toString", "__proto__", "constructor"]) {
+			expect(takeReauthError(`http://app.test/page?x=1&reauth_error=${id}&error=access_denied&error_description=x`), id).toEqual({ failed: false, provider: null, cleanHref: "/page?x=1" });
+		}
 	});
 	it("the callback URL we send round-trips through it", () => {
 		const url = reauthErrorCallbackURL("http://app.test/page?x=1", "google");

@@ -42,8 +42,7 @@ export function LoginForm({ onSuccess, showSignupLink = true, lockedEmail, locke
 	const [error, setError] = useState("");
 	const passwordRef = useRef<HTMLInputElement>(null);
 	// The public demo: offer its accounts, and hide what it would refuse anyway.
-	const demoAccounts = useDemoAccounts();
-	const demo = demoAccounts;
+	const demo = useDemoAccounts();
 	// Which methods this deployment really offers; see src/react-app/lib/auth-features.ts.
 	const features = useAuthFeatures();
 	const isDemo = !!demo;

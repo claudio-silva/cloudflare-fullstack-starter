@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import { app } from "../src/worker/index";
 import { createDb } from "../src/worker/db";
 import { isAccountDisabledBody } from "../src/shared/account-status";
-import { signInWithDisabledGuard } from "../src/worker/lib/sign-in-guard";
+import { createEmailVerificationToken } from "better-auth/api";
+import { isSessionCreatingAuthRequest, signInWithDisabledGuard } from "../src/worker/lib/sign-in-guard";
 
 /**
  * A wrong password never reveals a disabled account: it gets the answer any account gets. Only a
@@ -74,23 +75,86 @@ describe("sign-in on a disabled account (the password is checked first)", () => 
 	});
 });
 
-describe("signInWithDisabledGuard", () => {
-	const request = () => new Request("http://x/api/auth/sign-in/email", { method: "POST", body: JSON.stringify({ email: " A@X.com " }) });
-	const refuse = () => new Response("disabled", { status: 403 });
-	it("passes any other failure through, without looking the email up", async () => {
-		let looked = false;
-		const wrong = Response.json({ code: "INVALID_EMAIL_OR_PASSWORD" }, { status: 401 });
-		const out = await signInWithDisabledGuard(request(), async () => wrong, async () => ((looked = true), true), refuse);
-		expect(out).toBe(wrong);
-		expect(looked).toBe(false);
+describe("email verification with auto sign-in (the verify step creates a session)", () => {
+	const secret = (env as unknown as Record<string, string | undefined>).BETTER_AUTH_SECRET ?? "better-auth-secret-12345678901234567890";
+	async function unverified(enabled: boolean) {
+		const u = await newUser(enabled);
+		await createDb(local).updateTable("users").set({ emailVerified: 0 }).where("id", "=", u.id).execute();
+		return { ...u, token: await createEmailVerificationToken(secret, u.email) };
+	}
+	const verify = (token: string) => app.request(`/api/auth/verify-email?token=${encodeURIComponent(token)}&callbackURL=/`, {}, local);
+
+	it("an enabled account is verified, signed in and redirected, unchanged", async () => {
+		const u = await unverified(true);
+		const res = await verify(u.token);
+		expect(res.status).toBe(302);
+		expect(res.headers.getSetCookie().some((c) => c.startsWith("better-auth.session_token="))).toBe(true);
+		expect(await sessionCount(u.id)).toBe(1);
 	});
-	it("a refused session on a disabled email is the refusal; on an enabled email it stays Better Auth's answer", async () => {
-		const refused = () => Response.json({ code: "FAILED_TO_CREATE_SESSION" }, { status: 401, headers: { "set-cookie": "a=b" } });
-		const asked: string[] = [];
-		const disabled = await signInWithDisabledGuard(request(), async () => refused(), async (e) => (asked.push(e), true), refuse);
-		expect(disabled.status).toBe(403);
-		expect(disabled.headers.get("set-cookie")).toBeNull();
-		expect(asked).toEqual(["a@x.com"]);
-		expect((await signInWithDisabledGuard(request(), async () => refused(), async () => false, refuse)).status).toBe(401);
+	it("a disabled account gets 403 account_disabled (the app's HTTP layer then leaves for /account-disabled), no session, no cookie", async () => {
+		const u = await unverified(false);
+		const res = await verify(u.token);
+		expect(res.status).toBe(403);
+		expect(await res.json()).toMatchObject({ code: "account_disabled" });
+		expect(res.headers.getSetCookie()).toEqual([]);
+		expect(await sessionCount(u.id)).toBe(0);
+	});
+	it("a bad token is still Better Auth's own answer", async () => {
+		const res = await verify("not-a-token");
+		expect(isAccountDisabledBody(await res.clone().json().catch(() => null))).toBe(false);
+	});
+});
+
+describe("signInWithDisabledGuard", () => {
+	const request = () => new Request("http://x/api/auth/sign-in/email", { method: "POST", body: JSON.stringify({ email: "a@x.com" }) });
+	const refuse = () => new Response("disabled", { status: 403 });
+	const refusedJson = () => Response.json({ code: "FAILED_TO_CREATE_SESSION" }, { status: 401, headers: { "set-cookie": "a=b" } });
+	const redirect = (location: string) => new Response(null, { status: 302, headers: { location, "set-cookie": "better-auth.state=; Max-Age=0" } });
+
+	it("passes any other failure through, even when the hook flagged a refusal elsewhere never happened", async () => {
+		const wrong = Response.json({ code: "INVALID_EMAIL_OR_PASSWORD" }, { status: 401 });
+		expect(await signInWithDisabledGuard(request(), async () => wrong, () => false, refuse)).toBe(wrong);
+	});
+	it("the same failure without the hook's flag stays Better Auth's answer", async () => {
+		expect((await signInWithDisabledGuard(request(), async () => refusedJson(), () => false, refuse)).status).toBe(401);
+	});
+	it("the flag is read after the handler ran, and a refused JSON route is the refusal with no cookie", async () => {
+		let flagged = false;
+		const out = await signInWithDisabledGuard(request(), async () => ((flagged = true), refusedJson()), () => flagged, refuse);
+		expect(out.status).toBe(403);
+		expect(out.headers.get("set-cookie")).toBeNull();
+	});
+	it("a refused OAuth callback goes to the account-disabled page, keeping the state-cookie deletion", async () => {
+		const out = await signInWithDisabledGuard(request(), async () => redirect("http://app.test/some/page?x=1&error=unable_to_create_session"), () => true, refuse);
+		expect(out.status).toBe(302);
+		expect(out.headers.get("location")).toBe("/account-disabled");
+		expect(out.headers.getSetCookie()).toEqual(["better-auth.state=; Max-Age=0"]);
+	});
+	it("a refusal whose error URL is the re-login completion page goes there with error=account_disabled", async () => {
+		const out = await signInWithDisabledGuard(request(), async () => redirect("/auth/reauth-complete?error=1&error=unable_to_create_session"), () => true, refuse);
+		expect(out.headers.get("location")).toBe("/auth/reauth-complete?error=account_disabled");
+	});
+	it("a redirect with another error, or without the flag, is untouched", async () => {
+		const other = redirect("/auth/reauth-complete?error=access_denied");
+		expect(await signInWithDisabledGuard(request(), async () => other, () => true, refuse)).toBe(other);
+		const unflagged = redirect("/x?error=unable_to_create_session");
+		expect(await signInWithDisabledGuard(request(), async () => unflagged, () => false, refuse)).toBe(unflagged);
+	});
+	it("a refused social idToken sign-in (JSON OAUTH_LINK_ERROR) is the refusal", async () => {
+		const out = await signInWithDisabledGuard(request(), async () => Response.json({ code: "OAUTH_LINK_ERROR", message: "unable to create session" }, { status: 401 }), () => true, refuse);
+		expect(out.status).toBe(403);
+	});
+});
+
+describe("isSessionCreatingAuthRequest", () => {
+	it("covers every route that can create a session, and no other", () => {
+		expect(isSessionCreatingAuthRequest("POST", "/api/auth/sign-in/email")).toBe(true);
+		expect(isSessionCreatingAuthRequest("POST", "/api/auth/sign-in/social")).toBe(true);
+		expect(isSessionCreatingAuthRequest("GET", "/api/auth/callback/google")).toBe(true);
+		expect(isSessionCreatingAuthRequest("GET", "/api/auth/verify-email")).toBe(true);
+		expect(isSessionCreatingAuthRequest("GET", "/api/auth/magic-link/verify")).toBe(true);
+		expect(isSessionCreatingAuthRequest("GET", "/api/auth/get-session")).toBe(false);
+		expect(isSessionCreatingAuthRequest("POST", "/api/auth/sign-out")).toBe(false);
+		expect(isSessionCreatingAuthRequest("POST", "/api/auth/sign-up/email")).toBe(false);
 	});
 });

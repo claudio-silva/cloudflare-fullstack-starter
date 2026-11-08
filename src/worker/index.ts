@@ -4,7 +4,7 @@ import { disabledAwareCatchAll, disabledAwareGetSession } from "./lib/account-di
 import type { AppBindings } from "./types/context";
 import { createAuth, handleAuthRequest } from "./middleware/auth";
 import { refuseStaleAuthRequest } from "./lib/auth-requests";
-import { signInWithDisabledGuard } from "./lib/sign-in-guard";
+import { isSessionCreatingAuthRequest, signInWithDisabledGuard } from "./lib/sign-in-guard";
 import { cli } from "./routes/cli";
 import { profile } from "./routes/profile";
 import { sessions } from "./routes/sessions";
@@ -12,7 +12,7 @@ import { admin } from "./routes/admin"; // [admin-area-line]
 import { config } from "../config";
 import { APP_COMMIT, APP_VERSION } from "../shared/app-version";
 import { createDb, databaseKind } from "./db";
-import { isDisabledEmail, isRevokingPath, isSignInPath, isSignOutPath, recordFailedSignIn, recordSessionEnds, recordSignOut, sessionsOf } from "./lib/login-log";
+import { isRevokingPath, isSignInPath, isSignOutPath, recordFailedSignIn, recordSessionEnds, recordSignOut, sessionsOf } from "./lib/login-log";
 import { maintenanceMiddleware } from "./middleware/maintenance";
 import { versionMiddleware } from "./middleware/version";
 import { clientErrors } from "./routes/client-errors";
@@ -123,14 +123,15 @@ app.all("/api/auth/*", async (c) => {
 	// A stale tab (its session id is not the one the cookie holds) may not change the account.
 	const stale = await refuseStaleAuthRequest(c, () => createAuth(c));
 	// A disabled account is refused only after Better Auth accepted the password (lib/sign-in-guard.ts),
-	// so a wrong password never reveals one. OAuth sign-ins are refused by the session hook alone.
+	// so a wrong password never reveals one. Every route that creates a session is covered (OAuth
+	// callback, email verification, ...): the session hook flags its refusal on this request's context.
 	const raw =
 		stale ??
-		(post && isSignInPath(c.req.path)
+		(isSessionCreatingAuthRequest(c.req.method, c.req.path)
 			? await signInWithDisabledGuard(
 					c.req.raw,
 					(request) => handleAuthRequest(c, request),
-					(email) => isDisabledEmail(c, email),
+					() => c.get("sessionRefusedForDisabled") === true,
 					() => failForAuthClient(c, ACCOUNT_DISABLED_STATUS, ACCOUNT_DISABLED_MESSAGE, { code: ACCOUNT_DISABLED_CODE, level: "info", log: "sign-in refused: account disabled" }),
 				)
 			: await handleAuthRequest(c));

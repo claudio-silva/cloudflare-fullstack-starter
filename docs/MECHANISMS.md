@@ -821,12 +821,30 @@ reads get-session); there is no polling for it.
 **Sign-in.** The password is checked first (`src/worker/lib/sign-in-guard.ts`).
 Better Auth's session hook (`databaseHooks.session.create.before`) refuses a
 disabled user, and Better Auth then answers 401 `FAILED_TO_CREATE_SESSION`,
-which only happens after the credentials were accepted. That one answer, and
-only that one, becomes 403 `account_disabled`, without a session or a cookie.
+which only happens after the credentials were accepted. The hook also sets
+`sessionRefusedForDisabled` on that request's context, and the guard acts only
+when it is set (per request, never module state; no email lookup). The refusal
+becomes 403 `account_disabled`, without a session or a cookie.
 A wrong password gets the ordinary invalid-credentials answer whether or not the
 account is disabled, so a disabled account is never revealed to someone who
-does not know its password. Google and email-link sign-ins reach the same hook
-and get no session.
+does not know its password.
+
+Every route that can create a session is covered (`isSessionCreatingAuthRequest`),
+each answering the refusal differently in Better Auth 1.7.14 and each mapped:
+
+| Route | Better Auth's answer | The guard's |
+|---|---|---|
+| `POST /sign-in/email` | 401 `FAILED_TO_CREATE_SESSION` | 403 `account_disabled` |
+| `POST /sign-in/social` with an `idToken` | 401 `OAUTH_LINK_ERROR`, "unable to create session" | 403 `account_disabled` |
+| `GET /verify-email` (auto sign-in) | 500 `FAILED_TO_CREATE_SESSION`, never a redirect | 403 `account_disabled`; the page's HTTP layer then leaves for `/account-disabled` |
+| `GET /callback/:provider` (OAuth) | 302 to the error URL with `error=unable_to_create_session` | 302 to `/account-disabled` |
+| `GET /magic-link/verify` (plugin) | 302 to the error URL with `error=failed_to_create_session` | 302 to `/account-disabled` |
+
+When the OAuth error URL is the re-login popup's completion page, the redirect is
+`/auth/reauth-complete?error=account_disabled`: the page tells the opener over the
+channel (`reason: "account_disabled"`), and the opener sends its tab to
+`/account-disabled` instead of showing "did not complete". The `error` values are
+read with `getAll`, because Better Auth appends its own with `&` after ours.
 
 Known limit: a browser that still carries the cookie of a session a disable
 ended gets 403 `account_disabled` for any failed sign-in, whatever email is
@@ -917,18 +935,15 @@ Checklist:
 2. The tab-binding allow-list already exempts `magic-link`
    (`BINDING_EXEMPT_AUTH_SEGMENTS` in `src/worker/lib/auth-requests.ts`): the
    verify call arrives from a link, in a tab that has no session id.
-3. **Disabled accounts.** The session-create hook already refuses a disabled
-   user, so no session is made. But the verify call is a `GET /api/auth/magic-link/verify`,
-   and the password guard (`signInWithDisabledGuard`) wraps only
-   `POST .../sign-in/email`. So a disabled account's verify gets Better Auth's
-   generic failure, not 403 `account_disabled`: a redirect to the
-   `errorCallbackURL` with `?error=failed_to_create_session`, and the link is
-   spent. Someone holding the link has proved they own the mailbox, so telling
-   them the account is disabled reveals nothing. To say it, make the app's
-   `errorCallbackURL` page treat `error=failed_to_create_session` as "account
-   disabled" and go to `/account-disabled` (that code can only come from the
-   session hook, which refuses nobody else). The step that *sends* the link
-   answers `{ status: true }` for every address, so it reveals nothing either.
+3. **Disabled accounts.** Nothing to add: `signInWithDisabledGuard` already covers
+   `GET /api/auth/magic-link/verify` (`isSessionCreatingAuthRequest`). The verify
+   step sets no session for a disabled user, and the guard turns Better Auth's
+   redirect with `error=failed_to_create_session` into a redirect to
+   `/account-disabled` (or, with `/auth/reauth-complete` as the error URL, into
+   that page with `error=account_disabled`). Add a test with a disabled user and
+   a real token, like the verify-email one in `test/sign-in-guard.test.ts`. The
+   step that *sends* the link answers `{ status: true }` for every address, so it
+   reveals nothing either.
 4. Register the re-login: a component that asks for the link without leaving the page.
    Better Auth's magic-link plugin writes **no `accounts` row** (it creates the user
    with no account, and a link sign-in for an existing user adds none), so

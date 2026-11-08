@@ -12,11 +12,6 @@ export const SESSION_CHANGED_MESSAGE = "The session changed.";
 export const SESSION_ID_HEADER = "x-session-id";
 export type SessionChangedBody = { error: string; code: typeof SESSION_CHANGED_CODE };
 
-/** The body a session-changed refusal carries (the client reads `code`). */
-export function sessionChangedBody(): SessionChangedBody {
-	return { error: SESSION_CHANGED_MESSAGE, code: SESSION_CHANGED_CODE };
-}
-
 /** True for `{ code: "session_changed", error: string }`; false for anything else, including null. */
 export function isSessionChangedBody(body: unknown): body is SessionChangedBody {
 	if (typeof body !== "object" || body === null) return false;

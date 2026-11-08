@@ -1,10 +1,9 @@
-import { ACCOUNT_DISABLED_STATUS, isAccountDisabledBody } from "../../../shared/account-status";
+import { ACCOUNT_DISABLED_PATH, ACCOUNT_DISABLED_STATUS, isAccountDisabledBody } from "../../../shared/account-status";
 import { browser } from "../http/browser";
 import { resumeUnloadGuards, standDownUnloadGuards } from "./held-requests";
 import { getSessionEnded, requestUrl } from "./session-ended";
 
-/** The public page a disabled account is sent to. */
-export const ACCOUNT_DISABLED_PATH = "/account-disabled";
+export { ACCOUNT_DISABLED_PATH };
 
 /**
  * Same-origin `/api/` answers 403 `account_disabled` for every request of a

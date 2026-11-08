@@ -1,17 +1,20 @@
+import { REAUTH_ACCOUNT_DISABLED_ERROR, REAUTH_COMPLETE_PATH } from "../../../shared/account-status";
 import { confirmAndDiscardForNavigation } from "../../components/auth/leave-session";
 import { resumeUnloadGuards } from "./held-requests";
+import { isKnownSocialProvider } from "./reauth-methods";
 import { getSessionEnded } from "./session-ended";
 
 /** The channel the completion page (`/auth/reauth-complete`) reports on. Not `window.opener`: Google's COOP severs it. */
 export const REAUTH_CHANNEL = "auth-reauth";
-export const REAUTH_COMPLETE_PATH = "/auth/reauth-complete";
+export { REAUTH_ACCOUNT_DISABLED_ERROR, REAUTH_COMPLETE_PATH };
 export const REAUTH_POPUP_FEATURES = "popup,width=500,height=640";
 /** The popup was abandoned without a word (closed behind our back, or the user walked away). */
 export const REAUTH_TIMEOUT_MS = 10 * 60 * 1000;
 /** A completion that did not restore the session in this long leaves the button usable again. */
 export const REAUTH_SETTLE_MS = 8000;
 
-export type ReauthMessage = { type: "reauth-complete"; ok: boolean };
+/** `reason: "account_disabled"` accompanies `ok: false` when the server refused the sign-in because the account is disabled. */
+export type ReauthMessage = { type: "reauth-complete"; ok: boolean; reason?: typeof REAUTH_ACCOUNT_DISABLED_ERROR };
 
 export type SocialReauthState = "busy" | "idle" | "failed";
 
@@ -33,6 +36,8 @@ export type SocialReauthDeps = {
 	setTimeout: (fn: () => void, ms: number) => unknown;
 	clearTimeout: (handle: unknown) => void;
 	onState: (state: SocialReauthState) => void;
+	/** The popup reported the account is disabled: leave for the account-disabled page. */
+	onDisabled: () => void;
 };
 
 /** The real page, for `confirm` and `resume`: the same pair every navigation that discards state uses. */
@@ -100,7 +105,10 @@ export async function startSocialReauth(provider: string, deps: SocialReauthDeps
 	channel.onmessage = (event) => {
 		const message = event.data as Partial<ReauthMessage> | null;
 		if (message?.type !== "reauth-complete") return;
-		if (message.ok === true) {
+		if (message.ok === false && message.reason === REAUTH_ACCOUNT_DISABLED_ERROR) {
+			finish(null);
+			deps.onDisabled();
+		} else if (message.ok === true) {
 			deps.refetchSession();
 			// The dialog unmounts when the session is restored; if it did not, the user can try again.
 			finish(null);
@@ -148,14 +156,17 @@ export function reauthErrorCallbackURL(href: string, provider: string): string {
  * The redirect fallback returns to the page with `?reauth_error=<provider>&error=<code>` when the
  * provider refused. Pure: says whether that happened (and for which provider) and what the URL is
  * without the parameters we and Better Auth added, so the message shows once and a reload does not
- * repeat it. An `error` without our marker belongs to the page and is left alone.
+ * repeat it. A failure needs our marker, an `error` beside it and a provider id the app knows: the
+ * marker alone, or any other value, is stripped and says nothing (the URL is attacker-writable, and
+ * the id ends up in a toast). An `error` without our marker belongs to the page and is left alone.
  */
 export function takeReauthError(href: string): { failed: boolean; provider: string | null; cleanHref: string } {
 	const url = new URL(href);
-	const provider = url.searchParams.get(REAUTH_ERROR_MARKER);
-	if (provider === null) return { failed: false, provider: null, cleanHref: href };
+	const marker = url.searchParams.get(REAUTH_ERROR_MARKER);
+	if (marker === null) return { failed: false, provider: null, cleanHref: href };
+	const failed = url.searchParams.has("error") && isKnownSocialProvider(marker);
 	url.searchParams.delete(REAUTH_ERROR_MARKER);
 	url.searchParams.delete("error");
 	url.searchParams.delete("error_description");
-	return { failed: true, provider, cleanHref: `${url.pathname}${url.search}${url.hash}` };
+	return { failed, provider: failed ? marker : null, cleanHref: `${url.pathname}${url.search}${url.hash}` };
 }

@@ -166,12 +166,6 @@ async function emailFromBody(c: AppContext): Promise<string> {
 	}
 }
 
-/** Whether the account with this (lower-cased) email has been disabled. */
-export async function isDisabledEmail(c: AppContext, email: string): Promise<boolean> {
-	const user = await createDb(c.env).selectFrom("users").select("disabled").where("email", "=", email).executeTakeFirst();
-	return Boolean(user?.disabled);
-}
-
 /**
  * A password sign-in that failed. The address comes from the request body;
  * when it belongs to nobody, the row has no user.

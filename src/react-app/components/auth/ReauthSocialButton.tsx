@@ -3,6 +3,7 @@ import { Loader2 } from "lucide-react";
 import { authClient } from "@/lib/auth/client";
 import { socialProviderName } from "@/lib/auth/reauth-methods";
 import { REAUTH_CHANNEL, pageNavigationDeps, startSocialReauth, type SocialReauthState } from "@/lib/auth/social-reauth";
+import { expelToAccountDisabledPage } from "@/lib/auth/account-disabled";
 import { t } from "@/lib/i18n";
 import { Button } from "../ui/button";
 import { GoogleLogo } from "./GoogleSignInButton";
@@ -40,6 +41,7 @@ export function ReauthSocialButton({ provider }: { provider: string }) {
 			setTimeout: (fn, ms) => window.setTimeout(fn, ms),
 			clearTimeout: (handle) => window.clearTimeout(handle as number),
 			onState: (next) => mounted.current && setState(next),
+			onDisabled: expelToAccountDisabledPage,
 		});
 	};
 

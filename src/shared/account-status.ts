@@ -10,6 +10,14 @@ export const ACCOUNT_DISABLED_CODE = "account_disabled" as const;
 export const ACCOUNT_DISABLED_STATUS = 403 as const;
 export const ACCOUNT_DISABLED_MESSAGE = "This account has been disabled. Contact an administrator.";
 
+/** The public page a disabled account is sent to. */
+export const ACCOUNT_DISABLED_PATH = "/account-disabled";
+
+/** Where the social re-login popup lands (client `social-reauth.ts`, `ReauthComplete`; the sign-in guard redirects there). */
+export const REAUTH_COMPLETE_PATH = "/auth/reauth-complete";
+/** The `error` value on `REAUTH_COMPLETE_PATH` that means "the account is disabled" (not a generic failure). */
+export const REAUTH_ACCOUNT_DISABLED_ERROR = "account_disabled";
+
 /** The body every disabled-account refusal carries. */
 export function accountDisabledBody(): ApiErrorBody {
 	return { error: ACCOUNT_DISABLED_MESSAGE, code: ACCOUNT_DISABLED_CODE, level: "info" };

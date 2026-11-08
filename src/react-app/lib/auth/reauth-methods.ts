@@ -53,6 +53,11 @@ export function offeredSocialProviders(features: { google: boolean }): string[] 
 
 const PROVIDER_NAMES: Record<string, string> = { google: "Google" };
 
+/** True for a social provider id the app offers (a key of `PROVIDER_NAMES`). */
+export function isKnownSocialProvider(id: string): boolean {
+	return Object.prototype.hasOwnProperty.call(PROVIDER_NAMES, id);
+}
+
 /** "Google" for `google`; any other id with its first letter capitalised. */
 export function socialProviderName(id: string): string {
 	return PROVIDER_NAMES[id] ?? id.charAt(0).toUpperCase() + id.slice(1);

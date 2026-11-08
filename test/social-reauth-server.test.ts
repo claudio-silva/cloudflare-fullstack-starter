@@ -84,3 +84,39 @@ describe("social sign-in through a popup (Better Auth 1.7, Google stubbed)", () 
 		expect(to.searchParams.has("error")).toBe(true);
 	});
 });
+
+describe("a disabled account that signs in with Google is told so, not 'did not complete' (Better Auth 1.7.14, Google stubbed)", () => {
+	const cliKey = { "x-api-key": env.CLI_API_KEY as string };
+	const startWith = async (errorCallbackURL: string) => {
+		const start = await app.request(
+			"/api/auth/sign-in/social",
+			{ method: "POST", headers: { ...json, origin }, body: JSON.stringify({ provider: "google", callbackURL: "/auth/reauth-complete", errorCallbackURL, disableRedirect: true }) },
+			local,
+		);
+		const state = new URL(((await start.json()) as { url: string }).url).searchParams.get("state");
+		return app.request(`/api/auth/callback/google?code=x&state=${state}`, { headers: { cookie: cookiesOf(start) } }, local);
+	};
+	const setEnabled = (enabled: boolean) =>
+		app.request(`/api/cli/users/${encodeURIComponent(email)}/enabled`, { method: "PUT", headers: { ...json, ...cliKey }, body: JSON.stringify({ enabled }) }, local);
+
+	it("popup: the callback redirects to the completion page with error=account_disabled; the redirect fallback goes to the account-disabled page; re-enabled it signs in again", async () => {
+		// The user exists from the first test (a Google sign-in creates it).
+		expect((await setEnabled(false)).status).toBe(200);
+		try {
+			const popup = await startWith("/auth/reauth-complete?error=1");
+			expect(popup.status).toBe(302);
+			// What Better Auth itself sends, before the guard: the raw code is only visible through the guard's output.
+			expect(popup.headers.get("location")).toBe("/auth/reauth-complete?error=account_disabled");
+			expect(cookiesOf(popup)).not.toContain("session_token=");
+
+			const fallback = await startWith("http://localhost:5181/some/page?reauth_error=google");
+			expect(fallback.status).toBe(302);
+			expect(fallback.headers.get("location")).toBe("/account-disabled");
+		} finally {
+			await setEnabled(true);
+		}
+		const again = await startWith("/auth/reauth-complete?error=1");
+		expect(new URL(again.headers.get("location") as string, origin).pathname).toBe("/auth/reauth-complete");
+		expect(new URL(again.headers.get("location") as string, origin).searchParams.get("error")).toBeNull();
+	});
+});

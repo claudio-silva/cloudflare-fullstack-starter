@@ -178,7 +178,11 @@ export function createAuth(c: AppContext) {
 						// For a password sign-in Better Auth then answers FAILED_TO_CREATE_SESSION, which
 						// lib/sign-in-guard.ts turns into the 403 `account_disabled` after the password is right.
 						const user = await db.selectFrom("users").select("disabled").where("id", "=", session.userId).executeTakeFirst();
-						if (user && Boolean(user.disabled)) return false;
+						if (user && Boolean(user.disabled)) {
+							// Tells `signInWithDisabledGuard` this failure is the disabled refusal, not another one.
+							c.set("sessionRefusedForDisabled", true);
+							return false;
+						}
 					},
 					after: async (session, context) => {
 						const method = signInMethod(context?.path, context?.params as Record<string, string> | undefined);
