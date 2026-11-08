@@ -23,7 +23,7 @@ export function confirmAndDiscardForNavigation(
 	standDownUnloadGuards();
 	getSessionEnded().leave();
 	target?.addEventListener("pageshow", (event) => {
-		if (!(event as PageTransitionEvent).persisted) return;
+		if (!(event as unknown as { persisted?: boolean }).persisted) return;
 		resumeUnloadGuards();
 		getSessionEnded().resume();
 	});

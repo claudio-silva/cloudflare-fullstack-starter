@@ -204,7 +204,8 @@ export function trackPageLeaving(target: { addEventListener(type: string, listen
 const NEVER_HELD_PREFIXES: readonly string[] = [CLIENT_ERRORS_PATH];
 
 function isKeepalive(input: RequestInfo | URL, init?: RequestInit): boolean {
-	return init?.keepalive === true || (typeof Request !== "undefined" && input instanceof Request && input.keepalive);
+	// `keepalive` is a browser option: the Workers typings this module is also compiled under omit it.
+	return (init as { keepalive?: boolean } | undefined)?.keepalive === true || (typeof Request !== "undefined" && input instanceof Request && input.keepalive);
 }
 
 /** A one-shot body cannot be sent twice. A stream is let through unheld; strings, forms and blobs can be replayed. */

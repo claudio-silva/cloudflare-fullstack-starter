@@ -322,6 +322,57 @@ describe("a lost connection", () => {
 	});
 });
 
+describe("guards", () => {
+	it("compose in order around maintenance: the first is outermost, and each sees the request before the network", async () => {
+		const order: string[] = [];
+		const guard = (name: string) => (next: typeof fetch): typeof fetch => async (input, init) => {
+			order.push(`${name}>`);
+			const response = await next(input, init);
+			order.push(`<${name}`);
+			return response;
+		};
+		const network = fakeNetwork(() => {
+			order.push("network");
+			return appOk();
+		});
+		install(network, { guards: [guard("a"), guard("b")] });
+
+		await http("/api/posts");
+		expect(order).toEqual(["a>", "b>", "network", "<b", "<a"]);
+	});
+
+	it("sit outside maintenance: a request a guard holds is not sent until it lets it go", async () => {
+		const network = fakeNetwork();
+		let release: () => void = () => undefined;
+		const gate = new Promise<void>((resolve) => (release = resolve));
+		install(network, { guards: [(next) => async (input, init) => (await gate, next(input, init))] });
+
+		const pending = http("/api/posts");
+		await new Promise((r) => setTimeout(r, 10));
+		expect(network.sent("/api/posts")).toHaveLength(0);
+		release();
+		expect((await pending).status).toBe(200);
+		expect(network.sent("/api/posts")).toHaveLength(1);
+	});
+
+	it("are skipped by `handles: \"all\"`, excluded paths and other origins", async () => {
+		const seen: string[] = [];
+		vi.stubGlobal("location", { origin: "http://localhost", href: "http://localhost/" });
+		const network = fakeNetwork();
+		install(network, {
+			exclude: ["/api/sync/"],
+			guards: [(next) => (input, init) => (seen.push(String(input)), next(input, init))],
+		});
+
+		await http("/api/a", { handles: "all" });
+		await fetch("/api/sync/pull");
+		await fetch("https://other.example/api/x").catch(() => undefined);
+		expect(seen).toEqual([]);
+		await http("/api/b");
+		expect(seen).toEqual(["/api/b"]);
+	});
+});
+
 describe("offline handlers", () => {
 	const cached = () => json(200, { posts: ["from IndexedDB"] });
 
