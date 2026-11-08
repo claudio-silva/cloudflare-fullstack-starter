@@ -1,7 +1,7 @@
 import { getSessionCookie } from "better-auth/cookies";
 import type { Kysely } from "kysely";
 import type { Database } from "../types/database";
-import { databaseKind } from "../db";
+import { dbTime as at, ignoreConflict } from "../db";
 import { ACCOUNT_DISABLED_CODE } from "../../shared/account-status";
 
 /**
@@ -11,9 +11,6 @@ import { ACCOUNT_DISABLED_CODE } from "../../shared/account-status";
  */
 
 type Db = Kysely<Database>;
-
-/** A time as the database takes it: an ISO string on SQLite, a `Date` elsewhere. */
-const at = (date: Date): Date | string => (databaseKind === "sqlite" ? date.toISOString() : date);
 
 /**
  * The session token in the request's cookie (`<token>.<signature>`), or null.
@@ -33,11 +30,9 @@ export function sessionTokenFromHeaders(headers: Headers): string | null {
 export async function markSessionsDisabled(db: Db, userId: string, now = new Date()): Promise<number> {
 	const live = await db.selectFrom("sessions").select(["token", "userId", "expiresAt"]).where("userId", "=", userId).where("expiresAt", ">", at(now)).execute();
 	if (live.length === 0) return 0;
-	await db
-		.insertInto("session_revocations")
-		.values(live.map((s) => ({ token: s.token, user_id: s.userId, reason: ACCOUNT_DISABLED_CODE, expires_at: s.expiresAt, created_at: at(now) })))
-		.onConflict((oc) => oc.column("token").doNothing())
-		.execute();
+	await ignoreConflict(
+		db.insertInto("session_revocations").values(live.map((s) => ({ token: s.token, user_id: s.userId, reason: ACCOUNT_DISABLED_CODE, expires_at: s.expiresAt, created_at: at(now) }))),
+	).execute();
 	return live.length;
 }
 

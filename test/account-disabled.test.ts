@@ -3,6 +3,9 @@ import { describe, expect, it } from "vitest";
 import { app } from "../src/worker/index";
 import { createDb } from "../src/worker/db";
 import { pruneExpiredAuthRows } from "../src/worker/lib/expired-auth-rows";
+import { Kysely, MysqlAdapter, MysqlIntrospector, MysqlQueryCompiler, PostgresAdapter, PostgresIntrospector, PostgresQueryCompiler, SqliteAdapter, SqliteIntrospector, SqliteQueryCompiler, type DatabaseConnection, type Driver, type Dialect } from "kysely";
+import { ignoreConflict } from "../src/worker/db";
+import type { Database } from "../src/worker/types/database";
 import { isAccountDisabledBody } from "../src/shared/account-status";
 
 // "local" so sign-ins are real (the "test" environment stubs the session).
@@ -68,7 +71,11 @@ describe("a disabled account is told so, never that its session expired", () => 
 		const cookie = await signIn(u.email);
 		await setEnabled(u.email, false);
 		const res = await call("/api/auth/sign-out", cookie, { method: "POST" });
-		expect(res.status).not.toBe(403);
+		expect(res.status).toBe(200);
+		// The cookie-clearing Set-Cookie still reaches the browser.
+		const cleared = res.headers.getSetCookie().find((c) => c.startsWith("better-auth.session_token="));
+		expect(cleared).toBeDefined();
+		expect(cleared).toMatch(/max-age=0/i);
 	});
 
 	it("goes back to 401 unauthenticated once the account is enabled again", async () => {
@@ -125,6 +132,17 @@ describe("a disabled account is told so, never that its session expired", () => 
 		expect(left).toEqual(["live-token"]);
 	});
 
+	it("drops a user's markers when the user is deleted", async () => {
+		const db = createDb(local);
+		const u = await newUser();
+		await signIn(u.email);
+		await setEnabled(u.email, false);
+		expect((await db.selectFrom("session_revocations").select("token").where("user_id", "=", u.id).execute()).length).toBeGreaterThan(0);
+		const res = await app.request(`/api/cli/users/${encodeURIComponent(u.email)}`, { method: "DELETE", headers: cliKey }, local);
+		expect(res.status).toBe(200);
+		expect(await db.selectFrom("session_revocations").select("token").where("user_id", "=", u.id).execute()).toEqual([]);
+	});
+
 	it("reads no marker on the success path", async () => {
 		const u = await newUser();
 		const cookie = await signIn(u.email);
@@ -146,5 +164,36 @@ describe("a disabled account is told so, never that its session expired", () => 
 		expect(statements.length).toBeGreaterThan(0); // the spy sees the session read
 		// (Kysely's one-off table introspection names every table; that is not a marker read.)
 		expect(statements.filter((s) => s.includes("session_revocations") && !s.includes("pragma_table_info"))).toEqual([]);
+	});
+});
+
+// Compile-only: a Kysely on each dialect that never connects, to see the SQL the portable insert produces.
+function compiling(kind: "sqlite" | "mysql" | "postgres") {
+	const parts = {
+		sqlite: [SqliteAdapter, SqliteQueryCompiler, SqliteIntrospector],
+		mysql: [MysqlAdapter, MysqlQueryCompiler, MysqlIntrospector],
+		postgres: [PostgresAdapter, PostgresQueryCompiler, PostgresIntrospector],
+	}[kind];
+	const dialect: Dialect = {
+		createAdapter: () => new parts[0](),
+		createQueryCompiler: () => new parts[1](),
+		createIntrospector: (db) => new parts[2](db as never),
+		createDriver: (): Driver => ({ init: async () => {}, acquireConnection: async () => ({}) as DatabaseConnection, beginTransaction: async () => {}, commitTransaction: async () => {}, rollbackTransaction: async () => {}, releaseConnection: async () => {}, destroy: async () => {} }),
+	};
+	return new Kysely<Database>({ dialect });
+}
+
+describe("the marker insert is portable", () => {
+	const row = { token: "t", user_id: "u", reason: "account_disabled", expires_at: "2030-01-01", created_at: "2030-01-01" };
+	const sql = (kind: "sqlite" | "mysql" | "postgres") =>
+		ignoreConflict(compiling(kind).insertInto("session_revocations").values(row), kind).compile().sql.toLowerCase();
+
+	it("uses INSERT IGNORE on MySQL, never ON CONFLICT", () => {
+		expect(sql("mysql")).toContain("insert ignore into");
+		expect(sql("mysql")).not.toContain("on conflict");
+	});
+	it("uses ON CONFLICT DO NOTHING on SQLite and PostgreSQL", () => {
+		expect(sql("sqlite")).toContain("on conflict do nothing");
+		expect(sql("postgres")).toContain("on conflict do nothing");
 	});
 });

@@ -1,4 +1,4 @@
-import { createDb, databaseKind } from "../db";
+import { createDb, dbTime } from "../db";
 import { recordSessionEnds } from "./login-log";
 import { pruneExpiredSessionMarkers } from "./session-revocations";
 
@@ -15,7 +15,7 @@ import { pruneExpiredSessionMarkers } from "./session-revocations";
  */
 export async function pruneExpiredAuthRows(env: Parameters<typeof createDb>[0]): Promise<number> {
 	const now = new Date();
-	const value = databaseKind === "sqlite" ? now.toISOString() : now;
+	const value = dbTime(now);
 	const db = createDb(env);
 	let deleted = 0;
 	// Each expired session goes in the sign-in log first: the log is the only place that remembers it.
