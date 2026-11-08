@@ -1,4 +1,6 @@
 import { Hono } from "hono";
+import { ACCOUNT_DISABLED_CODE, ACCOUNT_DISABLED_MESSAGE, ACCOUNT_DISABLED_STATUS } from "../shared/account-status";
+import { disabledAwareCatchAll, disabledAwareGetSession } from "./lib/account-disabled-gate";
 import type { AppBindings } from "./types/context";
 import { createAuth, handleAuthRequest } from "./middleware/auth";
 import { cli } from "./routes/cli";
@@ -118,7 +120,7 @@ app.all("/api/auth/*", async (c) => {
 		} catch {
 			await write;
 		}
-		return failForAuthClient(c, 403, "This account has been disabled. Contact an administrator.", { code: "account_disabled", level: "info", log: "sign-in refused: account disabled" });
+		return failForAuthClient(c, ACCOUNT_DISABLED_STATUS, ACCOUNT_DISABLED_MESSAGE, { code: ACCOUNT_DISABLED_CODE, level: "info", log: "sign-in refused: account disabled" });
 	}
 	// Signing out and revoking delete sessions, so who is asking (and, for a
 	// revocation, which sessions they have) is read first.
@@ -127,7 +129,15 @@ app.all("/api/auth/*", async (c) => {
 	const revoking = post && isRevokingPath(c.req.path);
 	const current = signingOut || revoking ? await createAuth(c).api.getSession({ headers: c.req.raw.headers }).catch(() => null) : null;
 	const sessionsBefore = revoking && current ? await sessionsOf(createDb(c.env), current.user.id).catch(() => []) : [];
-	const response = await handleAuthRequest(c);
+	const raw = await handleAuthRequest(c);
+	// A session a disable ended is 403 `account_disabled`, not Better Auth's 401 or null session.
+	// Sign-out passes untouched so its cookie-clearing Set-Cookie still applies.
+	const response =
+		post && signingOut
+			? raw
+			: c.req.method === "GET" && c.req.path === "/api/auth/get-session"
+				? await disabledAwareGetSession(raw, c.req.raw.headers, createDb(c.env))
+				: await disabledAwareCatchAll(raw, c.req.raw.headers, createDb(c.env));
 	const ok = response.status < 400;
 	const ended = async (userId: string) => {
 		const db = createDb(c.env);

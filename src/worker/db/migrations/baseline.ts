@@ -20,6 +20,7 @@ export function createBaseline(kind: DatabaseKind): Baseline {
 			"0005_credential_account_ids",
 			"0006_login_event_kind",
 			"0007_user_stats_and_log_detail",
+			"0008_session_revocations",
 		],
 		async up(db: Kysely<unknown>) {
 			await db.schema
@@ -111,10 +112,21 @@ export function createBaseline(kind: DatabaseKind): Baseline {
 				.addColumn("last_sign_in_at", t.timestamp)
 				.execute();
 
+			// Sessions that disabling a user ended. See 0008_session_revocations.
+			await db.schema
+				.createTable("session_revocations")
+				.addColumn("token", t.id, (c) => c.primaryKey())
+				.addColumn("user_id", t.id, (c) => c.notNull())
+				.addColumn("reason", "varchar(32)", (c) => c.notNull())
+				.addColumn("expires_at", t.timestamp, (c) => c.notNull())
+				.addColumn("created_at", t.timestamp, (c) => c.notNull())
+				.execute();
+
 			await db.schema.createIndex("idx_sessions_user").on("sessions").column("userId").execute();
 			await db.schema.createIndex("idx_login_events_created_at").on("login_events").column("created_at").execute();
 			await db.schema.createIndex("idx_login_events_email").on("login_events").column("email").execute();
 			await db.schema.createIndex("idx_login_events_user").on("login_events").columns(["user_id", "created_at"]).execute();
+			await db.schema.createIndex("idx_session_revocations_user").on("session_revocations").column("user_id").execute();
 			await db.schema.createIndex("idx_verifications_identifier").on("verifications").column("identifier").execute();
 			await db.schema.createIndex("idx_users_role").on("users").column("role").execute();
 		},

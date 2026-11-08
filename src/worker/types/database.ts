@@ -98,6 +98,14 @@ export interface AuthLogDatabase {
     session_seconds: Generated<number>;
     last_sign_in_at: Timestamp | null;
   };
+  /** Sessions a disable ended, kept until they would have expired (0008_session_revocations). */
+  session_revocations: {
+    token: string;
+    user_id: string;
+    reason: string;
+    expires_at: Timestamp;
+    created_at: Timestamp;
+  };
 }
 
 /**

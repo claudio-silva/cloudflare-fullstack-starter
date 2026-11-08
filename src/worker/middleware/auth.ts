@@ -6,7 +6,8 @@ import type { AppContext, AppUser } from "../types/context";
 import { createEmailSender, type EmailSender } from "../adapters/email";
 import { getVerificationEmailTemplate, getPasswordResetEmailTemplate } from "../utils/email-templates";
 import { config } from "../../config";
-import { fail, failForAuthClient } from "../lib/errors";
+import { failForAuthClient } from "../lib/errors";
+import { denyUnlessLiveSession } from "../lib/account-disabled-gate";
 
 type Environment = "local" | "preview" | "production" | "test";
 
@@ -152,6 +153,8 @@ export function createAuth(c: AppContext) {
 			// role change applies to the next request.
 			additionalFields: {
 				role: { type: "string", input: false, required: false, defaultValue: "user" },
+				// Lets the disabled gate see a disabled account without another read (lib/account-disabled-gate.ts).
+				disabled: { type: "boolean", input: false, required: false, defaultValue: false },
 			},
 		},
 		session: {
@@ -267,15 +270,11 @@ export async function authMiddleware(c: AppContext, next: () => Promise<void>) {
 	const auth = createAuth(c);
 	const session = await auth.api.getSession({ headers: c.req.raw.headers });
 
-	if (!session) {
-		return fail(c, 401, "Your session has expired. Please sign in again.", {
-			code: "unauthenticated",
-			log: "no valid session",
-		});
-	}
+	const decision = await denyUnlessLiveSession(c, session, createDb(c.env));
+	if (decision.denied) return decision.denied;
 
-	c.set("user", session.user);
-	c.set("session", session.session);
+	c.set("user", decision.session.user);
+	c.set("session", decision.session.session);
 	return next();
 }
 

@@ -4,6 +4,7 @@ import { sql, type Selectable, type Updateable } from "kysely";
 import type { Database } from "../types/database";
 import type { AppBindings, AppContext } from "../types/context";
 import { createDb, databaseKind, dbBool, dbNow, toIso } from "../db";
+import { clearSessionMarkers, markSessionsDisabled } from "../lib/session-revocations";
 import { createPasswordUser, deleteUser, liveSessionsFor, revokeSession, revokeSessions, setPassword, statsFor, wouldRemoveLastAdmin } from "../lib/users";
 import { requestOrigin } from "../lib/login-log";
 import { listUserSessions } from "../lib/user-sessions";
@@ -201,7 +202,13 @@ cli.put("/users/:email/enabled", async (c) => {
 		return c.json({ error: "Cannot disable the last admin" }, 400);
 	}
 	await db.updateTable("users").set({ disabled: dbBool(!enabled), updatedAt: dbNow() }).where("id", "=", user.id).execute();
-	if (!enabled) await revokeSessions(db, user.id);
+	if (!enabled) {
+		// Markers first: once the sessions are gone a request with the old cookie is told "disabled", not "expired".
+		await markSessionsDisabled(db, user.id);
+		await revokeSessions(db, user.id);
+	} else {
+		await clearSessionMarkers(db, user.id);
+	}
 	return c.json({ success: true, message: `User ${enabled ? "enabled" : "disabled"} successfully` });
 });
 

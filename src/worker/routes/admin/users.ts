@@ -7,6 +7,7 @@ import { createDb, databaseKind, dbBool, dbNow, dbSecondsBetween, toIso } from "
 import { AppError } from "../../lib/errors";
 import { requireRole } from "../../middleware/roles";
 import { demoIp } from "../../middleware/demo";
+import { clearSessionMarkers, markSessionsDisabled } from "../../lib/session-revocations";
 import { createPasswordUser, deleteUser, liveSessionsFor, revokeSession, revokeSessions, setPassword, statsFor, wouldRemoveLastAdmin } from "../../lib/users";
 import { requestOrigin } from "../../lib/login-log";
 import { listUserSessions } from "../../lib/user-sessions";
@@ -345,6 +346,8 @@ adminUsers.patch("/:id", async (c) => {
 
 	// Whatever takes access away signs the user out everywhere.
 	const downgraded = changesRole && !hasRole(input.role, user.role as Role);
+	if (disables) await markSessionsDisabled(db, user.id);
+	if (input.enabled === true && user.disabled) await clearSessionMarkers(db, user.id);
 	if (input.password || downgraded || disables) await revokeSessions(db, user.id, me?.id);
 
 	return c.json((await present(c, [await findUser(c, user.id)]))[0]);

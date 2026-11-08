@@ -3,6 +3,7 @@ import type { Kysely, Selectable } from "kysely";
 import type { Database } from "../types/database";
 import { dbBool, dbNow } from "../db";
 import { recordSessionEnds, recordUserDeleted, sessionsOf, type RequestOrigin } from "./login-log";
+import { clearSessionMarkers } from "./session-revocations";
 import { ROLES, hasRole, type Role } from "../../shared/roles";
 
 /**
@@ -93,6 +94,7 @@ export async function setPassword(db: Db, user: { id: string; email: string }, p
  */
 export async function deleteUser(db: Db, user: { id: string; email: string }, by?: { actorId: string | null; origin: RequestOrigin }): Promise<void> {
 	await db.deleteFrom("sessions").where("userId", "=", user.id).execute();
+	await clearSessionMarkers(db, user.id);
 	await db.deleteFrom("verifications").where("identifier", "=", user.email).execute();
 	await db.deleteFrom("accounts").where("userId", "=", user.id).execute();
 	await db.deleteFrom("users").where("id", "=", user.id).execute();

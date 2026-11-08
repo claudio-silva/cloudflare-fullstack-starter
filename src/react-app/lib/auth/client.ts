@@ -8,8 +8,8 @@ import { inferAdditionalFields } from "better-auth/client/plugins";
 export const authClient = createAuthClient({
 	baseURL: window.location.origin,
 	// Mirrors `user.additionalFields` in src/worker/middleware/auth.ts, so
-	// `session.user.role` is typed. See src/shared/roles.ts.
-	plugins: [inferAdditionalFields({ user: { role: { type: "string", input: false, required: false } } })],
+	// `session.user.role` and `.disabled` are typed. See src/shared/roles.ts.
+	plugins: [inferAdditionalFields({ user: { role: { type: "string", input: false, required: false }, disabled: { type: "boolean", input: false, required: false } } })],
 });
 
 export const { signIn, signUp, signOut, useSession, updateUser, changePassword, requestPasswordReset, resetPassword, sendVerificationEmail } = authClient;
