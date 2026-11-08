@@ -70,7 +70,7 @@ export function LoginForm({ onSuccess, showSignupLink = true, lockedEmail, locke
 					},
 				},
 			});
-			// A disabled account: the guard is already navigating to /account-disabled, so show nothing.
+			// A disabled account: a fallback for when the guard is absent. While it is installed, this promise never settles (the guard is already navigating to /account-disabled).
 			if (result.error?.code === ACCOUNT_DISABLED_CODE) return;
 			if (result.error) {
 				setError(signInErrorMessage(result.error, window.location.origin));

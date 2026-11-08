@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ACCOUNT_DISABLED_PATH, expelToAccountDisabledPage, withAccountDisabledGuard } from "../src/react-app/lib/auth/account-disabled";
 import { isUnloadGuardSuspended, resumeUnloadGuards } from "../src/react-app/lib/auth/held-requests";
-import { getSessionEnded } from "../src/react-app/lib/auth/session-ended";
+import { createSessionEnded, getSessionEnded, withSessionEndedGuard } from "../src/react-app/lib/auth/session-ended";
 import { accountDisabledBody } from "../src/shared/account-status";
 
 /**
@@ -70,6 +70,34 @@ describe("withAccountDisabledGuard", () => {
 		const onDisabled = vi.fn();
 		const f = withAccountDisabledGuard(async () => disabled(), onDisabled, ORIGIN);
 		expect((await f("/api/auth/sign-out", { method: "POST" })).status).toBe(403);
+		expect(onDisabled).not.toHaveBeenCalled();
+	});
+});
+
+describe("composed as main.tsx installs them: withSessionEndedGuard(withAccountDisabledGuard(...))", () => {
+	function composed(response: () => Response) {
+		const map = new Map<string, string>();
+		const state = createSessionEnded({
+			storage: { getItem: (k) => map.get(k) ?? null, setItem: (k, v) => void map.set(k, v), removeItem: (k) => void map.delete(k) },
+			replaceLocation: () => undefined,
+		});
+		state.sessionSeen({ id: "u1", email: "a@x" }, "s1"); // armed, as a signed-in page is
+		const onDisabled = vi.fn();
+		const f = withSessionEndedGuard(withAccountDisabledGuard((async () => response()) as typeof fetch, onDisabled, ORIGIN), state, ORIGIN);
+		return { state, onDisabled, f };
+	}
+
+	it("a disabled 403 expels and never marks the session ended (no re-login dialog)", async () => {
+		const { state, onDisabled, f } = composed(disabled);
+		expect(await never(f("/api/profile"))).toBe("pending");
+		expect(onDisabled).toHaveBeenCalledTimes(1);
+		expect(state.isEnded()).toBe(false);
+	});
+
+	it("a 401 still marks the session ended", async () => {
+		const { state, onDisabled, f } = composed(() => Response.json({ error: "x" }, { status: 401 }));
+		expect(await never(f("/api/profile"))).toBe("pending"); // held behind the re-login
+		expect(state.isEnded()).toBe(true);
 		expect(onDisabled).not.toHaveBeenCalled();
 	});
 });
