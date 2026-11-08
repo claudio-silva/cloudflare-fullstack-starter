@@ -116,6 +116,33 @@ describe("a 409 session_changed", () => {
 		expect(n).toBe(2);
 	});
 
+	it("when get-session itself fails (\"unknown\") the 409 is returned as is: no replay, no hold", async () => {
+		const s = setup();
+		s.state.sessionSeen(U1, "s1");
+		const calls: string[] = [];
+		const fetchImpl = (async (input: RequestInfo | URL) => {
+			calls.push(pathOf(input));
+			if (pathOf(input) === "/api/auth/get-session") return new Response("{}", { status: 500 });
+			return new Response(CHANGED_BODY, { status: 409 });
+		}) as typeof fetch;
+		const res = await withSessionEndedGuard(fetchImpl, s.state, ORIGIN)("/api/items/1", { method: "PATCH", body: "{}" });
+		expect(res.status).toBe(409);
+		expect(calls).toEqual(["/api/items/1", "/api/auth/get-session"]);
+		expect(s.state.isEnded()).toBe(false);
+		expect(s.state.tabSessionId()).toBe("s1");
+	});
+
+	it("a request that cannot be held, after an adoption, is answered with its 409 as is (not replayed)", async () => {
+		const s = setup();
+		s.state.sessionSeen(U1, "s1");
+		const srv = bound({ user: U1, sessionId: "s2" });
+		const res = await withSessionEndedGuard(srv.fetchImpl, s.state, ORIGIN)("/api/auth/update-user", { method: "POST", body: "{}" });
+		expect(res.status).toBe(409);
+		expect(s.state.tabSessionId()).toBe("s2"); // adopted, so the caller's own retry works
+		expect(srv.calls.filter((c) => c.path === "/api/auth/update-user")).toHaveLength(1);
+		expect(s.replaced).toEqual([]);
+	});
+
 	it("for a different user never settles, is never replayed, sets the flag and replaces to / once", async () => {
 		const s = setup();
 		s.state.sessionSeen(U1, "s1");

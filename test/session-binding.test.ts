@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { app } from "../src/worker/index";
 import { BINDING_EXEMPT_AUTH_SEGMENTS, isBindingExemptAuthPath } from "../src/worker/lib/auth-requests";
 import { isSessionChangedBody } from "../src/shared/session-binding";
+import { createDb, dbTime } from "../src/worker/db";
+import { sessionTokenFromHeaders } from "../src/worker/lib/session-revocations";
 
 /**
  * Per-tab session binding on the server: a request carrying an X-Session-Id that is not the
@@ -35,6 +37,14 @@ async function login() {
 	const { session } = (await res.json()) as { session: { id: string } };
 	return { ...user, cookie, sessionId: session.id };
 }
+/** Makes the session due for a refresh (a matched request would push its expiry and set the cookie). */
+async function ageSession(cookie: string) {
+	const db = createDb(local);
+	const token = sessionTokenFromHeaders(new Headers({ cookie }))!;
+	const r = await db.selectFrom("sessions").select(["expiresAt", "updatedAt"]).where("token", "=", token).executeTakeFirstOrThrow();
+	await db.updateTable("sessions").set({ updatedAt: dbTime(new Date(new Date(r.updatedAt).getTime() - 120_000)), expiresAt: dbTime(new Date(new Date(r.expiresAt).getTime() - 120_000)) }).where("token", "=", token).execute();
+}
+const setsSessionCookie = (res: Response) => res.headers.getSetCookie().some((c) => c.startsWith("better-auth.session_token="));
 const ping = (cookie: string | null, sid?: string, e: object = local) =>
 	app.request("/api/protected/ping", { headers: { ...(cookie ? { cookie } : {}), ...(sid ? { "x-session-id": sid } : {}) } }, e);
 const auth = (method: string, path: string, cookie: string | null, sid?: string, body = "{}") =>
@@ -43,10 +53,16 @@ const auth = (method: string, path: string, cookie: string | null, sid?: string,
 describe("authMiddleware", () => {
 	it("a mismatching id is refused 409 session_changed with no Set-Cookie", async () => {
 		const u = await login();
+		// Due for a refresh: a matched request would answer with a fresh cookie, so a refused one that does not proves the refusal comes first.
+		await ageSession(u.cookie);
 		const res = await ping(u.cookie, "some-other-session");
 		expect(res.status).toBe(409);
 		expect(await res.json()).toMatchObject({ code: "session_changed", error: "The session changed.", level: "info" });
+		expect(setsSessionCookie(res)).toBe(false);
 		expect(res.headers.get("set-cookie")).toBeNull();
+		// Control: the matching id on an aged session does refresh it (the refused request already refreshed the row, so age it again).
+		await ageSession(u.cookie);
+		expect(setsSessionCookie(await ping(u.cookie, u.sessionId))).toBe(true);
 	});
 
 	it("the matching id passes, and so does no id at all", async () => {
@@ -70,11 +86,16 @@ describe("authMiddleware", () => {
 
 	it("never runs the handler for a stale tab", async () => {
 		const u = await login();
-		// A write: the refused request must change nothing.
-		const res = await app.request("/api/auth/update-user", { method: "POST", headers: { ...json, origin, cookie: u.cookie, "x-session-id": "stale" }, body: JSON.stringify({ name: "Hijacked" }) }, local);
-		expect(res.status).toBe(409);
-		const now = await app.request("/api/auth/get-session", { headers: { cookie: u.cookie } }, local);
-		expect(((await now.json()) as { user: { name: string } }).user.name).not.toBe("Hijacked");
+		// A destructive write behind authMiddleware: the refused request must change nothing.
+		const stale = await app.request("/api/profile", { method: "DELETE", headers: { cookie: u.cookie, "x-session-id": "stale" } }, local);
+		expect(stale.status).toBe(409);
+		const still = await app.request("/api/auth/get-session", { headers: { cookie: u.cookie } }, local);
+		expect(((await still.json()) as { user: { email: string } } | null)?.user.email).toBe(u.email);
+		// Control: the same request with the right id does run the handler and deletes the account.
+		const ok = await app.request("/api/profile", { method: "DELETE", headers: { cookie: u.cookie, "x-session-id": u.sessionId } }, local);
+		expect(ok.status).toBe(200);
+		const gone = await app.request("/api/auth/get-session", { headers: { cookie: u.cookie } }, local);
+		expect(((await gone.json()) as { user?: unknown } | null)?.user).toBeUndefined();
 	});
 
 	it("adds no statement to the success path", async () => {
