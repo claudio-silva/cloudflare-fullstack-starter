@@ -6,9 +6,11 @@ import type { AppContext, AppUser } from "../types/context";
 import { createEmailSender, type EmailSender } from "../adapters/email";
 import { getVerificationEmailTemplate, getPasswordResetEmailTemplate } from "../utils/email-templates";
 import { config } from "../../config";
-import { failForAuthClient } from "../lib/errors";
+import { fail, failForAuthClient } from "../lib/errors";
 import { isBackgroundRoute } from "../lib/route-kind";
 import { denyUnlessLiveSession } from "../lib/account-disabled-gate";
+import { claimedSessionId } from "../lib/auth-requests";
+import { SESSION_CHANGED_CODE, SESSION_CHANGED_MESSAGE } from "../../shared/session-binding";
 
 type Environment = "local" | "preview" | "production" | "test";
 
@@ -274,6 +276,13 @@ export async function authMiddleware(c: AppContext, next: () => Promise<void>) {
 
 	const decision = await denyUnlessLiveSession(c, session, createDb(c.env));
 	if (decision.denied) return decision.denied;
+
+	// Per-tab binding, after 401 and 403 so those contracts hold: a tab whose session id is not the
+	// one the cookie resolves to is stale. Compares two strings already in hand: no storage read, no Set-Cookie.
+	const claimed = claimedSessionId(c);
+	if (claimed !== null && claimed !== (decision.session.session as { id?: unknown }).id) {
+		return fail(c, 409, SESSION_CHANGED_MESSAGE, { code: SESSION_CHANGED_CODE, level: "info", log: "stale tab: session id mismatch" });
+	}
 
 	// Only a request that passed every gate carries Better Auth's cookies (the refreshed session).
 	for (const cookie of headers.getSetCookie()) c.header("set-cookie", cookie, { append: true });

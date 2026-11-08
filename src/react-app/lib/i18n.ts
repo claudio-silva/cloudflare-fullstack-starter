@@ -70,6 +70,7 @@ export const defaultMessages = {
 	"session.endedBody": "Your session ended. Enter your password to carry on where you left off.",
 	"session.useAnotherAccount": "Use another account",
 	"session.discardHeld": "Changes that have not been sent yet will be lost. Continue?",
+	"session.replaced": "The previous session in this tab was ended.",
 
 	// A disabled account (lib/auth/account-disabled.ts, pages/auth/AccountDisabled.tsx)
 	"accountDisabled.title": "Account disabled",

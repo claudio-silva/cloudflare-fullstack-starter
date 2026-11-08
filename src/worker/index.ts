@@ -3,6 +3,7 @@ import { ACCOUNT_DISABLED_CODE, ACCOUNT_DISABLED_MESSAGE, ACCOUNT_DISABLED_STATU
 import { disabledAwareCatchAll, disabledAwareGetSession } from "./lib/account-disabled-gate";
 import type { AppBindings } from "./types/context";
 import { createAuth, handleAuthRequest } from "./middleware/auth";
+import { refuseStaleAuthRequest } from "./lib/auth-requests";
 import { cli } from "./routes/cli";
 import { profile } from "./routes/profile";
 import { sessions } from "./routes/sessions";
@@ -129,7 +130,9 @@ app.all("/api/auth/*", async (c) => {
 	const revoking = post && isRevokingPath(c.req.path);
 	const current = signingOut || revoking ? await createAuth(c).api.getSession({ headers: c.req.raw.headers }).catch(() => null) : null;
 	const sessionsBefore = revoking && current ? await sessionsOf(createDb(c.env), current.user.id).catch(() => []) : [];
-	const raw = await handleAuthRequest(c);
+	// A stale tab (its session id is not the one the cookie holds) may not change the account.
+	const stale = await refuseStaleAuthRequest(c, () => createAuth(c));
+	const raw = stale ?? (await handleAuthRequest(c));
 	// A session a disable ended is 403 `account_disabled`, not Better Auth's 401 or null session.
 	// Sign-out passes untouched so its cookie-clearing Set-Cookie still applies.
 	const response =
