@@ -928,12 +928,19 @@ Checklist:
    session hook, which refuses nobody else). The step that *sends* the link
    answers `{ status: true }` for every address, so it reveals nothing either.
 4. Register the re-login: a component that asks for the link without leaving the page.
+   Better Auth's magic-link plugin writes **no `accounts` row** (it creates the user
+   with no account, and a link sign-in for an existing user adds none), so
+   `listAccounts()` returns `[]` for a magic-link-only user and, by the default
+   rule (offered when `providerId` is among the account's methods), the dialog
+   would offer nothing. The registration therefore says for itself when it is
+   offered, with `offer`:
    ```tsx
    import { registerReauthMethod } from "@/lib/auth/reauth-methods";
    import { authClient } from "@/lib/auth/client";
 
    registerReauthMethod({
-     providerId: "magic-link", // the account's providerId
+     providerId: "magic-link", // any id that is not reserved or already registered
+     offer: () => true, // or check the methods: (methods) => !methods.includes("google")
      Component: ({ email }) => (
        <Button onClick={() => authClient.signIn.magicLink({ email, callbackURL: "/auth/reauth-complete", errorCallbackURL: "/auth/reauth-complete?error=1" })}>
          Email me a link
@@ -941,16 +948,21 @@ Checklist:
      ),
    });
    ```
-   The link opens in another tab or the mail app, lands on `/auth/reauth-complete`,
-   and the open page refetches the session on focus. Magic-link users have an
-   account whose `providerId` Better Auth records as the one the plugin creates;
-   check what `listAccounts()` returns for a magic-link-only user and use that id.
+   `offer` receives the provider ids of the account's Better Auth accounts and is
+   consulted only when they are known (after the first session seen); with
+   unknown methods nothing registered is offered. A method that does leave an
+   account row can omit `offer`. The link opens in another tab or the mail app,
+   lands on `/auth/reauth-complete`, and the open page refetches the session on
+   focus. Every account that has an email can use a link, so `() => true` also
+   offers it to password and Google accounts; narrow it if that is not wanted.
 5. Map its error codes (`INVALID_TOKEN`, `EXPIRED_TOKEN`, `failed_to_create_session`)
    in `signInErrorMessage` (`src/shared/sign-in-error-message.ts`), matching the
    code, never the English message.
-6. Test: a disabled account's verify gets no session and no cookie; a magic-link-only
-   account's dialog shows the button and no password field; the dialog restores the same
-   page after the link; a Google-only account is unaffected.
+6. Test: a disabled account's verify gets no session and no cookie; for a
+   magic-link-only user (check that `listAccounts()` is `[]`) the dialog shows the
+   button and no password field (`resolveReauthMethods` with `providers: []` and
+   your `offer`, as in `test/reauth-methods.test.ts`); the dialog restores the
+   same page after the link; a Google-only account is unaffected.
 
 ### Tab session binding
 

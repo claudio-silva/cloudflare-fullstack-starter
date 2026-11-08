@@ -56,7 +56,7 @@ A page no longer dies under the user when its session ends, and a tab left open 
 
 - **Sessions expire after 12 hours without use, not 24.** The value is now `config.auth.session.idleTimeoutSeconds` in `src/config.ts`; set it to `60 * 60 * 24` to keep the old lifetime.
 - **`/api/` requests from the app carry `X-Session-Id`, and a mismatch with the session cookie answers 409 `session_changed`** before any handler runs. A client that sends no header is not checked (CLI, curl, a project's own scripts). A project with its own `fetch` wrapper that retries or caches 4xx should let 409 through.
-- A disabled account's requests answer **403 `account_disabled`**, where they answered 401 before. A project that treats every 401 as "sign in again" and 403 as "not allowed" gets the right behaviour from the new client guards; a project with its own client code may need to handle the new code.
+- A disabled account's requests answer **403 `account_disabled`**, where they answered 401 before. A disabled account's sign-in with a **wrong** password used to get 403 and now gets 401 `INVALID_EMAIL_OR_PASSWORD`, the same as any wrong password; only a correct password gets 403. A project that treats every 401 as "sign in again" and 403 as "not allowed" gets the right behaviour from the new client guards; a project with its own client code may need to handle the new code.
 
 No other contract changes. The database gains one table.
 
@@ -101,7 +101,7 @@ No other contract changes. The database gains one table.
   - `src/react-app/main.tsx` (`trackPageLeaving`, the `guards` option, `SessionReplacedToast`);
   - `src/config.ts` (`auth.session`);
   - `src/worker/types/context.ts` (the route-kind flag);
-  - `src/worker/types/database.ts` (`session_revocations`, the `disabled` user field);
+  - `src/worker/types/database.ts` (`session_revocations`);
   - `src/worker/db/migrations/baseline.ts` and `src/worker/db/migrations/index.ts` (the table and the 0008 registration);
   - `AGENTS.md`;
   - `src/react-app/lib/http/interceptor.ts`, `src/react-app/lib/http/maintenance.ts` and `src/react-app/lib/http/browser.ts`;
@@ -114,7 +114,8 @@ No other contract changes. The database gains one table.
 - A project that **translated** the starter adds these i18n keys to its message catalogues: `session.endedTitle`, `session.endedBody`, `session.useAnotherAccount`, `session.discardHeld`, `session.continueWith`, `session.noMethod`, `session.socialFailed`, `session.reauthFailed`, `session.reauthDone`, `session.replaced`, `accountDisabled.title`, `accountDisabled.body` and `accountDisabled.back`.
 - A project with its **own polling or heartbeat routes** marks them `background` (`app.get(path, background, authMiddleware, handler)`), or they keep sessions alive for ever.
 - A project with its **own Better Auth client** adds `fetchOptions: { customFetchImpl: createAuthFetch(getSessionEnded()) }` (`src/react-app/lib/auth/client.ts`), or none of the new guards sees its requests.
-- A project that adds **magic-link sign-in** later follows the checklist in `docs/MECHANISMS.md`, "Adding magic-link sign-in later" (plugin, `registerReauthMethod`, error codes, tests).
+- A project that adds **magic-link sign-in** later follows the checklist in `docs/MECHANISMS.md`, "Adding magic-link sign-in later" (plugin, `registerReauthMethod` with `offer` because the plugin writes no `accounts` row, error codes, tests).
+- `package.json`: only `starter.version` changes; procedure step 9 sets it.
 
 ---
 
