@@ -31,13 +31,18 @@ export function resolveReauthMethods(
 	rememberedEmail: string,
 	offeredSocial: readonly string[],
 	registeredIds: readonly string[],
+	/** Per registered id, the method's own `offer` rule (`registeredOfferRules()`); an id without one is offered when the account has it. */
+	offerRules: ReadonlyMap<string, (methods: string[]) => boolean> = new Map(),
 ): ReauthChoice {
 	if (!stored || stored.email !== rememberedEmail) return { password: true, social: [...offeredSocial], registered: [] };
 	const providers = new Set(stored.providers);
 	return {
 		password: providers.has("credential"),
 		social: offeredSocial.filter((id) => providers.has(id)),
-		registered: stored.providers.filter((id, i, all) => registeredIds.includes(id) && all.indexOf(id) === i),
+		registered: registeredIds.filter((id) => {
+			const offer = offerRules.get(id);
+			return offer ? offer([...providers]) : providers.has(id);
+		}),
 	};
 }
 
@@ -73,6 +78,13 @@ export function readStoredMethods(storage: Pick<Storage, "getItem"> | null): Sto
 export type ReauthMethod = {
 	/** The Better Auth account `providerId` that means "this account signs in this way". */
 	providerId: string;
+	/**
+	 * Decides, from the provider ids of the account's Better Auth accounts, whether this method is
+	 * offered. Omitted: offered when `providerId` is among them. A method whose sign-in leaves no
+	 * account row (Better Auth's magic link writes none) sets it, for example `offer: () => true`.
+	 * Never consulted when the account's methods are unknown.
+	 */
+	offer?: (methods: string[]) => boolean;
 	/** Rendered in the dialog for an account that has it: for example a "send me a link" button. */
 	Component: ComponentType<{ email: string }>;
 };
@@ -107,6 +119,13 @@ export function resetReauthMethods(): void {
 
 export function registeredReauthMethod(providerId: string): ReauthMethod | undefined {
 	return registry.get(providerId);
+}
+
+/** The `offer` rule of every registered method that has one, for `resolveReauthMethods`. */
+export function registeredOfferRules(): Map<string, (methods: string[]) => boolean> {
+	const rules = new Map<string, (methods: string[]) => boolean>();
+	for (const [id, method] of registry) if (method.offer) rules.set(id, method.offer);
+	return rules;
 }
 
 export function registeredReauthIds(): string[] {

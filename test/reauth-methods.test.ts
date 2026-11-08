@@ -9,6 +9,7 @@ import {
 	rememberSignInMethods,
 	resetReauthMethods,
 	resetLearning,
+	registeredOfferRules,
 	resolveReauthMethods,
 	socialProviderName,
 } from "../src/react-app/lib/auth/reauth-methods";
@@ -317,6 +318,23 @@ describe("registerReauthMethod", () => {
 		const ids = registeredReauthIds();
 		expect(resolveReauthMethods({ email: "a@x", providers: ["magic-link"] }, "a@x", [], ids).registered).toEqual(["magic-link"]);
 		expect(resolveReauthMethods({ email: "a@x", providers: ["credential"] }, "a@x", [], ids).registered).toEqual([]);
+	});
+	it("a method with its own `offer` is shown to an account with no provider account, and to one with only a password", () => {
+		registerReauthMethod({ ...method("magic-link"), offer: () => true });
+		const ids = registeredReauthIds();
+		const rules = registeredOfferRules();
+		expect(resolveReauthMethods({ email: "a@x", providers: [] }, "a@x", [], ids, rules)).toEqual({ password: false, social: [], registered: ["magic-link"] });
+		expect(resolveReauthMethods({ email: "a@x", providers: ["credential"] }, "a@x", [], ids, rules)).toEqual({ password: true, social: [], registered: ["magic-link"] });
+		// Unknown methods stay unknown: nothing registered is offered.
+		expect(resolveReauthMethods(null, "a@x", [], ids, rules).registered).toEqual([]);
+	});
+	it("an `offer` that says no hides the method; a method without one keeps the providerId rule", () => {
+		registerReauthMethod({ ...method("passkey"), offer: (m) => m.includes("credential") });
+		registerReauthMethod(method("magic-link"));
+		const ids = registeredReauthIds();
+		const rules = registeredOfferRules();
+		expect(resolveReauthMethods({ email: "a@x", providers: ["google"] }, "a@x", [], ids, rules).registered).toEqual([]);
+		expect(resolveReauthMethods({ email: "a@x", providers: ["credential", "magic-link"] }, "a@x", [], ids, rules).registered).toEqual(["passkey", "magic-link"]);
 	});
 	it("refuses a reserved id (the dialog already renders it)", () => {
 		expect(() => registerReauthMethod(method("credential"))).toThrow(/already handled/);

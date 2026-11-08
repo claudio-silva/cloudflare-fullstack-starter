@@ -2,7 +2,7 @@ import { AlertDialog as AlertDialogPrimitive } from "radix-ui";
 import { authClient } from "@/lib/auth/client";
 import { getSessionEnded } from "@/lib/auth/session-ended";
 import { useAuthFeatures } from "@/lib/auth-features";
-import { type ReauthChoice, offeredSocialProviders, readStoredMethods, registeredReauthIds, registeredReauthMethod, resolveReauthMethods } from "@/lib/auth/reauth-methods";
+import { type ReauthChoice, offeredSocialProviders, readStoredMethods, registeredReauthIds, registeredOfferRules, registeredReauthMethod, resolveReauthMethods } from "@/lib/auth/reauth-methods";
 import { t } from "@/lib/i18n";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { AlertDialog, AlertDialogDescription, AlertDialogOverlay, AlertDialogPortal, AlertDialogTitle } from "../ui/alert-dialog";
@@ -41,7 +41,7 @@ export function SessionEndedDialog() {
 		});
 
 	const choice = features
-		? resolveReauthMethods(storedMethods(), email, offeredSocialProviders(features), registeredReauthIds())
+		? resolveReauthMethods(storedMethods(), email, offeredSocialProviders(features), registeredReauthIds(), registeredOfferRules())
 		: undefined;
 	// With a password field the exit is a quiet link beside it; without one it is the only exit, so a real button.
 	const footer = choice?.password ? (

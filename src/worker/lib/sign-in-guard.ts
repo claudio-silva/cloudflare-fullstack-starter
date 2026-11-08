@@ -3,7 +3,7 @@
  * account. The credentials are checked first, so a wrong password gets Better Auth's own answer,
  * the same as for any other email. Only a correct password for a disabled user reaches the session
  * hook (middleware/auth.ts, `databaseHooks.session.create.before`), which refuses; Better Auth then
- * answers 401 with code `FAILED_TO_CREATE_SESSION` (better-auth 1.7.13, `api/routes/sign-in.mjs`:
+ * answers 401 with code `FAILED_TO_CREATE_SESSION` (better-auth 1.7.14, `api/routes/sign-in.mjs`:
  * `createSession` returns null, the route throws `UNAUTHORIZED` with that code). That refusal, and
  * only that one, becomes the `account_disabled` answer built by `refuse`.
  */
