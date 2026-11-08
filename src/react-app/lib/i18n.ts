@@ -65,6 +65,12 @@ export const defaultMessages = {
 	"update.requiredTitle": "{app} has been updated.",
 	"update.requiredBody": "This page is running an older version that no longer works with the server. Update it to continue.",
 
+	// A session that ended under an open page (lib/auth/session-ended.ts)
+	"session.endedTitle": "Session ended",
+	"session.endedBody": "Your session ended. Enter your password to carry on where you left off.",
+	"session.useAnotherAccount": "Use another account",
+	"session.discardHeld": "Changes that have not been sent yet will be lost. Continue?",
+
 	// Action buttons and their toasts (components/actions/)
 	"actions.save": "Save",
 	"actions.cancel": "Cancel",

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { authClient } from "@/lib/auth/client";
 import { signInErrorMessage } from "../../../shared/sign-in-error-message";
@@ -10,6 +10,8 @@ import { Eye, EyeOff } from "lucide-react";
 import { GoogleSignInButton } from "./GoogleSignInButton";
 import { useDemoAccounts } from "@/lib/demo";
 import { useAuthFeatures } from "@/lib/auth-features";
+import { confirmDiscardHeldRequests, standDownUnloadGuards } from "@/lib/auth/held-requests";
+import { getSessionEnded } from "@/lib/auth/session-ended";
 
 /** "Admin" for an account with the admin role; its address when it has none. */
 const roleLabel = (account: { email: string; role: string | null }) =>
@@ -18,9 +20,18 @@ const roleLabel = (account: { email: string; role: string | null }) =>
 interface LoginFormProps {
 	onSuccess?: () => void;
 	showSignupLink?: boolean;
+	/**
+	 * Set when a session ended under an open page: the account is shown as text and
+	 * only the password is asked. Hides what would change the account (sign-up, demo
+	 * accounts, Google).
+	 */
+	lockedEmail?: string;
+	/** Shown beside the forgot-password link in locked mode ("Use another account"). */
+	lockedFooter?: ReactNode;
 }
 
-export function LoginForm({ onSuccess, showSignupLink = true }: LoginFormProps) {
+export function LoginForm({ onSuccess, showSignupLink = true, lockedEmail, lockedFooter }: LoginFormProps) {
+	const locked = lockedEmail !== undefined;
 	const navigate = useNavigate();
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
@@ -29,7 +40,8 @@ export function LoginForm({ onSuccess, showSignupLink = true }: LoginFormProps) 
 	const [error, setError] = useState("");
 	const passwordRef = useRef<HTMLInputElement>(null);
 	// The public demo: offer its accounts, and hide what it would refuse anyway.
-	const demo = useDemoAccounts();
+	const demoAccounts = useDemoAccounts();
+	const demo = locked ? null : demoAccounts;
 	// Which methods this deployment really offers; see src/react-app/lib/auth-features.ts.
 	const features = useAuthFeatures();
 	const isDemo = !!demo;
@@ -48,7 +60,7 @@ export function LoginForm({ onSuccess, showSignupLink = true }: LoginFormProps) 
 
 		try {
 			const result = await authClient.signIn.email({
-				email,
+				email: lockedEmail ?? email,
 				password,
 				fetchOptions: {
 					onSuccess: () => {
@@ -113,19 +125,25 @@ export function LoginForm({ onSuccess, showSignupLink = true }: LoginFormProps) 
 				</Alert>
 			)}
 
-			<div className="space-y-2">
-				<Label htmlFor="email">Email</Label>
-				<Input
-					id="email"
-					type="email"
-					placeholder="you@example.com"
-					value={email}
-					onChange={(e) => setEmail(e.target.value)}
-					disabled={isLoading}
-					required
-					autoFocus
-				/>
-			</div>
+			{locked ? (
+				<p className="text-center text-sm font-medium break-all" data-testid="locked-email">
+					{lockedEmail}
+				</p>
+			) : (
+				<div className="space-y-2">
+					<Label htmlFor="email">Email</Label>
+					<Input
+						id="email"
+						type="email"
+						placeholder="you@example.com"
+						value={email}
+						onChange={(e) => setEmail(e.target.value)}
+						disabled={isLoading}
+						required
+						autoFocus
+					/>
+				</div>
+			)}
 
 			<div className="space-y-2">
 				<Label htmlFor="password">Password</Label>
@@ -138,6 +156,7 @@ export function LoginForm({ onSuccess, showSignupLink = true }: LoginFormProps) 
 						onChange={(e) => setPassword(e.target.value)}
 						disabled={isLoading}
 						required
+						autoFocus={locked}
 						className="pr-10"
 					/>
 					<button
@@ -164,12 +183,20 @@ export function LoginForm({ onSuccess, showSignupLink = true }: LoginFormProps) 
 			{!isDemo && <div className="flex justify-between items-center text-sm">
 				<button
 					type="button"
-					onClick={() => navigate(`/forgot-password${email ? `?email=${encodeURIComponent(email)}` : ""}`)}
+					onClick={() => {
+						if (!locked) return navigate(`/forgot-password${email ? `?email=${encodeURIComponent(email)}` : ""}`);
+						// A full navigation: held requests die with the page, so ask first, and
+						// the browser's own prompt must not ask again.
+						if (!confirmDiscardHeldRequests()) return;
+						standDownUnloadGuards();
+						getSessionEnded().leave();
+						window.location.assign(`/forgot-password?email=${encodeURIComponent(lockedEmail)}`);
+					}}
 					className="text-primary hover:underline bg-transparent border-none p-0 cursor-pointer"
 				>
 					Forgot password?
 				</button>
-				{showSignupLink && (
+				{locked ? lockedFooter : showSignupLink && (
 					<div className="text-muted-foreground">
 						Don't have an account?{"  "}
 						<button
@@ -189,7 +216,7 @@ export function LoginForm({ onSuccess, showSignupLink = true }: LoginFormProps) 
 				</Button>
 			</div>
 
-			{features?.google && !isDemo && (
+			{features?.google && !isDemo && !locked && (
 				<>
 					<div className="relative my-4">
 						<div className="absolute inset-0 flex items-center">
