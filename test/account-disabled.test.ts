@@ -169,15 +169,15 @@ describe("a disabled account is told so, never that its session expired", () => 
 
 // Compile-only: a Kysely on each dialect that never connects, to see the SQL the portable insert produces.
 function compiling(kind: "sqlite" | "mysql" | "postgres") {
-	const parts = {
-		sqlite: [SqliteAdapter, SqliteQueryCompiler, SqliteIntrospector],
-		mysql: [MysqlAdapter, MysqlQueryCompiler, MysqlIntrospector],
-		postgres: [PostgresAdapter, PostgresQueryCompiler, PostgresIntrospector],
+	const make = {
+		sqlite: { adapter: () => new SqliteAdapter(), compiler: () => new SqliteQueryCompiler(), introspector: (db: Kysely<unknown>) => new SqliteIntrospector(db) },
+		mysql: { adapter: () => new MysqlAdapter(), compiler: () => new MysqlQueryCompiler(), introspector: (db: Kysely<unknown>) => new MysqlIntrospector(db) },
+		postgres: { adapter: () => new PostgresAdapter(), compiler: () => new PostgresQueryCompiler(), introspector: (db: Kysely<unknown>) => new PostgresIntrospector(db) },
 	}[kind];
 	const dialect: Dialect = {
-		createAdapter: () => new parts[0](),
-		createQueryCompiler: () => new parts[1](),
-		createIntrospector: (db) => new parts[2](db as never),
+		createAdapter: make.adapter,
+		createQueryCompiler: make.compiler,
+		createIntrospector: make.introspector,
 		createDriver: (): Driver => ({ init: async () => {}, acquireConnection: async () => ({}) as DatabaseConnection, beginTransaction: async () => {}, commitTransaction: async () => {}, rollbackTransaction: async () => {}, releaseConnection: async () => {}, destroy: async () => {} }),
 	};
 	return new Kysely<Database>({ dialect });
