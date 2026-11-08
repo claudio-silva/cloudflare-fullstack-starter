@@ -13,7 +13,7 @@ import {
 	resolveReauthMethods,
 	socialProviderName,
 } from "../src/react-app/lib/auth/reauth-methods";
-import { REAUTH_COMPLETE_PATH, pageNavigationDeps, startSocialReauth, takeReauthError, type SocialReauthDeps, type SocialReauthState } from "../src/react-app/lib/auth/social-reauth";
+import { REAUTH_COMPLETE_PATH, pageNavigationDeps, reauthErrorCallbackURL, startSocialReauth, takeReauthError, type SocialReauthDeps, type SocialReauthState } from "../src/react-app/lib/auth/social-reauth";
 import { createSessionEnded, REMEMBERED_EMAIL_KEY } from "../src/react-app/lib/auth/session-ended";
 
 /**
@@ -261,7 +261,7 @@ describe("startSocialReauth, popup blocked", () => {
 		expect(await startSocialReauth("google", h.deps)).toBe("redirecting");
 		expect(h.log.map((l) => l.split(":")[0])).toEqual(["open", "confirm", "signInSocial"]);
 		const args = JSON.parse(h.log[2]!.slice("signInSocial:".length));
-		expect(args).toEqual({ provider: "google", callbackURL: "http://app.test/page?x=1", errorCallbackURL: "http://app.test/page?x=1" });
+		expect(args).toEqual({ provider: "google", callbackURL: "http://app.test/page?x=1", errorCallbackURL: "http://app.test/page?x=1&reauth_error=google" });
 		expect(args.disableRedirect).toBeUndefined();
 	});
 
@@ -350,10 +350,19 @@ describe("registerReauthMethod", () => {
 });
 
 describe("takeReauthError", () => {
-	it("no error parameter: nothing to say", () => {
-		expect(takeReauthError("http://app.test/page?x=1")).toEqual({ failed: false, cleanHref: "http://app.test/page?x=1" });
+	it("no marker, no error: nothing to say", () => {
+		expect(takeReauthError("http://app.test/page?x=1")).toEqual({ failed: false, provider: null, cleanHref: "http://app.test/page?x=1" });
 	});
-	it("an error return: failed, with the parameters stripped and the rest kept", () => {
-		expect(takeReauthError("http://app.test/page?x=1&error=access_denied&error_description=no#h")).toEqual({ failed: true, cleanHref: "/page?x=1#h" });
+	it("an unrelated error without our marker is left alone", () => {
+		const href = "http://app.test/page?x=1&error=access_denied";
+		expect(takeReauthError(href)).toEqual({ failed: false, provider: null, cleanHref: href });
+	});
+	it("our marker with Better Auth's error: failed for that provider, everything added stripped, the rest kept", () => {
+		expect(takeReauthError("http://app.test/page?x=1&reauth_error=google&error=access_denied&error_description=no#h")).toEqual({ failed: true, provider: "google", cleanHref: "/page?x=1#h" });
+	});
+	it("the callback URL we send round-trips through it", () => {
+		const url = reauthErrorCallbackURL("http://app.test/page?x=1", "google");
+		expect(url).toBe("http://app.test/page?x=1&reauth_error=google");
+		expect(takeReauthError(`${url}&error=failed`)).toEqual({ failed: true, provider: "google", cleanHref: "/page?x=1" });
 	});
 });

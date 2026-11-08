@@ -8,6 +8,7 @@ import { ThemeProvider } from "./components/theme-provider";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { HttpLayerUi } from "./components/http/HttpLayerUi";
 import { SessionReplacedToast } from "./components/auth/SessionReplacedToast";
+import { ReauthErrorToast } from "./components/auth/ReauthErrorToast";
 import { UpdateDialog } from "./components/http/UpdatePrompt";
 import { installHttpLayer } from "./lib/http/interceptor";
 import { authClient } from "./lib/auth/client";
@@ -49,6 +50,7 @@ createRoot(document.getElementById("root")!).render(
 					<UpdateDialog />
 					<Toaster position="top-center" richColors />
 					<SessionReplacedToast />
+					<ReauthErrorToast />
 				</TooltipProvider>
 			</ThemeProvider>
 		</BrowserRouter>

@@ -894,7 +894,9 @@ browser blocks it), at `about:blank`, then pointed at the provider URL from
 refetches the session and the usual machinery restores or leaves. If the popup is
 blocked the only way left is a full redirect, which drops the page, so it is
 confirmed first (the discard confirm) and the provider returns to the page; a
-refusal shows once as a message (`takeReauthError`).
+refusal shows once as a toast (`ReauthErrorToast`, read at boot, since the
+cold load shows no dialog; only with our `reauth_error=<provider>` marker on
+the `errorCallbackURL`, so an unrelated `?error=` is left alone).
 
 **An app's own method.** `registerReauthMethod({ providerId, Component })`
 adds a method whose Better Auth account `providerId` is `providerId`; the

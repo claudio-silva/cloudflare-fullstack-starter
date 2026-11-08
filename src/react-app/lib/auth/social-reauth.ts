@@ -68,7 +68,7 @@ export async function startSocialReauth(provider: string, deps: SocialReauthDeps
 		if (!deps.confirm()) return "declined";
 		deps.onState("busy");
 		try {
-			const { error } = await deps.signInSocial({ provider, callbackURL: deps.location.href, errorCallbackURL: deps.location.href });
+			const { error } = await deps.signInSocial({ provider, callbackURL: deps.location.href, errorCallbackURL: reauthErrorCallbackURL(deps.location.href, provider) });
 			if (error) throw error;
 		} catch {
 			// Never leave the page frozen behind a redirect that did not happen.
@@ -134,15 +134,28 @@ export async function startSocialReauth(provider: string, deps: SocialReauthDeps
 	return "popup";
 }
 
-/**
- * The redirect fallback returns to the page with `?error=<code>` when the provider refused. Pure:
- * says whether that happened and what the URL is without the parameters Better Auth added, so the
- * message shows once and a reload does not repeat it.
- */
-export function takeReauthError(href: string): { failed: boolean; cleanHref: string } {
+/** Our marker on the redirect fallback's `errorCallbackURL`, valued with the provider id: only an error that comes with it is ours. */
+export const REAUTH_ERROR_MARKER = "reauth_error";
+
+/** The redirect fallback's `errorCallbackURL`: the current page, marked as a re-login attempt with `provider`. */
+export function reauthErrorCallbackURL(href: string, provider: string): string {
 	const url = new URL(href);
-	if (!url.searchParams.has("error")) return { failed: false, cleanHref: href };
+	url.searchParams.set(REAUTH_ERROR_MARKER, provider);
+	return url.toString();
+}
+
+/**
+ * The redirect fallback returns to the page with `?reauth_error=<provider>&error=<code>` when the
+ * provider refused. Pure: says whether that happened (and for which provider) and what the URL is
+ * without the parameters we and Better Auth added, so the message shows once and a reload does not
+ * repeat it. An `error` without our marker belongs to the page and is left alone.
+ */
+export function takeReauthError(href: string): { failed: boolean; provider: string | null; cleanHref: string } {
+	const url = new URL(href);
+	const provider = url.searchParams.get(REAUTH_ERROR_MARKER);
+	if (provider === null) return { failed: false, provider: null, cleanHref: href };
+	url.searchParams.delete(REAUTH_ERROR_MARKER);
 	url.searchParams.delete("error");
 	url.searchParams.delete("error_description");
-	return { failed: true, cleanHref: `${url.pathname}${url.search}${url.hash}` };
+	return { failed: true, provider, cleanHref: `${url.pathname}${url.search}${url.hash}` };
 }

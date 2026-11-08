@@ -67,12 +67,14 @@ export function SessionEndedDialog() {
 					className="fixed top-1/2 left-1/2 z-50 w-full max-w-[22.5rem] -translate-x-1/2 -translate-y-1/2 px-4 focus:outline-none"
 					onEscapeKeyDown={(e) => e.preventDefault()}
 				>
-					<AlertDialogTitle className="sr-only">{t("session.endedTitle")}</AlertDialogTitle>
-					<AlertDialogDescription className="sr-only">{t("session.endedBody")}</AlertDialogDescription>
 					<Card className="relative w-full shadow-2xl">
 						<CardHeader className="space-y-1 px-5 pb-3 pt-5">
-							<CardTitle className="text-center text-base">{t("session.endedTitle")}</CardTitle>
-							<CardDescription className="text-center text-xs">{t("session.endedBody")}</CardDescription>
+							<AlertDialogTitle asChild>
+								<CardTitle role="heading" aria-level={2} className="text-center text-base">{t("session.endedTitle")}</CardTitle>
+							</AlertDialogTitle>
+							<AlertDialogDescription asChild>
+								<CardDescription className="text-center text-xs">{t("session.endedBody")}</CardDescription>
+							</AlertDialogDescription>
 						</CardHeader>
 						<CardContent className="px-5 pb-6">
 							{choice === undefined ? null : (
