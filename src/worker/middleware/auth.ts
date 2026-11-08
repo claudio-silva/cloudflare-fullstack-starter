@@ -174,8 +174,9 @@ export function createAuth(c: AppContext) {
 			session: {
 				create: {
 					before: async (session) => {
-						// Password sign-in is refused earlier, with a message (index.ts);
-						// this covers every other way in (OAuth, email links).
+						// Refuses every way in for a disabled account (password, OAuth, email links).
+						// For a password sign-in Better Auth then answers FAILED_TO_CREATE_SESSION, which
+						// lib/sign-in-guard.ts turns into the 403 `account_disabled` after the password is right.
 						const user = await db.selectFrom("users").select("disabled").where("id", "=", session.userId).executeTakeFirst();
 						if (user && Boolean(user.disabled)) return false;
 					},
@@ -295,12 +296,12 @@ export async function authMiddleware(c: AppContext, next: () => Promise<void>) {
 // Better Auth answers its own errors (wrong password and the like) in its own
 // format, for its client. Anything it throws is a bug or a misconfiguration,
 // and goes to app.onError like any other: logged, and a generic 500.
-export async function handleAuthRequest(c: AppContext) {
+export async function handleAuthRequest(c: AppContext, request: Request = c.req.raw) {
 	const isSignUpPath = c.req.path.includes("/sign-up");
 	if (!config.auth.enableSignups && isSignUpPath) {
 		return failForAuthClient(c, 403, "Sign-up is disabled.", { code: "signups_disabled" });
 	}
 
 	const auth = createAuth(c);
-	return auth.handler(c.req.raw);
+	return auth.handler(request);
 }

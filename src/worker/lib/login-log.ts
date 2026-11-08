@@ -166,10 +166,8 @@ async function emailFromBody(c: AppContext): Promise<string> {
 	}
 }
 
-/** Whether a password sign-in is for an account that has been disabled. */
-export async function isDisabledAccount(c: AppContext): Promise<boolean> {
-	const email = await emailFromBody(c);
-	if (!email) return false;
+/** Whether the account with this (lower-cased) email has been disabled. */
+export async function isDisabledEmail(c: AppContext, email: string): Promise<boolean> {
 	const user = await createDb(c.env).selectFrom("users").select("disabled").where("email", "=", email).executeTakeFirst();
 	return Boolean(user?.disabled);
 }

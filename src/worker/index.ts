@@ -4,6 +4,7 @@ import { disabledAwareCatchAll, disabledAwareGetSession } from "./lib/account-di
 import type { AppBindings } from "./types/context";
 import { createAuth, handleAuthRequest } from "./middleware/auth";
 import { refuseStaleAuthRequest } from "./lib/auth-requests";
+import { signInWithDisabledGuard } from "./lib/sign-in-guard";
 import { cli } from "./routes/cli";
 import { profile } from "./routes/profile";
 import { sessions } from "./routes/sessions";
@@ -11,7 +12,7 @@ import { admin } from "./routes/admin"; // [admin-area-line]
 import { config } from "../config";
 import { APP_COMMIT, APP_VERSION } from "../shared/app-version";
 import { createDb, databaseKind } from "./db";
-import { isDisabledAccount, isRevokingPath, isSignInPath, isSignOutPath, recordFailedSignIn, recordSessionEnds, recordSignOut, sessionsOf } from "./lib/login-log";
+import { isDisabledEmail, isRevokingPath, isSignInPath, isSignOutPath, recordFailedSignIn, recordSessionEnds, recordSignOut, sessionsOf } from "./lib/login-log";
 import { maintenanceMiddleware } from "./middleware/maintenance";
 import { versionMiddleware } from "./middleware/version";
 import { clientErrors } from "./routes/client-errors";
@@ -112,17 +113,6 @@ app.all("/api/auth/*", async (c) => {
 			);
 		}
 	}
-	// A disabled account is refused before Better Auth checks the password, with
-	// a message that says so (OAuth sign-ins are refused in middleware/auth.ts).
-	if (c.req.method === "POST" && isSignInPath(c.req.path) && (await isDisabledAccount(c))) {
-		const write = recordFailedSignIn(c);
-		try {
-			c.executionCtx.waitUntil(write);
-		} catch {
-			await write;
-		}
-		return failForAuthClient(c, ACCOUNT_DISABLED_STATUS, ACCOUNT_DISABLED_MESSAGE, { code: ACCOUNT_DISABLED_CODE, level: "info", log: "sign-in refused: account disabled" });
-	}
 	// Signing out and revoking delete sessions, so who is asking (and, for a
 	// revocation, which sessions they have) is read first.
 	const post = c.req.method === "POST";
@@ -132,7 +122,18 @@ app.all("/api/auth/*", async (c) => {
 	const sessionsBefore = revoking && current ? await sessionsOf(createDb(c.env), current.user.id).catch(() => []) : [];
 	// A stale tab (its session id is not the one the cookie holds) may not change the account.
 	const stale = await refuseStaleAuthRequest(c, () => createAuth(c));
-	const raw = stale ?? (await handleAuthRequest(c));
+	// A disabled account is refused only after Better Auth accepted the password (lib/sign-in-guard.ts),
+	// so a wrong password never reveals one. OAuth sign-ins are refused by the session hook alone.
+	const raw =
+		stale ??
+		(post && isSignInPath(c.req.path)
+			? await signInWithDisabledGuard(
+					c.req.raw,
+					(request) => handleAuthRequest(c, request),
+					(email) => isDisabledEmail(c, email),
+					() => failForAuthClient(c, ACCOUNT_DISABLED_STATUS, ACCOUNT_DISABLED_MESSAGE, { code: ACCOUNT_DISABLED_CODE, level: "info", log: "sign-in refused: account disabled" }),
+				)
+			: await handleAuthRequest(c));
 	// A session a disable ended is 403 `account_disabled`, not Better Auth's 401 or null session.
 	// Sign-out passes untouched so its cookie-clearing Set-Cookie still applies.
 	const response =
