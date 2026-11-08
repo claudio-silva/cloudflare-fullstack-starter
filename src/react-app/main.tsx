@@ -11,6 +11,7 @@ import { UpdateDialog } from "./components/http/UpdatePrompt";
 import { installHttpLayer } from "./lib/http/interceptor";
 import { authClient } from "./lib/auth/client";
 import { setHeldRequests } from "./lib/auth/held-requests";
+import { withAccountDisabledGuard, expelToAccountDisabledPage } from "./lib/auth/account-disabled";
 import { getSessionEnded, trackPageLeaving, withSessionEndedGuard } from "./lib/auth/session-ended";
 
 trackPageLeaving(window);
@@ -20,6 +21,11 @@ trackPageLeaving(window);
 const sessionEndedGuard = (next: typeof fetch) =>
 	withSessionEndedGuard(next, getSessionEnded(), location.origin, { onHeldChange: (_count, summary) => setHeldRequests(summary) });
 
+// Any 403 account_disabled under /api/ (Better Auth's included) leaves the tab
+// for the public page. Inside the session-ended guard: a disabled account is
+// never shown the expired-session dialog.
+const accountDisabledGuard = (next: typeof fetch) => withAccountDisabledGuard(next, expelToAccountDisabledPage, location.origin);
+
 // Before anything renders, so a call made during the first paint is covered
 // too. It patches global fetch, which is the only way to also catch requests
 // issued by libraries such as Better Auth. See lib/http/interceptor.ts.
@@ -28,7 +34,7 @@ installHttpLayer({
 	// ends the session under the open page (the re-login dialog) or, with no
 	// session known, shows the sign-in page.
 	onUnauthorized: () => authClient.$store.notify("$sessionSignal"),
-	guards: [sessionEndedGuard],
+	guards: [sessionEndedGuard, accountDisabledGuard],
 });
 
 createRoot(document.getElementById("root")!).render(

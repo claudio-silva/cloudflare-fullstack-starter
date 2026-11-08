@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { authClient } from "@/lib/auth/client";
+import { ACCOUNT_DISABLED_CODE } from "../../../shared/account-status";
 import { signInErrorMessage } from "../../../shared/sign-in-error-message";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -69,6 +70,8 @@ export function LoginForm({ onSuccess, showSignupLink = true, lockedEmail, locke
 					},
 				},
 			});
+			// A disabled account: the guard is already navigating to /account-disabled, so show nothing.
+			if (result.error?.code === ACCOUNT_DISABLED_CODE) return;
 			if (result.error) {
 				setError(signInErrorMessage(result.error, window.location.origin));
 			}

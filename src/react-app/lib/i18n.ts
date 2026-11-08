@@ -71,6 +71,11 @@ export const defaultMessages = {
 	"session.useAnotherAccount": "Use another account",
 	"session.discardHeld": "Changes that have not been sent yet will be lost. Continue?",
 
+	// A disabled account (lib/auth/account-disabled.ts, pages/auth/AccountDisabled.tsx)
+	"accountDisabled.title": "Account disabled",
+	"accountDisabled.body": "Your account has been disabled and can no longer use the app. Contact an administrator if you need help.",
+	"accountDisabled.back": "Back to sign-in",
+
 	// Action buttons and their toasts (components/actions/)
 	"actions.save": "Save",
 	"actions.cancel": "Cancel",
