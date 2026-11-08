@@ -1,7 +1,7 @@
 import { getSessionCookie } from "better-auth/cookies";
 import type { Kysely } from "kysely";
-import type { Database } from "../types/database";
-import { dbTime as at, ignoreConflict } from "../db";
+import type { Database, Timestamp } from "../types/database";
+import { dbTime as at, ignoreConflict, type DatabaseKind } from "../db";
 import { ACCOUNT_DISABLED_CODE } from "../../shared/account-status";
 
 /**
@@ -24,15 +24,25 @@ export function sessionTokenFromHeaders(headers: Headers): string | null {
 }
 
 /**
+ * The insert that writes the markers for `sessions`, portable: a session that
+ * already has a marker is skipped on every dialect. Exported so a test can
+ * compile exactly what `markSessionsDisabled` runs.
+ */
+export function sessionMarkerInsert(db: Db, sessions: { token: string; userId: string; expiresAt: Timestamp }[], now = new Date(), kind?: DatabaseKind) {
+	return ignoreConflict(
+		db.insertInto("session_revocations").values(sessions.map((s) => ({ token: s.token, user_id: s.userId, reason: ACCOUNT_DISABLED_CODE, expires_at: s.expiresAt, created_at: at(now) }))),
+		kind,
+	);
+}
+
+/**
  * Copies the user's unexpired sessions into markers. Call before the sessions
  * are deleted. Returns how many were copied.
  */
 export async function markSessionsDisabled(db: Db, userId: string, now = new Date()): Promise<number> {
 	const live = await db.selectFrom("sessions").select(["token", "userId", "expiresAt"]).where("userId", "=", userId).where("expiresAt", ">", at(now)).execute();
 	if (live.length === 0) return 0;
-	await ignoreConflict(
-		db.insertInto("session_revocations").values(live.map((s) => ({ token: s.token, user_id: s.userId, reason: ACCOUNT_DISABLED_CODE, expires_at: s.expiresAt, created_at: at(now) }))),
-	).execute();
+	await sessionMarkerInsert(db, live, now).execute();
 	return live.length;
 }
 

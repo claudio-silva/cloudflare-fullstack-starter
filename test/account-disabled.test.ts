@@ -4,7 +4,7 @@ import { app } from "../src/worker/index";
 import { createDb } from "../src/worker/db";
 import { pruneExpiredAuthRows } from "../src/worker/lib/expired-auth-rows";
 import { Kysely, MysqlAdapter, MysqlIntrospector, MysqlQueryCompiler, PostgresAdapter, PostgresIntrospector, PostgresQueryCompiler, SqliteAdapter, SqliteIntrospector, SqliteQueryCompiler, type DatabaseConnection, type Driver, type Dialect } from "kysely";
-import { ignoreConflict } from "../src/worker/db";
+import { sessionMarkerInsert } from "../src/worker/lib/session-revocations";
 import type { Database } from "../src/worker/types/database";
 import { isAccountDisabledBody } from "../src/shared/account-status";
 
@@ -184,9 +184,9 @@ function compiling(kind: "sqlite" | "mysql" | "postgres") {
 }
 
 describe("the marker insert is portable", () => {
-	const row = { token: "t", user_id: "u", reason: "account_disabled", expires_at: "2030-01-01", created_at: "2030-01-01" };
+	const row = { token: "t", userId: "u", expiresAt: "2030-01-01" };
 	const sql = (kind: "sqlite" | "mysql" | "postgres") =>
-		ignoreConflict(compiling(kind).insertInto("session_revocations").values(row), kind).compile().sql.toLowerCase();
+		sessionMarkerInsert(compiling(kind), [row], new Date("2030-01-01"), kind).compile().sql.toLowerCase();
 
 	it("uses INSERT IGNORE on MySQL, never ON CONFLICT", () => {
 		expect(sql("mysql")).toContain("insert ignore into");
