@@ -41,11 +41,11 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { cloudflareCredentials, loadDeployConfig, parseEnvFile } from "./lib/deploy-config";
 import { readVersion, versionField } from "./lib/build-info";
 import { waitForChecks } from "./lib/ci-checks";
-import { nextVersion as computeNextVersion, type BumpKind } from "./lib/release-version";
+import { nextVersion as computeNextVersion, upgradingHeadVersion, type BumpKind } from "./lib/release-version";
 import { resolveWorkerName } from "./lib/worker";
 import { ensureBuildStarted, followBuild } from "./lib/workers-builds";
 import { resolve } from "node:path";
@@ -257,6 +257,14 @@ async function main(): Promise<void> {
 		tagNeeded = true;
 		version = explicit ? `v${explicit.replace(/^v/, "")}` : nextVersion(latest, pkgVersion, kind);
 		if (!/^v\d+\.\d+\.\d+$/.test(version)) die(`version must be vX.Y.Z (got ${version})`);
+		// The starter's own release must match its newest UPGRADING.md entry, or
+		// projects upgrading from the tag read the wrong entries.
+		if ((releasingTheStarter || appVersionFrom === "starter") && existsSync("UPGRADING.md")) {
+			const documented = upgradingHeadVersion(readFileSync("UPGRADING.md", "utf-8"));
+			if (documented && `v${documented}` !== version) {
+				die(`UPGRADING.md's newest entry is ${documented}, but this release would be ${version}. Release it as ${documented} (--version ${documented}), or fix the entry.`);
+			}
+		}
 	}
 	const needsCommit = `v${pkgVersion}` !== version;
 

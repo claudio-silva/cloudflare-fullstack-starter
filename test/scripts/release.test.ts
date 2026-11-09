@@ -1,11 +1,11 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { readVersion, resolveBuildInfo, versionField } from "../../bin/lib/build-info";
 import { githubRepo, summarizeChecks, type CheckRun } from "../../bin/lib/ci-checks";
 import { checkReleaseTag, parseLsRemoteTag } from "../../bin/lib/release-tag";
-import { nextVersion } from "../../bin/lib/release-version";
+import { nextVersion, upgradingHeadVersion } from "../../bin/lib/release-version";
 
 // A project created from the template: its own version, the starter's beside it.
 const pkg = { version: "0.0.1", starter: { version: "3.4.0" } };
@@ -46,6 +46,23 @@ describe("nextVersion", () => {
 	it("refuses what it cannot parse", () => {
 		expect(() => nextVersion("", "", "patch")).toThrow(/not X\.Y\.Z/);
 		expect(() => nextVersion("release-1", "1.0.0", "patch")).toThrow(/non-semver/);
+	});
+});
+
+describe("upgradingHeadVersion", () => {
+	it("reads the newest entry, skipping the procedure above it", () => {
+		const md = "# Upgrading\n\n## How to upgrade (agent procedure)\n\n## 3.11.0 — 2026-11-08\n\n## 3.10.0 — 2026-11-01\n";
+		expect(upgradingHeadVersion(md)).toBe("3.11.0");
+	});
+
+	it("is null without a version entry", () => {
+		expect(upgradingHeadVersion("# Upgrading\n\n## How to upgrade\n")).toBeNull();
+	});
+
+	it("matches the version this repository is about to release", () => {
+		const md = readFileSync(join(process.cwd(), "UPGRADING.md"), "utf-8");
+		const ownPkg = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf-8"));
+		expect(upgradingHeadVersion(md)).toBe(readVersion(ownPkg, "starter.version"));
 	});
 });
 

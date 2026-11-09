@@ -93,6 +93,7 @@ And it stays useful after day one. The parts that are easy to get subtly wrong â
 | **Zero-downtime migrations** | Schema changes ship without taking the app down |
 | **Maintenance mode** | Planned or emergency, and users don't lose what they were doing |
 | **Sign-in log** | Who signed in, and who tried |
+| **Sessions that don't lose work** | A session that ends under an open page asks the user to sign in again in a dialog, by their own method (password or Google), and replays what was waiting. A disabled account is told so; a tab left open under another account cannot act as it |
 | **Global error handling** | Every API error is handled centrally â€” no error-handling code is needed at call sites, except when specific status codes need special handling. Standard behaviour is provided for most status codes, maintenance mode and network conditions |
 | **Offline support** | While offline, requests are answered from local data by your handlers, or held and resumed in order when the connection returns; `online` / `offline` events and state |
 | **Auto-update** | Open tabs learn about a new release and move to it without losing work |
@@ -306,6 +307,10 @@ If wrangler is logged in, you can do it from the command line:
 - Email/password authentication with email verification and password reset
 - Google sign-in, off until `npm run setup:google` sets it up and verifies it; the button then appears wherever the Worker really has the credentials, never where it would do nothing ([docs/GOOGLE_AUTH.md](docs/GOOGLE_AUTH.md))
 - Session management with secure cookies, and a per-device list: users see where they are signed in and end one session (or all the others) from their profile; admins and the CLI can do the same for any user
+- Sessions expire after a configurable idle time (`config.auth.session`, 12 hours by default); polling routes marked `background` read the session without keeping it alive
+- When a session ends under an open page, a re-login dialog follows the account's sign-in method (password, a Google popup, or a method the app registers); the requests that failed meanwhile are held and replayed after the sign-in, so nothing typed is lost
+- Disabled accounts get a clear 403 and their open tabs move to an "account disabled" page; the sign-in form only says so after a correct password, so it never reveals which accounts exist
+- Each tab is bound to its session: a tab left open while another account signed in is refused (409) and reloads with a notice, instead of acting as the new account
 - Protected routes with seamless authentication overlay that prevents content flashing and needless page reloads
 - CLI user management (create, list, view, edit, delete, activate) for local and remote environments, with positional env shorthand (`npm run auth list-users production`)
 
@@ -338,6 +343,9 @@ If wrangler is logged in, you can do it from the command line:
 - Clean top header bar with logo and user menu
 - Avatar dropdown with user info, Profile, and Sign Out
 - Example admin area (`/admin`, in the avatar menu for admins): sidebar or top-bar menu, breadcrumbs, a dashboard, and user management as a CRUD example for superadmins. Restyle it, or remove it with `npm run admin:remove` ([docs/ADMIN.md](docs/ADMIN.md)) <!-- [admin-area-line] -->
+- `AdminTable` for the admin area's lists: toolbar, search, sorting, selection, bulk and row actions, rows loaded ahead as you page ([docs/ADMIN_TABLE.md](docs/ADMIN_TABLE.md)) <!-- [admin-area-line] -->
+- `ActionBar` with ready-made Save, Cancel, Delete, New, Print and Back buttons: icons, labels, the unsaved-changes check, the delete confirmation and the toasts ([docs/ACTION_BAR.md](docs/ACTION_BAR.md))
+- `ScrollableTabs`: a tab list that scrolls sideways instead of wrapping onto a second line ([docs/SHADCN_COMPONENTS.md](docs/SHADCN_COMPONENTS.md))
 - Profile page (update name, email, password; delete account)
 - Dark/light theme toggle with FOUC prevention
 - Theme-aware logo component (auto-switches light/dark)
@@ -351,7 +359,9 @@ A client/server app goes wrong in a handful of predictable ways. The starter han
 | Situation | What the user gets | Page blocked? |
 |---|---|---|
 | The server refuses a request (4xx) | the server's message, as a toast | No |
-| The session has expired (401) | the same, then the sign-in form | No |
+| The session has expired (401) | a re-login dialog over the page; what failed meanwhile is replayed after the sign-in | No |
+| The account was disabled (403) | a page saying so | No |
+| Another account signed in elsewhere in the browser (409) | the tab reloads, with a notice | No |
 | The server fails (5xx) | a generic message with a reference to quote | No |
 | The connection drops | a banner counting down to the next attempt | While requests are waiting |
 | A maintenance window | a banner until it ends | While requests are waiting |

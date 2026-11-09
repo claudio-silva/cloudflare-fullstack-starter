@@ -50,6 +50,8 @@ npm run test:e2e       # from 2.0.0 on, optional
 
 ## 3.11.0 — 2026-11-08
 
+> **3.9.0 and 3.10.0 were published inside the v3.8.0 tag.** The release tagged v3.8.0 was cut after the 3.9.0 and 3.10.0 entries had been written, so it contains them too. A project on 3.8.0 (the `v3.8.0` tag) already has them: upgrading from there, apply only this entry. A project on 3.7.0 or earlier applies 3.8.0, 3.9.0, 3.10.0 and this one, as usual. From this release on, the release command refuses a version that is not the newest entry here.
+
 A page no longer dies under the user when its session ends, and a tab left open under one account can no longer act as another. Disabled accounts get a clear 403 instead of a bare 401.
 
 ### Breaking changes

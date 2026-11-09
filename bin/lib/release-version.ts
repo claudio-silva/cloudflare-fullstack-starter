@@ -36,3 +36,17 @@ export function nextVersion(latest: string, pkgVersion: string, kind: BumpKind):
 	if (kind === "minor") return `v${ma}.${mi + 1}.0`;
 	return `v${ma}.${mi}.${pa + 1}`;
 }
+
+/**
+ * The version of the newest entry in the starter's `UPGRADING.md`: the first
+ * `## X.Y.Z` heading, or null if there is none.
+ *
+ * A release of the starter must be that version. When the two drift apart,
+ * projects upgrading from the tag read the wrong entries: v3.8.0 shipped the
+ * changes described as 3.9.0 and 3.10.0, so a project on 3.8.0 would apply
+ * their required actions a second time.
+ */
+export function upgradingHeadVersion(markdown: string): string | null {
+	const m = markdown.match(/^## (\d+\.\d+\.\d+)\b/m);
+	return m ? m[1] : null;
+}
