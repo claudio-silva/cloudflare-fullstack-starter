@@ -97,7 +97,7 @@
 		"db": "./bin/db"
 	},
 	"dependencies": {
-		"@hookform/resolvers": "^6.0.2",
+		"@hookform/resolvers": "^7.0.3",
 		"bcryptjs": "^3.0.3",
 		"better-auth": "^1.7.14",
 		"class-variance-authority": "^0.7.1",
