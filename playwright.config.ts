@@ -36,7 +36,8 @@ export default defineConfig({
 	webServer: [
 		{
 			// The dev server applies pending local migrations on its first API request.
-			command: `npm run dev -- --port ${port} --strictPort`,
+			// --host: baseURL may name 127.0.0.1, while Vite alone would listen on ::1 only.
+			command: `npm run dev -- --host ${new URL(baseURL).hostname} --port ${port} --strictPort`,
 			url: `${baseURL}/api/`,
 			reuseExistingServer: !process.env.CI,
 			timeout: 120_000,

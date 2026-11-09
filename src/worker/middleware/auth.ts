@@ -7,6 +7,10 @@ import { createEmailSender, type EmailSender } from "../adapters/email";
 import { getVerificationEmailTemplate, getPasswordResetEmailTemplate } from "../utils/email-templates";
 import { config } from "../../config";
 import { fail, failForAuthClient } from "../lib/errors";
+import { isBackgroundRoute } from "../lib/route-kind";
+import { denyUnlessLiveSession } from "../lib/account-disabled-gate";
+import { claimedSessionId } from "../lib/auth-requests";
+import { SESSION_CHANGED_CODE, SESSION_CHANGED_MESSAGE } from "../../shared/session-binding";
 
 type Environment = "local" | "preview" | "production" | "test";
 
@@ -152,17 +156,15 @@ export function createAuth(c: AppContext) {
 			// role change applies to the next request.
 			additionalFields: {
 				role: { type: "string", input: false, required: false, defaultValue: "user" },
+				// Lets the disabled gate see a disabled account without another read (lib/account-disabled-gate.ts).
+				disabled: { type: "boolean", input: false, required: false, defaultValue: false },
 			},
 		},
 		session: {
 			modelName: "sessions",
-			// Sessions expire after 24 hours without use: every touch (see updateAge)
-			// pushes the expiry a day ahead, so an active user stays signed in.
-			expiresIn: 60 * 60 * 24,
-			// A session is touched at most this often, and that touch is the user's
-			// "last seen" (the admin area shows Active / Idle from it). A day would
-			// leave it a day stale; a minute costs one small write per active session.
-			updateAge: 60,
+			// Idle lifetime and refresh rate come from config.auth.session.
+			expiresIn: config.auth.session.idleTimeoutSeconds,
+			updateAge: config.auth.session.refreshAfterSeconds,
 		},
 		// The sign-in log follows the sessions (lib/login-log.ts): a disabled
 		// account gets none; a session created by a sign-in is recorded with how it
@@ -172,10 +174,15 @@ export function createAuth(c: AppContext) {
 			session: {
 				create: {
 					before: async (session) => {
-						// Password sign-in is refused earlier, with a message (index.ts);
-						// this covers every other way in (OAuth, email links).
+						// Refuses every way in for a disabled account (password, OAuth, email links).
+						// For a password sign-in Better Auth then answers FAILED_TO_CREATE_SESSION, which
+						// lib/sign-in-guard.ts turns into the 403 `account_disabled` after the password is right.
 						const user = await db.selectFrom("users").select("disabled").where("id", "=", session.userId).executeTakeFirst();
-						if (user && Boolean(user.disabled)) return false;
+						if (user && Boolean(user.disabled)) {
+							// Tells `signInWithDisabledGuard` this failure is the disabled refusal, not another one.
+							c.set("sessionRefusedForDisabled", true);
+							return false;
+						}
 					},
 					after: async (session, context) => {
 						const method = signInMethod(context?.path, context?.params as Record<string, string> | undefined);
@@ -265,29 +272,40 @@ export async function authMiddleware(c: AppContext, next: () => Promise<void>) {
 	}
 
 	const auth = createAuth(c);
-	const session = await auth.api.getSession({ headers: c.req.raw.headers });
+	// A background route reads the session without pushing its expiry forward.
+	const { headers, response: session } = await auth.api.getSession({
+		headers: c.req.raw.headers,
+		query: isBackgroundRoute(c) ? { disableRefresh: true } : undefined,
+		returnHeaders: true,
+	});
 
-	if (!session) {
-		return fail(c, 401, "Your session has expired. Please sign in again.", {
-			code: "unauthenticated",
-			log: "no valid session",
-		});
+	const decision = await denyUnlessLiveSession(c, session, createDb(c.env));
+	if (decision.denied) return decision.denied;
+
+	// Per-tab binding, after 401 and 403 so those contracts hold: a tab whose session id is not the
+	// one the cookie resolves to is stale. Compares two strings already in hand: no storage read, no Set-Cookie.
+	const claimed = claimedSessionId(c);
+	if (claimed !== null && claimed !== (decision.session.session as { id?: unknown }).id) {
+		return fail(c, 409, SESSION_CHANGED_MESSAGE, { code: SESSION_CHANGED_CODE, level: "info", log: "stale tab: session id mismatch" });
 	}
 
-	c.set("user", session.user);
-	c.set("session", session.session);
+	// Only a request that passed every gate carries Better Auth's cookies (the refreshed session).
+	for (const cookie of headers.getSetCookie()) c.header("set-cookie", cookie, { append: true });
+
+	c.set("user", decision.session.user);
+	c.set("session", decision.session.session);
 	return next();
 }
 
 // Better Auth answers its own errors (wrong password and the like) in its own
 // format, for its client. Anything it throws is a bug or a misconfiguration,
 // and goes to app.onError like any other: logged, and a generic 500.
-export async function handleAuthRequest(c: AppContext) {
+export async function handleAuthRequest(c: AppContext, request: Request = c.req.raw) {
 	const isSignUpPath = c.req.path.includes("/sign-up");
 	if (!config.auth.enableSignups && isSignUpPath) {
 		return failForAuthClient(c, 403, "Sign-up is disabled.", { code: "signups_disabled" });
 	}
 
 	const auth = createAuth(c);
-	return auth.handler(c.req.raw);
+	return auth.handler(request);
 }

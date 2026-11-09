@@ -195,9 +195,15 @@ Rules the API enforces:
 Two separate switches:
 
 - **Enabled** (`users.disabled`, migration 0007) decides whether the user can
-  sign in at all. A disabled account is refused at sign-in with a message
-  (password) or gets no session (Google, email links), and disabling ends its
-  sessions. From the terminal: `npm run auth enable-user -- -u <email> -s off`.
+  sign in at all. A disabled account is refused at sign-in with a message when
+  the password is right (a wrong password gets the usual answer, so the form
+  never reveals a disabled account) or gets no session (Google, email links),
+  and disabling ends its sessions. A page the user has open is not left
+  hanging: its next request, or the moment the tab regains focus, takes it to
+  the "Account disabled" page (`/account-disabled`), whatever it was doing.
+  Enabling the user again lets them sign in; the old sessions are gone. See
+  [Sessions](MECHANISMS.md#sessions). From the terminal: `npm run auth
+  enable-user -- -u <email> -s off`.
 - **Verified** is Better Auth's `emailVerified`: the address is confirmed, by
   the emailed link, by Google, or by an admin here (or `npm run auth
   activate-user`). While email verification is required, an unverified user

@@ -7,8 +7,10 @@ import { NotFound } from "@/pages/NotFound";
 import { Profile } from "@/pages/Profile";
 import { SignUp } from "@/pages/auth/SignUp";
 import { VerifyEmail } from "@/pages/auth/VerifyEmail";
+import { AccountDisabled } from "@/pages/auth/AccountDisabled";
 import { ForgotPassword } from "@/pages/auth/ForgotPassword";
 import { ResetPassword } from "@/pages/auth/ResetPassword";
+import { ReauthComplete } from "@/pages/auth/ReauthComplete";
 import { AdminRoutes } from "@/admin/AdminRoutes"; // [admin-area-line]
 import { authClient } from "@/lib/auth/client";
 import { config } from "../config";
@@ -22,8 +24,10 @@ function AppContent() {
 	const authPages = [
 		...(config.auth.enableSignups ? ["/signup"] : []),
 		"/verify-email",
+		"/account-disabled",
 		"/forgot-password",
 		"/reset-password",
+		"/auth/reauth-complete",
 	];
 	const isAuthPage = authPages.some(page => location.pathname.startsWith(page));
 
@@ -37,9 +41,11 @@ function AppContent() {
 			{config.auth.enableSignups && <Route path="/signup" element={<SignUp />} />}
 			<Route path="/verify-email" element={<VerifyEmail />} />
 			<Route path="/verify-email/:token" element={<VerifyEmail />} />
+			<Route path="/account-disabled" element={<AccountDisabled />} />
 			<Route path="/forgot-password" element={<ForgotPassword />} />
 			<Route path="/reset-password" element={<ResetPassword />} />
 			<Route path="/reset-password/:token" element={<ResetPassword />} />
+			<Route path="/auth/reauth-complete" element={<ReauthComplete />} />
 
 			{/* Protected routes with TopBar */}
 			<Route

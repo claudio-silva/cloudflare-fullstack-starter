@@ -48,6 +48,78 @@ npm run test:e2e       # from 2.0.0 on, optional
 
 ---
 
+## 3.11.0 — 2026-11-08
+
+A page no longer dies under the user when its session ends, and a tab left open under one account can no longer act as another. Disabled accounts get a clear 403 instead of a bare 401.
+
+### Breaking changes
+
+- **Sessions expire after 12 hours without use, not 24.** The value is now `config.auth.session.idleTimeoutSeconds` in `src/config.ts`; set it to `60 * 60 * 24` to keep the old lifetime.
+- **`/api/` requests from the app carry `X-Session-Id`, and a mismatch with the session cookie answers 409 `session_changed`** before any handler runs. A client that sends no header is not checked (CLI, curl, a project's own scripts). A project with its own `fetch` wrapper that retries or caches 4xx should let 409 through.
+- A disabled account's requests answer **403 `account_disabled`**, where they answered 401 before. A disabled account's sign-in with a **wrong** password used to get 403 and now gets 401 `INVALID_EMAIL_OR_PASSWORD`, the same as any wrong password; only a correct password gets 403. A project that treats every 401 as "sign in again" and 403 as "not allowed" gets the right behaviour from the new client guards; a project with its own client code may need to handle the new code.
+
+No other contract changes. The database gains one table.
+
+### What it adds
+
+1. **Idle expiry and route kinds.** `config.auth.session` (`idleTimeoutSeconds`, `refreshAfterSeconds`) replaces the hard-coded lifetime in `src/worker/middleware/auth.ts`. `src/worker/lib/route-kind.ts` adds the `background` marker: `app.get(path, background, authMiddleware, handler)` reads the session without extending it. `Set-Cookie` is sent only after every gate. The starter marks no route (its background traffic is public).
+2. **Disabled accounts, 403.** `src/shared/account-status.ts`, `src/worker/lib/account-disabled-gate.ts`, `src/worker/lib/session-revocations.ts` and migration `0008_session_revocations` (table `session_revocations`: markers of the sessions a disable ended, written on disable, cleared on enable and delete, pruned by the cron in `src/worker/lib/expired-auth-rows.ts`). A `disabled` user field is exposed to the session. The browser guard `src/react-app/lib/auth/account-disabled.ts` and the public page `/account-disabled` (`src/react-app/pages/auth/AccountDisabled.tsx`) take a disabled account out of whatever page it was on.
+3. **Every sign-in path checks the proof before refusing a disabled account** (`src/worker/lib/sign-in-guard.ts`, wired in `src/worker/index.ts`; the session hook in `src/worker/middleware/auth.ts` flags its refusal on the request): a wrong password gets the ordinary answer, only a correct one gets 403 `account_disabled`, so the sign-in form never reveals a disabled account. A refused Google callback redirects to `/account-disabled` (the re-login popup reports it to its opener, which leaves for that page), and a refused email verification with auto sign-in answers the same 403.
+4. **A session that ends under an open page shows a re-login dialog** instead of throwing the user to the sign-in page (`src/react-app/lib/auth/session-ended.ts`, `held-requests.ts`, `src/react-app/components/auth/SessionEndedDialog.tsx`, `leave-session.ts`). Failed requests are held and replayed after the sign-in (reads merged, writes in order, at most two rounds); a `beforeunload` guard protects held writes; "Use another account" signs out (4 s timeout) and leaves.
+5. **The HTTP layer takes `guards`** (`installHttpLayer({ guards })` in `src/react-app/lib/http/interceptor.ts`; `sendReplay` is now exported by `maintenance.ts`), and **Better Auth's client goes through the layer** (`customFetchImpl` in `src/react-app/lib/auth/client.ts`; before, Better Auth's requests bypassed it).
+6. **The re-login dialog follows the account's sign-in method** (`src/react-app/lib/auth/reauth-methods.ts`, `social-reauth.ts`, `src/react-app/components/auth/ReauthSocialButton.tsx`, `src/react-app/pages/auth/ReauthComplete.tsx` at `/auth/reauth-complete`): a password field, a Google popup (a redirect if the popup is blocked), or a method the app registers with `registerReauthMethod`. A Google-only account is never asked for a password. A magic-link method is not included; `docs/MECHANISMS.md` ("Adding magic-link sign-in later") lists what to add.
+7. **Per-tab session binding:** `src/shared/session-binding.ts`, `src/worker/lib/auth-requests.ts` and the 409 in `src/worker/middleware/auth.ts`. A tab whose account changed carries on silently if it is the same account, and reloads `/` with a toast (`src/react-app/components/auth/SessionReplacedToast.tsx`) if it is another.
+8. **Docs:** `docs/MECHANISMS.md` has a "Sessions" section and a "Guards" paragraph in "The HTTP layer"; `docs/ADMIN.md` says what a disabled user's open tab sees; `AGENTS.md` gains the "Background routes" pattern and two Don'ts.
+
+### Required actions
+
+- **Take** the new files:
+  - `src/shared/account-status.ts`
+  - `src/shared/session-binding.ts`
+  - `src/worker/lib/account-disabled-gate.ts`
+  - `src/worker/lib/auth-requests.ts`
+  - `src/worker/lib/route-kind.ts`
+  - `src/worker/lib/session-revocations.ts`
+  - `src/worker/lib/sign-in-guard.ts`
+  - `src/worker/db/migrations/incremental/0008_session_revocations.ts`
+  - `src/react-app/lib/auth/account-disabled.ts`
+  - `src/react-app/lib/auth/held-requests.ts`
+  - `src/react-app/lib/auth/reauth-methods.ts`
+  - `src/react-app/lib/auth/session-ended.ts`
+  - `src/react-app/lib/auth/social-reauth.ts`
+  - `src/react-app/components/auth/ReauthErrorToast.tsx`
+  - `src/react-app/components/auth/ReauthSocialButton.tsx`
+  - `src/react-app/components/auth/SessionEndedDialog.tsx`
+  - `src/react-app/components/auth/SessionReplacedToast.tsx`
+  - `src/react-app/components/auth/leave-session.ts`
+  - `src/react-app/pages/auth/AccountDisabled.tsx`
+  - `src/react-app/pages/auth/ReauthComplete.tsx`
+  - the new tests under `test/` (`account-disabled-guard`, `account-disabled`, `auth-fetch`, `held-requests`, `leave-session`, `reauth-methods`, `route-kind`, `session-binding-client`, `session-binding`, `session-ended`, `session-refresh`, `sign-in-guard`, `social-reauth-server`), and the changes to `test/http-layer.test.ts`.
+- **Take** the changed starter-owned files, re-applying local edits: `src/worker/middleware/auth.ts`, `src/worker/db/index.ts`, `vitest.config.ts` and `playwright.config.ts`.
+- **Merge** the shared and project-owned files:
+  - `src/worker/index.ts` (the sign-in guard, the stale-tab refusal, the disabled-aware get-session and catch-all);
+  - `src/react-app/App.tsx` (the `/account-disabled` and `/auth/reauth-complete` routes, both in the list of pages without the top bar);
+  - `src/react-app/main.tsx` (`trackPageLeaving`, the `guards` option, `SessionReplacedToast`, `ReauthErrorToast`);
+  - `src/config.ts` (`auth.session`);
+  - `src/worker/types/context.ts` (the route-kind flag and `sessionRefusedForDisabled`);
+  - `src/worker/types/database.ts` (`session_revocations`);
+  - `src/worker/db/migrations/baseline.ts` and `src/worker/db/migrations/index.ts` (the table and the 0008 registration);
+  - `AGENTS.md`;
+  - `src/react-app/lib/http/interceptor.ts`, `src/react-app/lib/http/maintenance.ts` and `src/react-app/lib/http/browser.ts`;
+  - `src/react-app/lib/i18n.ts`;
+  - `src/react-app/lib/auth/client.ts`;
+  - `src/react-app/components/auth/LoginForm.tsx`, `src/react-app/components/auth/ProtectedRoute.tsx` and `src/react-app/components/auth/GoogleSignInButton.tsx` (it now exports `GoogleLogo`);
+  - `src/worker/lib/expired-auth-rows.ts` (prunes markers), `src/worker/lib/login-log.ts` (the sign-in log helpers) and `src/worker/lib/users.ts` (clears markers on delete);
+  - `src/worker/routes/admin/users.ts` and `src/worker/routes/cli.ts` (write and clear markers on disable and enable).
+- **Run the migration:** `npm run db:migrate` locally; then `db:migrate:preview:safe` and `db:migrate:production:safe` after deploying (additive: a new table, so the previous code keeps working). If the project already has a migration numbered 0008, number this one next and keep its `legacyName` consistent in `baseline.ts`.
+- A project that **translated** the starter adds these i18n keys to its message catalogues: `session.endedTitle`, `session.endedBody`, `session.useAnotherAccount`, `session.discardHeld`, `session.continueWith`, `session.noMethod`, `session.socialFailed`, `session.reauthFailed`, `session.reauthDone`, `session.replaced`, `accountDisabled.title`, `accountDisabled.body` and `accountDisabled.back`.
+- A project with its **own polling or heartbeat routes** marks them `background` (`app.get(path, background, authMiddleware, handler)`), or they keep sessions alive for ever.
+- A project with its **own Better Auth client** adds `fetchOptions: { customFetchImpl: createAuthFetch(getSessionEnded()) }` (`src/react-app/lib/auth/client.ts`), or none of the new guards sees its requests.
+- A project that adds **magic-link sign-in** later follows the checklist in `docs/MECHANISMS.md`, "Adding magic-link sign-in later" (plugin, `registerReauthMethod` with `offer` because the plugin writes no `accounts` row, error codes, tests).
+- `package.json`: only `starter.version` changes; procedure step 9 sets it.
+
+---
+
 ## 3.10.0 — 2026-11-01
 
 The product website no longer needs a domain, and it comes with a working contact form. Nothing changes for a project without a website.

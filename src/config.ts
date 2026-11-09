@@ -36,6 +36,16 @@ export const config = {
 		// Worker has both credentials, so a half-done setup shows nothing rather
 		// than a button that does nothing. See docs/GOOGLE_AUTH.md.
 		enableGoogleAuth: false,
+		session: {
+			// Time without a normal request before a session dies. Every normal request
+			// pushes the expiry this far ahead; a `background` route (worker/lib/route-kind.ts)
+			// never does, so polling cannot keep a session alive.
+			idleTimeoutSeconds: 60 * 60 * 12,
+			// How often a normal request pushes the expiry forward. This is also the
+			// "last seen" granularity in the admin area (Active / Idle): a minute costs
+			// one small write per active session, a day would leave it a day stale.
+			refreshAfterSeconds: 60,
+		},
 	},
 
 	// Public base URLs per environment (fallbacks when APP_BASE_URL is not set).

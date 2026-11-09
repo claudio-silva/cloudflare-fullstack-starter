@@ -31,7 +31,7 @@ export type BrowserGlobals = {
 	};
 	navigator?: { onLine?: boolean; sendBeacon?(url: string, data: Blob): boolean };
 	sessionStorage?: { getItem(key: string): string | null; setItem(key: string, value: string): void };
-	addEventListener?(type: string, listener: Listener): void;
+	addEventListener?(type: string, listener: Listener, options?: { once?: boolean; capture?: boolean }): void;
 	removeEventListener?(type: string, listener: Listener): void;
 	dispatchEvent?(event: Event): boolean;
 };

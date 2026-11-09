@@ -275,7 +275,7 @@ const replays = new Map<string, Promise<Response>>();
  * up must not cancel it for the rest — and each caller's signal is honoured on
  * its own copy of the wait instead.
  */
-function sendReplay(originalFetch: typeof fetch, input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+export function sendReplay(originalFetch: typeof fetch, input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
 	const key = replayKey(input, init);
 	if (key === null) return originalFetch(input, init);
 

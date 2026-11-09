@@ -65,6 +65,23 @@ export const defaultMessages = {
 	"update.requiredTitle": "{app} has been updated.",
 	"update.requiredBody": "This page is running an older version that no longer works with the server. Update it to continue.",
 
+	// A session that ended under an open page (lib/auth/session-ended.ts)
+	"session.endedTitle": "Session ended",
+	"session.endedBody": "Your session ended. Sign in again to carry on where you left off.",
+	"session.useAnotherAccount": "Use another account",
+	"session.discardHeld": "Changes that have not been sent yet will be lost. Continue?",
+	"session.continueWith": "Continue with {provider}",
+	"session.noMethod": "This account signs in with a method that is not available here.",
+	"session.socialFailed": "Signing in with {provider} did not complete. Try again.",
+	"session.reauthFailed": "Signing in did not complete. Close this window and try again.",
+	"session.reauthDone": "You are signed in. You can close this window.",
+	"session.replaced": "The previous session in this tab was ended.",
+
+	// A disabled account (lib/auth/account-disabled.ts, pages/auth/AccountDisabled.tsx)
+	"accountDisabled.title": "Account disabled",
+	"accountDisabled.body": "Your account has been disabled and can no longer use the app. Contact an administrator if you need help.",
+	"accountDisabled.back": "Back to sign-in",
+
 	// Action buttons and their toasts (components/actions/)
 	"actions.save": "Save",
 	"actions.cancel": "Cancel",

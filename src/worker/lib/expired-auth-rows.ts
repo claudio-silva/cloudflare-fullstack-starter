@@ -1,8 +1,9 @@
-import { createDb, databaseKind } from "../db";
+import { createDb, dbTime } from "../db";
 import { recordSessionEnds } from "./login-log";
+import { pruneExpiredSessionMarkers } from "./session-revocations";
 
 /**
- * Delete expired sessions and verification tokens.
+ * Delete expired sessions, verification tokens and disable markers.
  *
  * Better Auth removes an expired session only when that same session is looked
  * up again, which a visitor who never comes back never does; verification
@@ -14,7 +15,7 @@ import { recordSessionEnds } from "./login-log";
  */
 export async function pruneExpiredAuthRows(env: Parameters<typeof createDb>[0]): Promise<number> {
 	const now = new Date();
-	const value = databaseKind === "sqlite" ? now.toISOString() : now;
+	const value = dbTime(now);
 	const db = createDb(env);
 	let deleted = 0;
 	// Each expired session goes in the sign-in log first: the log is the only place that remembers it.
@@ -24,5 +25,6 @@ export async function pruneExpiredAuthRows(env: Parameters<typeof createDb>[0]):
 		const result = await db.deleteFrom(table).where("expiresAt", "<", value).executeTakeFirst();
 		deleted += Number(result?.numDeletedRows ?? 0);
 	}
+	deleted += await pruneExpiredSessionMarkers(db, now);
 	return deleted;
 }

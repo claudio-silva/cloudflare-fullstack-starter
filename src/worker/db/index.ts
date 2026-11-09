@@ -30,8 +30,12 @@ export function createDb(env: Pick<AppEnv, "DB">): Kysely<Database> {
  * objects (Better Auth stores ISO strings there); Postgres/MySQL drivers take `Date`.
  */
 export function dbNow(kind: DatabaseKind = databaseKind): Date | string {
-	const now = new Date();
-	return kind === "sqlite" ? now.toISOString() : now;
+	return dbTime(new Date(), kind);
+}
+
+/** Any instant, written the way `dbNow` writes the present one. */
+export function dbTime(date: Date, kind: DatabaseKind = databaseKind): Date | string {
+	return kind === "sqlite" ? date.toISOString() : date;
 }
 
 /** Boolean value to write: SQLite drivers take 0/1, PostgreSQL/MySQL take booleans. */

@@ -86,8 +86,9 @@ export type HttpErrorReport = {
 
 export type HttpLayerOptions = {
 	/**
-	 * Called on a 401 from a managed path. The starter re-checks the Better
-	 * Auth session, which shows the sign-in overlay if it has really expired.
+	 * Called on a 401 from a managed path that no guard held. The starter
+	 * re-checks the Better Auth session, which ends it under the open page
+	 * (the re-login dialog) or, with no session known, shows the sign-in page.
 	 */
 	onUnauthorized?: () => void;
 	/** Called for every error the layer reports; with `ui: { errors: false }`, instead of the toast. */
@@ -104,6 +105,18 @@ export type HttpLayerOptions = {
 	/** Off to keep the browser's errors out of the Worker logs. */
 	reportErrors?: boolean;
 	maintenance?: MaintenanceOptions;
+	/**
+	 * Wrappers around the inner fetch, for behaviour that needs to see (or hold)
+	 * a request's raw response before the layer reacts to it: a session that
+	 * ended under an open page, for one (lib/auth/session-ended.ts). The chain is
+	 * layer → `guards[0]` → … → maintenance → network, the first element
+	 * outermost. The layer itself knows nothing about what they do.
+	 *
+	 * Only requests the layer handles pass through them. Those it leaves alone
+	 * (`handles: "all"`, `exclude`, cross-origin) go straight to the network,
+	 * unguarded.
+	 */
+	guards?: Array<(next: typeof fetch) => typeof fetch>;
 };
 
 const API_PREFIX = "/api/";
@@ -183,7 +196,8 @@ export function installHttpLayer(options: HttpLayerOptions = {}): () => void {
 	// Inner layer: maintenance. Requests that reach the code below have already
 	// been held through any maintenance window.
 	const uninstallMaintenance = installMaintenanceInterceptor({ ...options.maintenance, beforeRelease: runBeforeReconnect });
-	const inner = globalThis.fetch;
+	// Guards wrap the maintenance fetch; the first one is the outermost.
+	const inner = (options.guards ?? []).reduceRight<typeof fetch>((next, guard) => guard(next), globalThis.fetch);
 	const uninstallConnectivity = installConnectivity(rawFetch);
 
 	const { exclude } = options;
