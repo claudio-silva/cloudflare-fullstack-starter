@@ -293,12 +293,15 @@ async function wireManifest(): Promise<void> {
 	const file = join(root, "public", "manifest.webmanifest");
 	if (!existsSync(file)) return;
 	const manifest = JSON.parse(await readFile(file, "utf-8")) as Record<string, unknown>;
-	manifest.icons = [
+	const icons = [
 		{ src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
 		{ src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
 		{ src: "/icons/maskable-192.png", sizes: "192x192", type: "image/png", purpose: "maskable" },
 		{ src: "/icons/maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
 	];
+	// Already listed: the file keeps its own formatting.
+	if (JSON.stringify(manifest.icons) === JSON.stringify(icons)) return;
+	manifest.icons = icons;
 	await write("public/manifest.webmanifest", JSON.stringify(manifest, null, 2) + "\n");
 }
 
