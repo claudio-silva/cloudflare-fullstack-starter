@@ -26,6 +26,7 @@
 	"scripts": {
 		"dev": "vite",
 		"dev:tailnet": "bin/dev-tailnet",
+		"icons": "tsx bin/icons.ts",
 		"build": "tsc -b && vite build",
 		"build:preview": "tsc -b && vite build --mode preview",
 		"build:production": "tsc -b && vite build --mode production",

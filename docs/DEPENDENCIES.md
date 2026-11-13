@@ -106,6 +106,7 @@ Each entry below has the same shape:
 
 - **Choice:** `@playwright/test` with a single `chromium` project (`playwright.config.ts`).
 - **Why:** the smoke test checks that the app works, not browser compatibility. One browser keeps the download and CI time small.
+- **Also used by** `npm run icons` (`bin/icons.ts`), which renders every app icon with the same Chromium instead of an image library such as `sharp` (a native binary per platform, for a command run a few times in a project's life).
 - **Revisit when:** a project needs cross-browser coverage. Add `firefox` / `webkit` projects in its own config.
 
 ### UI components: shadcn/ui, Radix-only set installed

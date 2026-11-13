@@ -792,6 +792,7 @@ maintenance off
 ```bash
 npm run dev          # Start dev server (http://localhost:5173)
 npm run dev:tailnet  # Same, over HTTPS on your phone through Tailscale, with a QR code (docs/PHONE_TESTING.md)
+npm run icons        # Every app icon from branding/icon.png (docs/ICONS.md)
 npm run build        # Build for production
 npm run preview      # Preview production build
 npm run lint         # Run ESLint
@@ -886,6 +887,13 @@ export const config = {
 } as const;
 ```
 
+### App icons
+Put your icon in `branding/icon.png` (the mark alone on a transparent background, 1024px or more on its longer side) and run:
+```bash
+npm run icons                              # white tile; --background "#0b1f3a" for another colour
+```
+It makes the favicon, the PWA icons (Android and iOS home screen) and the App Store, Google Play and Android launcher icons, and points `index.html` at them. A larger image is scaled down; a smaller one is scaled up with a warning, because the large icons come out blurred. → [docs/ICONS.md](docs/ICONS.md)
+
 Also update prod and preview domain URLs in `.env.<env-name>.example` and `.env.<env-name>` files (or run `npm run init` to update them).
 
 ### Adding Pages
@@ -946,6 +954,7 @@ For long-term retention or external analysis, you can forward logs via Cloudflar
 - [The admin area](docs/ADMIN.md) — roles, the example backoffice, adding pages, removing it <!-- [admin-area-line] -->
 - [Admin lists](docs/ADMIN_TABLE.md) — `AdminTable`, the one table every admin list is built from <!-- [admin-area-line] -->
 - [Dependencies](docs/DEPENDENCIES.md) — why each third-party package is here, what was left out, and when to revisit
+- [App icons](docs/ICONS.md) — `npm run icons`: favicon, PWA and store icons from one image
 - [Vite ↔ Cloudflare Bridge](docs/VITE_CLOUDFLARE_BRIDGE.md) — how the project bridges Vite's dev conventions with Cloudflare's deployment model (env config baking, secrets sync, cross-platform build scripts)
 
 ### External Resources

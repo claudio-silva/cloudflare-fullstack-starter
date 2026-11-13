@@ -161,6 +161,7 @@ const users = await db.selectFrom("users").selectAll().execute();
 # Development
 npm run dev                         # Start dev server (logs appear in terminal)
 npm run dev:tailnet                 # Same, over HTTPS for a phone via Tailscale, prints a QR code (docs/PHONE_TESTING.md)
+npm run icons                       # Every app icon (favicon, PWA, stores) from branding/icon.png (docs/ICONS.md)
 npm test                            # Vitest worker integration tests
 npm run test:e2e                    # Playwright smoke test (starts the dev server)
 
