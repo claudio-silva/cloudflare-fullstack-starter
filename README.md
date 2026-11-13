@@ -791,6 +791,7 @@ maintenance off
 
 ```bash
 npm run dev          # Start dev server (http://localhost:5173)
+npm run dev:tailnet  # Same, over HTTPS on your phone through Tailscale, with a QR code (docs/PHONE_TESTING.md)
 npm run build        # Build for production
 npm run preview      # Preview production build
 npm run lint         # Run ESLint

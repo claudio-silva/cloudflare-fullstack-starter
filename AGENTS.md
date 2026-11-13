@@ -160,6 +160,7 @@ const users = await db.selectFrom("users").selectAll().execute();
 ```bash
 # Development
 npm run dev                         # Start dev server (logs appear in terminal)
+npm run dev:tailnet                 # Same, over HTTPS for a phone via Tailscale, prints a QR code (docs/PHONE_TESTING.md)
 npm test                            # Vitest worker integration tests
 npm run test:e2e                    # Playwright smoke test (starts the dev server)
 

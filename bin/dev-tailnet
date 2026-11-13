@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Dev server reachable from your other devices (a phone, a tablet) over Tailscale, with HTTPS:
+# the microphone, camera, service worker and PWA install only work in a secure context.
+#
+#   npm run dev:tailnet                    then scan the QR code it prints on the phone
+#   npm run dev:tailnet -- --self-signed   skip tailscale serve (see below)
+#
+# Default: Vite on 127.0.0.1 (plain HTTP, never on a public interface) behind `tailscale serve`,
+# which gives https://<machine>.<tailnet>.ts.net a trusted certificate: no warning, and a PWA
+# can be installed. Needs HTTPS certificates enabled for the tailnet (admin console, DNS).
+# `tailscale serve` must target 127.0.0.1: on macOS it cannot reach the machine's own Tailscale
+# address (requests hang).
+#
+# Fallback (--self-signed, or when `tailscale serve` fails): Vite on the Tailscale address only,
+# with a self-signed certificate (kept in .wrangler/dev-cert/). The browser warns once
+# ("Advanced" -> "Proceed"), and a PWA cannot be installed. See docs/PHONE_TESTING.md.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+PORT="${PORT:-5173}"
+IP="$(tailscale ip -4 2>/dev/null | head -1 || true)"
+if [ -z "$IP" ]; then
+	echo "No Tailscale IPv4 address: is tailscale installed and up?" >&2
+	exit 1
+fi
+DNS="$(tailscale status --self --json 2>/dev/null | sed -n 's/.*"DNSName": *"\([^"]*\)\.".*/\1/p' | head -1 || true)"
+
+show() {
+	echo
+	node bin/qr.mjs "$1"
+	echo "  Open on your phone:  $1"
+	echo "  $2"
+	echo
+}
+
+if [ "${1:-}" != "--self-signed" ] && [ -n "$DNS" ] &&
+	tailscale serve --bg "http://127.0.0.1:$PORT" >/dev/null 2>&1; then
+	show "https://$DNS" "(trusted certificate, through tailscale serve; stop it with: tailscale serve --https=443 off)"
+	exec npx vite --host 127.0.0.1 --port "$PORT" --strictPort
+fi
+
+[ "${1:-}" = "--self-signed" ] || echo "tailscale serve failed (HTTPS certificates enabled for the tailnet? On macOS, maybe: sudo tailscale set --operator=\$USER): using a self-signed certificate." >&2
+
+DIR=".wrangler/dev-cert"
+KEY="$DIR/key.pem"
+CERT="$DIR/cert.pem"
+SAN="IP:$IP${DNS:+,DNS:$DNS},DNS:localhost"
+if [ ! -f "$CERT" ] || [ "$(cat "$DIR/san" 2>/dev/null || true)" != "$SAN" ]; then
+	mkdir -p "$DIR"
+	openssl req -x509 -nodes -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
+		-keyout "$KEY" -out "$CERT" -days 825 -subj "/CN=Local dev server" \
+		-addext "subjectAltName=$SAN" >/dev/null 2>&1
+	echo "$SAN" > "$DIR/san"
+	echo "Created a self-signed certificate for $SAN"
+fi
+
+show "https://$IP:$PORT" "(self-signed certificate: the browser warns once; a PWA cannot be installed)"
+export DEV_HTTPS_KEY="$PWD/$KEY" DEV_HTTPS_CERT="$PWD/$CERT"
+exec npx vite --host "$IP" --port "$PORT" --strictPort

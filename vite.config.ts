@@ -117,6 +117,18 @@ export default defineConfig(({ mode }) => {
 			watch: {
 				ignored: [path.resolve(import.meta.dirname, ".claude")],
 			},
+			// HTTPS with a self-signed certificate for testing on phones over Tailscale
+			// (`npm run dev:tailnet -- --self-signed`, docs/PHONE_TESTING.md).
+			...(process.env.DEV_HTTPS_KEY && process.env.DEV_HTTPS_CERT
+				? {
+						https: {
+							key: fs.readFileSync(process.env.DEV_HTTPS_KEY),
+							cert: fs.readFileSync(process.env.DEV_HTTPS_CERT),
+						},
+					}
+				: {}),
+			// Tailscale MagicDNS names (`npm run dev:tailnet`); IP addresses are always allowed.
+			allowedHosts: [".ts.net"],
 		},
 	};
 });

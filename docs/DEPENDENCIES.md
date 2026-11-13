@@ -127,6 +127,13 @@ Each entry below has the same shape:
 - **Rejected:** installing the whole catalogue (the bloat above); a component library with its own runtime, such as MUI or Chakra (shadcn components are source in the project, styled with Tailwind, and only what is used is shipped).
 - **Revisit when:** a heavy component turns out to be needed by most projects.
 
+### QR code in the terminal: `qrcode-terminal` (dev)
+
+- **Choice:** `qrcode-terminal`, a dev dependency used only by `npm run dev:tailnet` (`bin/qr.mjs`) to print the phone URL as a QR code.
+- **Why:** testing on a phone becomes a scan instead of typing a long `*.ts.net` address. No dependencies of its own, about 30 KB, never bundled.
+- **Rejected:** `qrencode` (a system binary, not installed everywhere); `qrcode` (several dependencies, image output that is not needed).
+- **Revisit when:** it breaks on a Node upgrade (unmaintained since 2020, but tiny and stable).
+
 ## Project choices
 
 > Record here the dependencies this project adds, swaps or reintroduces, in the same format. Upgrades of the starter do not touch this section.
