@@ -56,7 +56,8 @@ And it updates, when they exist:
 
 - `index.html`: the `<link rel="icon">` (now `/favicon.ico`) and `<link rel="apple-touch-icon">`
   tags. Any other icon link there is replaced, so the starter's `vite.svg` stops being used and can
-  be deleted from `public/`.
+  be deleted from `public/`. Once both links are there, `index.html` is left alone, so links you
+  add or move yourself stay as they are.
 - `public/manifest.webmanifest`: its `icons` list (the four PWA icons). The starter has no manifest;
   the command does not create one.
 

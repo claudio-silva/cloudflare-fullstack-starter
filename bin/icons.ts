@@ -279,6 +279,8 @@ async function wireIndexHtml(): Promise<void> {
 	const file = join(root, "index.html");
 	if (!existsSync(file)) return;
 	const before = await readFile(file, "utf-8");
+	// Already wired (links of its own, wherever they sit, are left alone).
+	if (/<link rel="icon"[^>]*href="\/favicon\.ico"/.test(before) && /<link rel="apple-touch-icon"[^>]*href="\/icons\/apple-touch-icon\.png"/.test(before)) return;
 	let html = before.replace(/^[ \t]*<link rel="icon"[^>]*>\r?\n/gm, "").replace(/^[ \t]*<link rel="apple-touch-icon"[^>]*>\r?\n/gm, "");
 	const indent = /^([ \t]*)<meta charset/m.exec(html)?.[1] ?? "    ";
 	const links = `${indent}<link rel="icon" href="/favicon.ico" sizes="48x48" />\n${indent}<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />\n`;
