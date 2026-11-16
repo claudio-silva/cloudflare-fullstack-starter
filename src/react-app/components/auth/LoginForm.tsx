@@ -135,16 +135,21 @@ export function LoginForm({ onSuccess, showSignupLink = true, lockedEmail, locke
 			) : (
 				<div className="space-y-2">
 					<Label htmlFor="email">Email</Label>
-					<Input
-						id="email"
-						type="email"
-						placeholder="you@example.com"
-						value={email}
-						onChange={(e) => setEmail(e.target.value)}
-						disabled={isLoading}
-						required
-						autoFocus
-					/>
+					{/* In a box of its own, as the password is: password managers insert an element beside a
+					    focused email field, and as a direct child of space-y-2 the field would then get a
+					    margin and push the password field down. */}
+					<div className="relative">
+						<Input
+							id="email"
+							type="email"
+							placeholder="you@example.com"
+							value={email}
+							onChange={(e) => setEmail(e.target.value)}
+							disabled={isLoading}
+							required
+							autoFocus
+						/>
+					</div>
 				</div>
 			)}
 
