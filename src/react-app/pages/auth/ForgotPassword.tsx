@@ -141,7 +141,6 @@ export function ForgotPassword() {
 								placeholder="you@example.com"
 								{...register("email")}
 								disabled={isLoading}
-								autoFocus
 							/>
 							{errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
 						</div>

@@ -196,7 +196,6 @@ export function ResetPassword() {
 											type={showPassword ? "text" : "password"}
 											disabled={isLoading}
 											className="pr-10"
-											autoFocus
 										/>
 									)}
 								/>

@@ -147,7 +147,6 @@ export function LoginForm({ onSuccess, showSignupLink = true, lockedEmail, locke
 							onChange={(e) => setEmail(e.target.value)}
 							disabled={isLoading}
 							required
-							autoFocus
 						/>
 					</div>
 				</div>
@@ -164,7 +163,6 @@ export function LoginForm({ onSuccess, showSignupLink = true, lockedEmail, locke
 						onChange={(e) => setPassword(e.target.value)}
 						disabled={isLoading}
 						required
-						autoFocus={locked}
 						className="pr-10"
 					/>
 					<button

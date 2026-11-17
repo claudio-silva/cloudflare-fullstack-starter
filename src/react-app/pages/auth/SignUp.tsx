@@ -170,7 +170,6 @@ export function SignUp() {
 								placeholder="John Doe"
 								{...register("name")}
 								disabled={isLoading}
-								autoFocus
 							/>
 							{errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
 						</div>
