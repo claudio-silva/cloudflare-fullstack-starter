@@ -1,6 +1,6 @@
 #!/bin/sh
 # no-hard-line-breaks: joins hard-wrapped prose in the Markdown being committed (only the paragraphs the commit changes).
-# Installed by install-no-hard-line-breaks (source: ~/Scripts/no-hard-line-breaks). Each clone activates it once with
+# Installed by install-no-hard-line-breaks (source: https://github.com/claudio-silva/no-hard-line-breaks). Each clone activates it once with
 # `git config core.hooksPath .githooks`; in a Node project the npm "prepare" script does that on install.
 # Skip it for one commit with `git commit --no-verify`; opt a path out in .gitattributes with `<pattern> -md-unwrap`.
 
