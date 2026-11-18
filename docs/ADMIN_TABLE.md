@@ -1,31 +1,18 @@
 # Admin lists: `AdminTable`
 
-Every list in the admin area is an `AdminTable`
-(`src/react-app/admin/components/AdminTable.tsx`). It holds what the lists
-share, so a new page gets the same look and the same features as the others
-without rebuilding them:
+Every list in the admin area is an `AdminTable` (`src/react-app/admin/components/AdminTable.tsx`). It holds what the lists share, so a new page gets the same look and the same features as the others without rebuilding them:
 
-- a toolbar with the row count, an optional search box and an optional line of
-  text (or markup) about the list;
+- a toolbar with the row count, an optional search box and an optional line of text (or markup) about the list;
 - a `#` column numbering the rows across pages;
 - headings that sort on the server, cycling ascending, descending, none;
-- a Select toggle, a checkbox per row, "n selected of m", and actions on the
-  selection, with a confirmation dialog;
+- a Select toggle, a checkbox per row, "n selected of m", and actions on the selection, with a confirmation dialog;
 - a ⋮ menu at the end of each row;
-- pages, in a footer bar shown when there is more than one, with the next one
-  loaded ahead so moving to it is instant;
-- a panel of fixed height, with no rows and the message in the middle, while
-  the first page loads ("Loading...", with the spinner of the Save buttons), when
-  there is nothing to show, and when loading failed (with Try again);
-- the area's colours (`admin.css`), optional striped rows, and column widths
-  that do not move;
-- for a list known to stay small, `fullData`: every row loaded once, and
-  search, sort and pages in the browser.
+- pages, in a footer bar shown when there is more than one, with the next one loaded ahead so moving to it is instant;
+- a panel of fixed height, with no rows and the message in the middle, while the first page loads ("Loading...", with the spinner of the Save buttons), when there is nothing to show, and when loading failed (with Try again);
+- the area's colours (`admin.css`), optional striped rows, and column widths that do not move;
+- for a list known to stay small, `fullData`: every row loaded once, and search, sort and pages in the browser.
 
-Use it for every list in `/admin`, configured through its props. Build
-something else only for a list that genuinely does not fit (a calendar, a
-board, a tree), and say why in a comment. The app's own pages, outside
-`/admin`, are not bound by it.
+Use it for every list in `/admin`, configured through its props. Build something else only for a list that genuinely does not fit (a calendar, a board, a tree), and say why in a comment. The app's own pages, outside `/admin`, are not bound by it.
 
 It is in the admin area, so `npm run admin:remove` deletes it with the rest.
 
@@ -53,14 +40,11 @@ export function Orders() {
 }
 ```
 
-That is a complete page: search, sorting, pages, numbering, loading and empty
-states. Search, sort and page are kept in the URL (`/admin/orders?p=2&q=smith&s=-total`),
-so coming back from an order brings the list back as it was.
+That is a complete page: search, sorting, pages, numbering, loading and empty states. Search, sort and page are kept in the URL (`/admin/orders?p=2&q=smith&s=-total`), so coming back from an order brings the list back as it was.
 
 ## What the endpoint answers
 
-Every list speaks the same protocol (`src/shared/admin-list.ts`). The table
-asks for rows, not pages; pages are worked out in the browser:
+Every list speaks the same protocol (`src/shared/admin-list.ts`). The table asks for rows, not pages; pages are worked out in the browser:
 
 ```
 GET /api/admin/orders?ofs=20&c=40&q=smith&s=-total
@@ -74,13 +58,9 @@ GET /api/admin/orders?ofs=20&c=40&q=smith&s=-total
 | `q` | The search, only when there is one |
 | `s` | The sort, only while a column sorts: the column's `id` (or `sortKey`), descending with a leading `-`. Without it the server uses its own order |
 
-The table always sends `c`. An endpoint asked without it returns
-`DEFAULT_PAGE_SIZE` rows (20), the same constant the table pages by, so the
-two cannot drift apart; `c` is at most `MAX_LIST_COUNT` (200).
+The table always sends `c`. An endpoint asked without it returns `DEFAULT_PAGE_SIZE` rows (20), the same constant the table pages by, so the two cannot drift apart; `c` is at most `MAX_LIST_COUNT` (200).
 
-The server reads them with `parseListQuery`, which also checks the sort
-against the columns it can sort, so the value that reaches the query is one of
-them or `null`; never put an unchecked one in SQL:
+The server reads them with `parseListQuery`, which also checks the sort against the columns it can sort, so the value that reaches the query is one of them or `null`; never put an unchecked one in SQL:
 
 ```ts
 import { parseListQuery } from "../../../shared/admin-list";
@@ -94,24 +74,15 @@ orders.get("/", async (c) => {
 });
 ```
 
-- Rows under another key: `rows={(data) => data.orders}`, with the response type
-  as the second type parameter, `AdminTable<Order, OrderList>`; a total under
-  another key: `total={(data) => data.count}`.
+- Rows under another key: `rows={(data) => data.orders}`, with the response type as the second type parameter, `AdminTable<Order, OrderList>`; a total under another key: `total={(data) => data.count}`.
 - A row is identified by its `id`; `rowKey` when it is something else.
-- `c=all` is honoured only by an endpoint that says so,
-  `parseListQuery(…, { sortable, allowAll: true })`, and then up to
-  `MAX_LIST_ALL` rows (2000). Without it, `all` gets the default count.
+- `c=all` is honoured only by an endpoint that says so, `parseListQuery(…, { sortable, allowAll: true })`, and then up to `MAX_LIST_ALL` rows (2000). Without it, `all` gets the default count.
 
-Sort and page on the server, not in the browser, so the list stays one query
-and one page however many rows there are. `src/worker/routes/admin/users.ts`
-shows how: every sortable column is an `ORDER BY`, with empty values last in
-either direction.
+Sort and page on the server, not in the browser, so the list stays one query and one page however many rows there are. `src/worker/routes/admin/users.ts` shows how: every sortable column is an `ORDER BY`, with empty values last in either direction.
 
 ## Loading ahead
 
-With `prefetch` (on unless `adminConfig.table.prefetch` or the prop says
-otherwise), the table loads the page next to the one shown together with it.
-Rows are asked for in one request, never two queries where one will do:
+With `prefetch` (on unless `adminConfig.table.prefetch` or the prop says otherwise), the table loads the page next to the one shown together with it. Rows are asked for in one request, never two queries where one will do:
 
 | The user | The table asks for |
 |---|---|
@@ -121,13 +92,7 @@ Rows are asked for in one request, never two queries where one will do:
 | clicks Previous, the page kept | nothing to wait for; the page before it, alone, if it is not kept |
 | clicks Previous, the page not kept | that page and the one before it in one request (from k − 2) |
 
-`cache` (`adminConfig.table.cache`, default `{ pages: 10, ttl: 60_000 }`)
-keeps the pages seen, the nearest ten for a minute: going back is instant, and
-a page older than that shows while it is asked again. `cache={false}` keeps
-only the page shown and the one ahead. A new search, sort, page size,
-`params`, `reloadKey`, or anything the table does to the rows (an action,
-Try again) starts over. The logic is in `src/react-app/admin/page-loader.ts`,
-tested in `test/admin-list.test.ts`.
+`cache` (`adminConfig.table.cache`, default `{ pages: 10, ttl: 60_000 }`) keeps the pages seen, the nearest ten for a minute: going back is instant, and a page older than that shows while it is asked again. `cache={false}` keeps only the page shown and the one ahead. A new search, sort, page size, `params`, `reloadKey`, or anything the table does to the rows (an action, Try again) starts over. The logic is in `src/react-app/admin/page-loader.ts`, tested in `test/admin-list.test.ts`.
 
 ## Small lists: `fullData`
 
@@ -135,31 +100,18 @@ tested in `test/admin-list.test.ts`.
 <AdminTable<Country> url="/api/admin/countries" fullData columns={COLUMNS} search="Search countries" />
 ```
 
-For a list known to stay small (a few hundred rows, up to `MAX_LIST_ALL`), the
-table asks for every row once (`?ofs=0&c=all`, which the endpoint must allow)
-and then searches, sorts and pages in the browser, with no request at all. The
-page, search and sort are still in the address.
+For a list known to stay small (a few hundred rows, up to `MAX_LIST_ALL`), the table asks for every row once (`?ofs=0&c=all`, which the endpoint must allow) and then searches, sorts and pages in the browser, with no request at all. The page, search and sort are still in the address.
 
-- **Search** looks for every word of the search, without case or accents, in
-  each column's `searchValue(row)` (default: the property `id`, when it is
-  text or a number). `searchable: false` leaves a column out.
-- **Sort** uses each column's `sortValue(row)` (default: the property
-  `sortKey` or `id`): numbers as numbers, text in the language's order, empty
-  values last either way, as the server does.
-- **`filter={(row) => boolean}`** decides which rows are shown, e.g. from a
-  search form of the page. It is called once per row when the rows, the
-  filter, the search or the sort change, not on every page; the result is an
-  array of the same row objects, not copies. Keep it stable with
-  `useCallback`, with the form's values as its dependencies.
-- With `data` (no `url` or `load`), `data` holds every row, and the browser
-  does the rest the same way.
+- **Search** looks for every word of the search, without case or accents, in each column's `searchValue(row)` (default: the property `id`, when it is text or a number). `searchable: false` leaves a column out.
+- **Sort** uses each column's `sortValue(row)` (default: the property `sortKey` or `id`): numbers as numbers, text in the language's order, empty values last either way, as the server does.
+- **`filter={(row) => boolean}`** decides which rows are shown, e.g. from a search form of the page. It is called once per row when the rows, the filter, the search or the sort change, not on every page; the result is an array of the same row objects, not copies. Keep it stable with `useCallback`, with the form's values as its dependencies.
+- With `data` (no `url` or `load`), `data` holds every row, and the browser does the rest the same way.
 
 `src/react-app/admin/client-list.ts` does the work.
 
 ## Extending or replacing the protocol
 
-Each step keeps the whole table (toolbar, selection, actions, states, loading
-ahead) and changes only where the rows come from:
+Each step keeps the whole table (toolbar, selection, actions, states, loading ahead) and changes only where the rows come from:
 
 | Need | Use |
 |---|---|
@@ -168,15 +120,11 @@ ahead) and changes only where the rows come from:
 | Another kind of request (GraphQL, an RPC, a POST with a body) | `load={(r) => fetchOrders(r)}`: returns the response; the table still shows loading, failures and Try again |
 | Rows that arrive by themselves (a websocket, a shared store) | No `url` or `load`: pass `data` (null until there is some), and `loading`, `failed`, `onReload` if they apply |
 
-`r` in `queryParams` and `load` is the request, `{ offset, count, q, sort, dir }`
-(`ListRequest`), `count` being `"all"` with `fullData`.
+`r` in `queryParams` and `load` is the request, `{ offset, count, q, sort, dir }` (`ListRequest`), `count` being `"all"` with `fullData`.
 
 ### Reading or changing the state outside the table
 
-`useAdminList()` (`src/react-app/admin/use-admin-list.ts`) holds the state the
-table would otherwise keep inside: in the address (`state: "url"`, default) or
-in the page (`"local"`). Give it to the table as `list` and the page can read
-it, change it, or load with it:
+`useAdminList()` (`src/react-app/admin/use-admin-list.ts`) holds the state the table would otherwise keep inside: in the address (`state: "url"`, default) or in the page (`"local"`). Give it to the table as `list` and the page can read it, change it, or load with it:
 
 ```tsx
 const list = useAdminList({ pageSize: 50 });
@@ -191,8 +139,7 @@ const [filters, setFilters] = useState<OrderFilters>({});
 <AdminTable<Order> url="/api/admin/orders" params={filters} list={list} columns={COLUMNS} noun={["order", "orders"]} search="Search orders" />
 ```
 
-With rows pushed from elsewhere, the page subscribes with the state and hands
-the result over:
+With rows pushed from elsewhere, the page subscribes with the state and hands the result over:
 
 ```tsx
 const list = useAdminList({ state: "local" });
@@ -203,9 +150,7 @@ useEffect(() => ordersSocket.subscribe({ page, pageSize, q, sort, dir }, setData
 <AdminTable<Order> data={data} list={list} columns={COLUMNS} noun={["order", "orders"]} search="Search orders" />
 ```
 
-`list.update({ … })` changes any of `page`, `pageSize`, `q`, `sort`, `dir`; a
-new search, sort or page size goes back to page 1 unless `page` is given too.
-The table checks `sort` against its sortable columns before using it.
+`list.update({ … })` changes any of `page`, `pageSize`, `q`, `sort`, `dir`; a new search, sort or page size goes back to page 1 unless `page` is given too. The table checks `sort` against its sortable columns before using it.
 
 ## Columns
 
@@ -225,9 +170,7 @@ The table checks `sort` against its sortable columns before using it.
 | `title` | none | `(row) => string`: a tooltip, e.g. the full value behind a shortened one |
 | `className` | none | Extra classes on the heading and the cells |
 
-A `cell` can hold anything: the users list shows an avatar with the name and
-email (`UserList.tsx`), the activity list a badge with a detail beside it
-(`UserActivity.tsx`).
+A `cell` can hold anything: the users list shows an avatar with the name and email (`UserList.tsx`), the activity list a badge with a detail beside it (`UserActivity.tsx`).
 
 ## The table
 
@@ -270,10 +213,7 @@ deletable={{
 }}
 ```
 
-The rows go one `DELETE` at a time, so the server's rules apply to each (the
-users list refuses to delete yourself or the last admin, row by row). A list
-with a bulk endpoint passes `run: (ids) => …` instead of `url`. After it, a toast
-says how many went, the selection ends and the list reloads.
+The rows go one `DELETE` at a time, so the server's rules apply to each (the users list refuses to delete yourself or the last admin, row by row). A list with a bulk endpoint passes `run: (ids) => …` instead of `url`. After it, a toast says how many went, the selection ends and the list reloads.
 
 **Row menu** entries:
 
@@ -292,38 +232,16 @@ bulkActions={[
 ]}
 ```
 
-An action that returns a promise reloads the list when it settles; one that
-asks for `confirm` opens the dialog first, and `destructive` makes it red.
-Errors need no handling: the HTTP layer shows them (see `docs/MECHANISMS.md`,
-*The HTTP layer*), and the list reloads to show what did happen.
+An action that returns a promise reloads the list when it settles; one that asks for `confirm` opens the dialog first, and `destructive` makes it red. Errors need no handling: the HTTP layer shows them (see `docs/MECHANISMS.md`, *The HTTP layer*), and the list reloads to show what did happen.
 
 ## Loading and empty states
 
-While the first page loads, the table shows its headings over a panel of fixed
-height with the spinner and "Loading..." in the middle; no placeholder rows, so
-nothing jumps when the data arrives. Later loads (another page, a sort, a
-search) keep the rows on screen, dimmed, until the new ones are in. With no
-rows, the same panel holds the `empty` message; if the first load failed, it
-offers Try again (the HTTP layer has already said what went wrong).
+While the first page loads, the table shows its headings over a panel of fixed height with the spinner and "Loading..." in the middle; no placeholder rows, so nothing jumps when the data arrives. Later loads (another page, a sort, a search) keep the rows on screen, dimmed, until the new ones are in. With no rows, the same panel holds the `empty` message; if the first load failed, it offers Try again (the HTTP layer has already said what went wrong).
 
-When the new rows arrive, a row that is still on screen slides from where it
-was to where it now is, so a sort or a deletion can be followed by eye
-(`src/react-app/admin/row-motion.ts`, keyed on `rowKey`). Nothing moves when
-the system asks for reduced motion.
+When the new rows arrive, a row that is still on screen slides from where it was to where it now is, so a sort or a deletion can be followed by eye (`src/react-app/admin/row-motion.ts`, keyed on `rowKey`). Nothing moves when the system asks for reduced motion.
 
 ## Changing how every list looks
 
-Colours are the area's variables in `src/react-app/admin/admin.css`:
-`--admin-toolbar`, `--admin-table-head`, `--admin-table-foot`, and for the
-rows `--admin-table-stripe`, `--admin-table-row-hover` and
-`--admin-table-row-selected` (which wins over the other two). What every
-table does by default (striped, density, loading ahead, the cache) is
-`adminConfig.table` in `src/react-app/admin/config.ts`; rows per page are
-`DEFAULT_PAGE_SIZE` in `src/shared/admin-list.ts`, shared with the server. The
-row-number column is `ORDINAL` in `styles.ts`; the panel's height is
-`PANEL_HEIGHT` in `AdminTable.tsx`. Change them there and every list follows. A change one list
-needs and the others do not is a prop; if the prop does not exist, add it to
-`AdminTable` (with a default that keeps the other lists as they are) rather
-than copying the component.
+Colours are the area's variables in `src/react-app/admin/admin.css`: `--admin-toolbar`, `--admin-table-head`, `--admin-table-foot`, and for the rows `--admin-table-stripe`, `--admin-table-row-hover` and `--admin-table-row-selected` (which wins over the other two). What every table does by default (striped, density, loading ahead, the cache) is `adminConfig.table` in `src/react-app/admin/config.ts`; rows per page are `DEFAULT_PAGE_SIZE` in `src/shared/admin-list.ts`, shared with the server. The row-number column is `ORDINAL` in `styles.ts`; the panel's height is `PANEL_HEIGHT` in `AdminTable.tsx`. Change them there and every list follows. A change one list needs and the others do not is a prop; if the prop does not exist, add it to `AdminTable` (with a default that keeps the other lists as they are) rather than copying the component.
 
 The texts are English, like the rest of the area.

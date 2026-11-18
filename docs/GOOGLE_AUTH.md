@@ -1,7 +1,6 @@
 # Sign in with Google
 
-> Off until you set it up, and then on everywhere the Worker has its credentials.
-> One command does everything except the part Google keeps to itself.
+> Off until you set it up, and then on everywhere the Worker has its credentials. One command does everything except the part Google keeps to itself.
 
 ```bash
 npm run setup:google            # set it up, and check it

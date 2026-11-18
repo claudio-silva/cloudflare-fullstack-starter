@@ -1,9 +1,6 @@
 # App icons: `npm run icons`
 
-One command makes every icon the app needs from a single image: the favicon, the PWA icons
-(Android, iOS home screen), and the ones the App Store, Google Play and an Android build ask for. It
-also points `index.html` (and the PWA manifest, when there is one) at them. Change the image, run it
-again, and every icon follows.
+One command makes every icon the app needs from a single image: the favicon, the PWA icons (Android, iOS home screen), and the ones the App Store, Google Play and an Android build ask for. It also points `index.html` (and the PWA manifest, when there is one) at them. Change the image, run it again, and every icon follows.
 
 ## 1. Put the original image in `branding/icon.png`
 
@@ -14,13 +11,9 @@ again, and every icon follows.
 | **Content** | the mark alone, **on a transparent background**: no tile, no rounded square, no shadow. The command draws the tile itself, in the shape each platform wants |
 | **Size** | **1024px or more on its longer side**. Square or not, and any margin: transparent margins are trimmed, and the mark is centred |
 
-- **Larger than 1024px:** scaled down to 1024px on its longer side, in halving steps, which keeps fine
-  detail crisp.
-- **Smaller than 1024px:** scaled up by interpolation, so the large icons (App Store, Google Play,
-  512px) come out blurred. The command says so in a warning and makes them anyway; replace the
-  image with a larger original when you have one.
-- **Opaque background** (a JPEG, or a PNG with a filled background): the command warns, because
-  that background shows as a box on the tile.
+- **Larger than 1024px:** scaled down to 1024px on its longer side, in halving steps, which keeps fine detail crisp.
+- **Smaller than 1024px:** scaled up by interpolation, so the large icons (App Store, Google Play, 512px) come out blurred. The command says so in a warning and makes them anyway; replace the image with a larger original when you have one.
+- **Opaque background** (a JPEG, or a PNG with a filled background): the command warns, because that background shows as a box on the tile.
 
 Commit `branding/icon.png`: it is the source of truth for every icon.
 
@@ -32,12 +25,9 @@ npm run icons -- --background "#0b1f3a"         # tile colour (hex)
 npm run icons -- --source art/logo.png          # another source file
 ```
 
-It renders with Playwright's Chromium, which the E2E tests already use; if it is not installed yet:
-`npx playwright install chromium`. No image library is involved.
+It renders with Playwright's Chromium, which the E2E tests already use; if it is not installed yet: `npx playwright install chromium`. No image library is involved.
 
-`--background` is the colour of the tile behind the mark: on the rounded PWA icon, the iOS and store
-icons and Android's adaptive icon background. Pick one the mark stands out on (a mark with dark parts
-needs a light tile).
+`--background` is the colour of the tile behind the mark: on the rounded PWA icon, the iOS and store icons and Android's adaptive icon background. Pick one the mark stands out on (a mark with dark parts needs a light tile).
 
 ## What it writes
 
@@ -54,20 +44,13 @@ needs a light tile).
 
 And it updates, when they exist:
 
-- `index.html`: the `<link rel="icon">` (now `/favicon.ico`) and `<link rel="apple-touch-icon">`
-  tags. Any other icon link there is replaced, so the starter's `vite.svg` stops being used and can
-  be deleted from `public/`. Once both links are there, `index.html` is left alone, so links you
-  add or move yourself stay as they are.
-- `public/manifest.webmanifest`: its `icons` list (the four PWA icons). The starter has no manifest;
-  the command does not create one.
+- `index.html`: the `<link rel="icon">` (now `/favicon.ico`) and `<link rel="apple-touch-icon">` tags. Any other icon link there is replaced, so the starter's `vite.svg` stops being used and can be deleted from `public/`. Once both links are there, `index.html` is left alone, so links you add or move yourself stay as they are.
+- `public/manifest.webmanifest`: its `icons` list (the four PWA icons). The starter has no manifest; the command does not create one.
 
-Everything under `branding/store/` is not served by the app: it is there for when the app goes to a
-store. Commit it with the rest, or regenerate it then.
+Everything under `branding/store/` is not served by the app: it is there for when the app goes to a store. Commit it with the rest, or regenerate it then.
 
 ## Limits
 
-- **Android's monochrome (themed) icon** is not made: Android would draw the mark as a flat
-  silhouette, which loses any detail drawn inside it. For a mark that reads well as a silhouette,
-  add a `<monochrome>` layer to `branding/store/android/res/mipmap-anydpi-v26/*.xml` by hand.
+- **Android's monochrome (themed) icon** is not made: Android would draw the mark as a flat silhouette, which loses any detail drawn inside it. For a mark that reads well as a silhouette, add a `<monochrome>` layer to `branding/store/android/res/mipmap-anydpi-v26/*.xml` by hand.
 - **iOS launch images** (splash screens) are not made.
 - **No vector output:** the icons are PNG, drawn from the PNG source.

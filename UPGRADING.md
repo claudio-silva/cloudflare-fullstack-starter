@@ -1,7 +1,6 @@
 # Upgrading & Release Log
 
-> **Audience: AI coding agents (and humans) upgrading a project built on this starter.**
-> This log lists only what can **break** an older install when moving to a newer starter version, and the order in which to apply it. Routine dependency bumps are not listed unless they forced a code or schema change.
+> **Audience: AI coding agents (and humans) upgrading a project built on this starter.** This log lists only what can **break** an older install when moving to a newer starter version, and the order in which to apply it. Routine dependency bumps are not listed unless they forced a code or schema change.
 
 ## How to upgrade (agent procedure)
 

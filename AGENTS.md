@@ -1,7 +1,6 @@
 # AI Agent Development Guide
 
-> Essential instructions for AI coding agents working on this project.
-> For initial setup, see `docs/AGENTS_SETUP.md`.
+> Essential instructions for AI coding agents working on this project. For initial setup, see `docs/AGENTS_SETUP.md`.
 
 ## Project Overview
 
@@ -92,9 +91,7 @@ Roles are in `src/shared/roles.ts` (`user` < `admin` < `superadmin`); `session.u
 
 <!-- [admin-area] -->
 ### The admin area
-`/admin` is an example backoffice (admins and up, 403 otherwise) that a project may restyle or remove. To add a page there see `docs/ADMIN.md`; `npm run admin:remove` removes the whole area.
-When working on the area, keep it removable: put a helper only it uses in `src/react-app/lib/admin-util.ts` (deleted with it) rather than a new file under `lib/`, and mark whatever it adds to a shared file with the markers described in `docs/ADMIN.md`, *Removing it*.
-**Lists in the admin area use `AdminTable`** (`src/react-app/admin/components/AdminTable.tsx`, guide in `docs/ADMIN_TABLE.md`): it brings the toolbar, search, sorting, row numbers, selection, bulk and row actions, pages and the loading and empty states, so every list looks and behaves the same. Its endpoints speak one query protocol in rows (`?ofs=0&c=40&q=…&s=-field`, read on the server with `parseListQuery` from `src/shared/admin-list.ts`; the browser works out pages and loads the next one ahead); `params`, `queryParams`, `load` or `data` with `useAdminList` extend or replace it without giving the component up, and `fullData` loads a small list whole and works on it in the browser. Configure it through its props (columns, `cell` renderers, `rowActions`, `bulkActions`, `deletable`, `intro`, `empty`, `state`) rather than building a table from `components/ui/table`; reach for something else only when a list genuinely does not fit it (then say why in a comment). The app's own pages, outside `/admin`, are not bound by it: their design is the app's.
+`/admin` is an example backoffice (admins and up, 403 otherwise) that a project may restyle or remove. To add a page there see `docs/ADMIN.md`; `npm run admin:remove` removes the whole area. When working on the area, keep it removable: put a helper only it uses in `src/react-app/lib/admin-util.ts` (deleted with it) rather than a new file under `lib/`, and mark whatever it adds to a shared file with the markers described in `docs/ADMIN.md`, *Removing it*. **Lists in the admin area use `AdminTable`** (`src/react-app/admin/components/AdminTable.tsx`, guide in `docs/ADMIN_TABLE.md`): it brings the toolbar, search, sorting, row numbers, selection, bulk and row actions, pages and the loading and empty states, so every list looks and behaves the same. Its endpoints speak one query protocol in rows (`?ofs=0&c=40&q=…&s=-field`, read on the server with `parseListQuery` from `src/shared/admin-list.ts`; the browser works out pages and loads the next one ahead); `params`, `queryParams`, `load` or `data` with `useAdminList` extend or replace it without giving the component up, and `fullData` loads a small list whole and works on it in the browser. Configure it through its props (columns, `cell` renderers, `rowActions`, `bulkActions`, `deletable`, `intro`, `empty`, `state`) rather than building a table from `components/ui/table`; reach for something else only when a list genuinely does not fit it (then say why in a comment). The app's own pages, outside `/admin`, are not bound by it: their design is the app's.
 <!-- [/admin-area] -->
 
 ### Action buttons
@@ -273,8 +270,7 @@ IPs are personal data: your privacy notice has to mention them. Set `AUTH_LOG_RE
 
 ### Writing migrations
 
-> The reasoning behind this and every other mechanism the starter provides is in
-> [docs/MECHANISMS.md](docs/MECHANISMS.md). Read it before changing any of them.
+> The reasoning behind this and every other mechanism the starter provides is in [docs/MECHANISMS.md](docs/MECHANISMS.md). Read it before changing any of them.
 
 Scaffold with `npm run db -- new-migration <snake_case_name>`: it also registers the migration in `migrations/index.ts`, which a hand-written file would miss.
 
@@ -385,8 +381,7 @@ Projects built on this starter should edit few starter files so later upstream p
 
 ## Project-Specific Notes
 
-> Developers: Add project-specific instructions below as the app evolves.
-> Keep this section updated with domain models, business logic, and conventions.
+> Developers: Add project-specific instructions below as the app evolves. Keep this section updated with domain models, business logic, and conventions.
 
 ---
 

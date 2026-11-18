@@ -1,7 +1,6 @@
 # The product website
 
-> An **optional** marketing site on your apex domain (`acme.io`), with the app moved to a subdomain (`app.acme.io`) — or, before you have a domain, the site and the app each on its free `*.workers.dev` address ([No domain yet](#no-domain-yet)).
-> A project that does not turn it on is exactly a project without one: nothing in this document applies to it, and no command changes behaviour.
+> An **optional** marketing site on your apex domain (`acme.io`), with the app moved to a subdomain (`app.acme.io`) — or, before you have a domain, the site and the app each on its free `*.workers.dev` address ([No domain yet](#no-domain-yet)). A project that does not turn it on is exactly a project without one: nothing in this document applies to it, and no command changes behaviour.
 
 ---
 
