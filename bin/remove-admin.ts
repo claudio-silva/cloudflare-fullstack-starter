@@ -2,15 +2,19 @@
 /**
  * Remove the example admin area (/admin) from this project. See docs/ADMIN.md.
  *
- *   1. Deletes its own files: the pages, the API, its schemas, its test, its
+ *   1. Deletes its own files: the pages, the API, its schemas, its tests, its
  *      doc, its helpers (src/react-app/lib/admin-util.ts) and this script.
  *   2. Strips what it added to shared files, which are marked:
- *        - a block between a line containing `[admin-area]` and one
- *          containing `[/admin-area]`, both included;
- *        - a single line containing `[admin-area-line]`;
+ *        - a block between a line that starts with `[admin-area]` and one
+ *          that starts with `[/admin-area]`, both included;
+ *        - a single line that starts with `[admin-area-line]` or ends with
+ *          it in a comment (`import x from "y"; // [admin-area-line]`);
  *        - the `admin:remove` script in package.json and the admin/ lines
  *          of the file trees in AGENTS.md and README.md, which cannot hold a
  *          marker.
+ *      "Starts with" allows indentation and a comment opener (`//`, `#`,
+ *      `--`, `/*`, `{/*`, `<!--`) before the marker, so a marker mentioned in
+ *      prose (`[admin-area-line]` in backticks, say) is left alone.
  *
  * Roles, `requireRole()` and the role in the session stay, for whatever you
  * build instead. Everything is checked before anything is changed, so it either
@@ -34,6 +38,7 @@ const OWN_PATHS = [
 	"src/shared/admin-list.ts",
 	"src/react-app/lib/admin-util.ts",
 	"test/admin.test.ts",
+	"test/admin-list.test.ts",
 	"docs/ADMIN.md",
 	"docs/ADMIN_TABLE.md",
 	SELF,
@@ -42,6 +47,18 @@ const OWN_PATHS = [
 const BEGIN = "[admin-area]";
 const END = "[/admin-area]";
 const LINE = "[admin-area-line]";
+
+/** A comment opener in the languages the markers appear in: TS/JS, CSS, JSX, HTML and Markdown, shell, SQL. */
+const OPENER = String.raw`(?:\/\/|#|--|\{?\/\*|<!--)`;
+const escape = (s: string) => s.replace(/[[\]/]/g, "\\$&");
+/** The marker first on its line, after the indentation and a comment opener. */
+const leading = (marker: string) => new RegExp(String.raw`^\s*(?:${OPENER}\s*)?${escape(marker)}`);
+const IS_BEGIN = leading(BEGIN);
+const IS_END = leading(END);
+const IS_LINE_LEADING = leading(LINE);
+/** The line marker in a comment that ends the line: `code; // [admin-area-line]`, `text <!-- [admin-area-line] -->`. */
+const IS_LINE_TRAILING = new RegExp(String.raw`${OPENER}\s*${escape(LINE)}\s*(?:\*\/\}?|-->)?\s*$`);
+const isLineMarker = (line: string) => IS_LINE_LEADING.test(line) || IS_LINE_TRAILING.test(line);
 
 /** Lines that cannot carry a marker (JSON, code blocks), by file. */
 const UNMARKED_LINES: Record<string, RegExp[]> = {
@@ -82,20 +99,20 @@ function strip(file: string, text: string): Edit | null {
 	for (let i = 0; i < lines.length; i++) {
 		const line = lines[i];
 		if (openedAt >= 0) {
-			if (line.includes(BEGIN)) throw new Error(`${file}:${i + 1}: ${BEGIN} inside the block opened at line ${openedAt + 1}`);
+			if (IS_BEGIN.test(line)) throw new Error(`${file}:${i + 1}: ${BEGIN} inside the block opened at line ${openedAt + 1}`);
 			removed++;
-			if (line.includes(END)) {
+			if (IS_END.test(line)) {
 				openedAt = -1;
 				// A block between two blank lines leaves one, not two.
 				if (kept.at(-1)?.trim() === "" && lines[i + 1]?.trim() === "") i++;
 			}
 			continue;
 		}
-		if (line.includes(END)) throw new Error(`${file}:${i + 1}: ${END} without ${BEGIN}`);
-		if (line.includes(BEGIN)) {
+		if (IS_END.test(line)) throw new Error(`${file}:${i + 1}: ${END} without ${BEGIN}`);
+		if (IS_BEGIN.test(line)) {
 			openedAt = i;
 			removed++;
-		} else if (line.includes(LINE) || patterns.some((p) => p.test(line))) {
+		} else if (isLineMarker(line) || patterns.some((p) => p.test(line))) {
 			removed++;
 		} else {
 			kept.push(line);

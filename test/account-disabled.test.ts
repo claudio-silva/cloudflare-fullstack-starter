@@ -103,6 +103,7 @@ describe("a disabled account is told so, never that its session expired", () => 
 		expect(await res.json()).toMatchObject({ code: "unauthenticated" });
 	});
 
+	// [admin-area] Through the admin API, removed with it.
 	it("answers the same when an administrator disables the account", async () => {
 		const admin = await newUser("superadmin");
 		const adminCookie = await signIn(admin.email);
@@ -115,6 +116,7 @@ describe("a disabled account is told so, never that its session expired", () => 
 		await app.request(`/api/admin/users/${u.id}`, { method: "PATCH", headers: { ...json, cookie: adminCookie }, body: JSON.stringify({ enabled: true }) }, local);
 		expect((await ping(cookie)).status).toBe(401);
 	});
+	// [/admin-area]
 
 	it("prunes expired markers and keeps live ones", async () => {
 		const db = createDb(local);
