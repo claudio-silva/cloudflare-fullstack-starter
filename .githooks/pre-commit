@@ -1,0 +1,18 @@
+#!/bin/sh
+# no-hard-line-breaks: joins hard-wrapped prose in the Markdown being committed (only the paragraphs the commit changes).
+# Installed by install-no-hard-line-breaks (source: ~/Scripts/no-hard-line-breaks). Each clone activates it once with
+# `git config core.hooksPath .githooks`; in a Node project the npm "prepare" script does that on install.
+# Skip it for one commit with `git commit --no-verify`; opt a path out in .gitattributes with `<pattern> -md-unwrap`.
+
+hooks_dir=$(dirname "$0")
+if command -v node >/dev/null 2>&1; then
+	node "$hooks_dir/no-hard-line-breaks.mjs" --hook
+else
+	echo "no-hard-line-breaks: node not found, Markdown line breaks not checked" >&2
+fi
+
+# core.hooksPath replaces .git/hooks: keep running a pre-commit hook a developer installed there.
+legacy="$(git rev-parse --git-common-dir)/hooks/pre-commit"
+if [ -x "$legacy" ]; then
+	exec "$legacy" "$@"
+fi

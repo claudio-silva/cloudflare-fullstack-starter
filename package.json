@@ -91,7 +91,8 @@
 		"db:seed:production": "tsx bin/db.ts seed --env production",
 		"init": "tsx bin/init.ts",
 		"auth": "tsx bin/auth.ts",
-		"deploy:ci": "tsx bin/deploy-pipeline.ts --skip-build"
+		"deploy:ci": "tsx bin/deploy-pipeline.ts --skip-build",
+		"prepare": "node -e \"try{require('child_process').execSync('git config core.hooksPath .githooks',{stdio:'ignore'})}catch(e){}\""
 	},
 	"bin": {
 		"init": "./bin/init",
