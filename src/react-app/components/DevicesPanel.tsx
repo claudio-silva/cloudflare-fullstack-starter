@@ -124,6 +124,7 @@ export function DevicesPanel() {
 						{sessions.length === 0 && <div className="p-4 text-sm text-muted-foreground">No devices to show.</div>}
 					</ItemGroup>
 					{others > 0 && (
+						<div className="flex justify-center sm:justify-end">
 						<AlertDialog>
 							<AlertDialogTrigger asChild>
 								<Button variant="outline" className="max-w-full" disabled={busy !== null}>
@@ -138,18 +139,19 @@ export function DevicesPanel() {
 										{others === 1 ? "The other device is" : `The other ${others} devices are`} signed out and must sign in again. This device stays signed in.
 									</AlertDialogDescription>
 								</AlertDialogHeader>
-								<AlertDialogFooter>
-									<AlertDialogCancel className="w-40">
+								<AlertDialogFooter className="flex-row">
+									<AlertDialogCancel className="flex-1 sm:flex-none sm:w-40">
 										<X />
 										Cancel
 									</AlertDialogCancel>
-									<AlertDialogAction onClick={() => end(null)} className="w-40">
+									<AlertDialogAction onClick={() => end(null)} className="flex-1 sm:flex-none sm:w-40">
 										<LogOut />
 										Sign out
 									</AlertDialogAction>
 								</AlertDialogFooter>
 							</AlertDialogContent>
 						</AlertDialog>
+						</div>
 					)}
 				</div>
 			)}

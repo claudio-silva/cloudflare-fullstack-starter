@@ -240,14 +240,14 @@ export function Profile() {
 							/>
 						)}
 
-						<div className="flex justify-end gap-2">
+						<div className="flex justify-center gap-2 sm:justify-end">
 							<Button variant="outline" onClick={handleCancel} disabled={saving} className="w-40">
 								<X />
 								Cancel
 							</Button>
 							<Button onClick={handleSave} disabled={saving || (!nameChanged && !wantsPassword)} className="w-40">
 								{saving ? <Spinner /> : <Save />}
-								Save changes
+								Save
 							</Button>
 						</div>
 
@@ -288,10 +288,12 @@ export function Profile() {
 						</Panel>
 
 						<Panel tone="danger" title="Delete account" description="Removes your account and everything attached to it. This cannot be undone.">
-								<Button variant="destructive" onClick={() => setShowDeleteConfirm(true)} disabled={isDeletingAccount} className="w-40">
-									{isDeletingAccount ? <Spinner /> : <Trash2 />}
-									Delete account
-								</Button>
+								<div className="flex justify-center sm:justify-end">
+									<Button variant="destructive" onClick={() => setShowDeleteConfirm(true)} disabled={isDeletingAccount} className="w-40">
+										{isDeletingAccount ? <Spinner /> : <Trash2 />}
+										Delete account
+									</Button>
+								</div>
 						</Panel>
 					</div>
 				</div>
@@ -305,12 +307,12 @@ export function Profile() {
 							This permanently deletes your account and all associated data. This cannot be undone.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel className="w-40">
+					<AlertDialogFooter className="flex-row">
+						<AlertDialogCancel className="flex-1 sm:flex-none sm:w-40">
 							<X />
 							Cancel
 						</AlertDialogCancel>
-						<AlertDialogAction variant="destructive" onClick={handleDeleteAccount} className="w-40">
+						<AlertDialogAction variant="destructive" onClick={handleDeleteAccount} className="flex-1 sm:flex-none sm:w-40">
 							<Trash2 />
 							Delete
 						</AlertDialogAction>
